@@ -19,15 +19,35 @@ interface SidebarProps {
 export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
   const { t, language } = useLanguage();
 
-  const menuItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
-    { id: 'inventory', icon: Package, label: t.inventory },
-    { id: 'stockIn', icon: ArrowDownToLine, label: t.stockIn },
-    { id: 'handover', icon: ArrowRightLeft, label: t.handover },
-    { id: 'newSku', icon: PlusCircle, label: t.newSku },
-    { id: 'stockOut', icon: MinusCircle, label: t.stockOut },
-    { id: 'adjustment', icon: SlidersHorizontal, label: t.adjustment },
-    { id: 'sql', icon: Database, label: t.sqlCode },
+  const menuGroups = [
+    {
+      title: language === 'kh' ? 'ព័ត៌មានទូទៅ' : 'General Info',
+      items: [
+        { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
+        { id: 'inventory', icon: Package, label: t.inventory },
+      ]
+    },
+    {
+      title: language === 'kh' ? 'ព័ត៌មានប្រតិបត្តិការស្តុកកណ្តាល' : 'HQ Operations',
+      items: [
+        { id: 'stockIn', icon: ArrowDownToLine, label: t.stockIn },
+        { id: 'handover', icon: ArrowRightLeft, label: t.handover },
+        { id: 'newSku', icon: PlusCircle, label: t.newSku },
+      ]
+    },
+    {
+      title: language === 'kh' ? 'ព័ត៌មានប្រតិបត្តិការសាខា' : 'Branch Operations',
+      items: [
+        { id: 'stockOut', icon: MinusCircle, label: t.stockOut },
+        { id: 'adjustment', icon: SlidersHorizontal, label: t.adjustment },
+      ]
+    },
+    {
+      title: language === 'kh' ? 'ប្រព័ន្ធ' : 'System',
+      items: [
+        { id: 'sql', icon: Database, label: t.sqlCode },
+      ]
+    }
   ];
 
   return (
@@ -50,32 +70,32 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
       </div>
 
       {/* Menu Navigation */}
-      <nav className="flex-1 overflow-y-auto space-y-1">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentView === item.id;
-            const showDivider = item.id === 'stockOut';
-            return (
-              <React.Fragment key={item.id}>
-                {showDivider && (
-                  <div className="py-2">
-                    <div className="border-t border-slate-100"></div>
-                  </div>
-                )}
-                <button
-                  onClick={() => setCurrentView(item.id)}
-                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
-                    isActive 
-                      ? 'bg-[#900033]/5 text-[#900033] border border-[#900033]/10' 
-                      : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Icon size={20} className={isActive ? '' : 'opacity-70'} />
-                  <span className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
-                </button>
-              </React.Fragment>
-            );
-          })}
+      <nav className="flex-1 overflow-y-auto space-y-6">
+        {menuGroups.map((group, groupIdx) => (
+          <div key={groupIdx}>
+            <h4 className="px-3 text-xs font-bold text-slate-400 uppercase mb-2">{group.title}</h4>
+            <div className="space-y-1">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setCurrentView(item.id)}
+                    className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
+                      isActive 
+                        ? 'bg-[#900033]/5 text-[#900033] border border-[#900033]/10' 
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Icon size={20} className={isActive ? '' : 'opacity-70'} />
+                    <span className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
     </aside>
   );

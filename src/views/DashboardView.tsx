@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { mockInventory, mockItems } from '../mockData';
+import { mockInventory, mockItems, mockLocations } from '../mockData';
 import { Package, AlertCircle, MapPin, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
@@ -14,6 +14,43 @@ export function DashboardView() {
   });
   const lowStockCount = lowStockItems.length;
   const locationsCount = new Set(mockInventory.map(item => item.location_id)).size;
+
+  // Compute aggregated inventory data for the table
+  const aggregatedInventory = mockItems.map((item, index) => {
+    const itemInventory = mockInventory.filter(inv => inv.item_id === item.id);
+    
+    let hqStock = 0;
+    let branchStock = 0;
+    const branchesWithStock: string[] = [];
+
+    itemInventory.forEach(inv => {
+      const loc = mockLocations.find(l => l.id === inv.location_id);
+      if (loc) {
+        if (loc.type === 'HQ') {
+          hqStock += inv.quantity;
+        } else if (loc.type === 'BRANCH') {
+          branchStock += inv.quantity;
+          branchesWithStock.push(language === 'kh' ? loc.name_kh : loc.name_en);
+        }
+      }
+    });
+
+    const totalStock = hqStock + branchStock;
+    const status = totalStock === 0 ? 'អស់ស្តុក' : (totalStock <= item.min_stock ? 'ជិតអស់ស្តុក' : 'មានស្តុក');
+
+    return {
+      no: index + 1,
+      code: item.code,
+      name: language === 'kh' ? item.name_kh : item.name_en,
+      category: item.category,
+      unit: item.unit,
+      hqStock,
+      branchStock,
+      branchesWithStock: branchesWithStock.join(', ') || '-',
+      status,
+      minStock: item.min_stock
+    };
+  });
 
   // Mock data for charts
   const transactionData = [
@@ -87,6 +124,59 @@ export function DashboardView() {
             <h3 className="text-2xl font-black">{locationsCount}</h3>
             <span className="text-xs text-slate-400">Branches</span>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden">
+        <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+          <h3 className="text-lg font-bold">ស្ថានភាពស្តុកសម្ភារៈគ្រប់ទីតាំង (All Locations Inventory Status)</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 text-xs uppercase tracking-wider">
+                <th className="px-4 py-3 font-bold text-center">ល.រ</th>
+                <th className="px-4 py-3 font-bold">កូដ/សម្ភារ</th>
+                <th className="px-4 py-3 font-bold">ប្រភេទ</th>
+                <th className="px-4 py-3 font-bold text-center">ឯកតា</th>
+                <th className="px-4 py-3 font-bold text-center">ស្តុក HQ</th>
+                <th className="px-4 py-3 font-bold text-center">ស្តុកសាខា</th>
+                <th className="px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
+                <th className="px-4 py-3 font-bold text-center">ស្ថានភាព</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {aggregatedInventory.map((item, idx) => (
+                <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-sm font-medium text-slate-500 text-center">{item.no}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm font-bold text-slate-800">[{item.code}]</div>
+                    <div className="text-sm text-slate-600 line-clamp-1">{item.name}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-600 rounded-md text-xs font-semibold whitespace-nowrap">
+                      {item.category}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-500 text-center">{item.unit}</td>
+                  <td className="px-4 py-3 text-sm font-black text-center text-blue-700">{item.hqStock}</td>
+                  <td className="px-4 py-3 text-sm font-black text-center text-teal-600">{item.branchStock}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate" title={item.branchesWithStock}>
+                    {item.branchesWithStock}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {item.status === 'មានស្តុក' ? (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold whitespace-nowrap">មានស្តុក</span>
+                    ) : item.status === 'ជិតអស់ស្តុក' ? (
+                      <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-bold whitespace-nowrap">ជិតអស់ស្តុក</span>
+                    ) : (
+                      <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold whitespace-nowrap">អស់ស្តុក</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
