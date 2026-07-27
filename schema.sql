@@ -1,0 +1,88 @@
+-- Supabase PostgreSQL Schema for GDT Inventory Management System
+
+-- Create locations table
+CREATE TABLE public.locations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name_kh VARCHAR(255) NOT NULL,
+    name_en VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL, -- e.g., 'HQ', 'BRANCH'
+    code VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Create items table
+CREATE TABLE public.items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code VARCHAR(100) UNIQUE NOT NULL,
+    name_kh VARCHAR(255) NOT NULL,
+    name_en VARCHAR(255) NOT NULL,
+    category VARCHAR(100),
+    unit VARCHAR(50),
+    min_stock INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Create inventory table
+CREATE TABLE public.inventory (
+    location_id UUID REFERENCES public.locations(id) ON DELETE CASCADE,
+    item_id UUID REFERENCES public.items(id) ON DELETE CASCADE,
+    quantity INTEGER DEFAULT 0 NOT NULL,
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    PRIMARY KEY (location_id, item_id)
+);
+
+-- Create transactions table
+CREATE TABLE public.transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type VARCHAR(50) NOT NULL, -- 'STOCK_IN', 'STOCK_OUT', 'HANDOVER', 'ADJUSTMENT'
+    from_location UUID REFERENCES public.locations(id),
+    to_location UUID REFERENCES public.locations(id),
+    item_id UUID REFERENCES public.items(id) NOT NULL,
+    quantity INTEGER NOT NULL,
+    remark TEXT,
+    recorded_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RPC Function for Atomic Branch Handover
+CREATE OR REPLACE FUNCTION public.handle_branch_handover(
+    p_from_location UUID,
+    p_to_location UUID,
+    p_item_id UUID,
+    p_quantity INTEGER,
+    p_recorded_by VARCHAR,
+    p_remark TEXT
+) RETURNS BOOLEAN AS $$
+DECLARE
+    v_available_qty INTEGER;
+BEGIN
+    -- 1. Check available stock at source location
+    SELECT quantity INTO v_available_qty
+    FROM public.inventory
+    WHERE location_id = p_from_location AND item_id = p_item_id
+    FOR UPDATE; -- Lock row for atomic operation
+
+    IF v_available_qty IS NULL OR v_available_qty < p_quantity THEN
+        RAISE EXCEPTION 'Insufficient stock at source location';
+    END IF;
+
+    -- 2. Deduct from source location
+    UPDATE public.inventory
+    SET quantity = quantity - p_quantity,
+        last_updated = now()
+    WHERE location_id = p_from_location AND item_id = p_item_id;
+
+    -- 3. Add to destination location
+    INSERT INTO public.inventory (location_id, item_id, quantity)
+    VALUES (p_to_location, p_item_id, p_quantity)
+    ON CONFLICT (location_id, item_id) 
+    DO UPDATE SET quantity = public.inventory.quantity + p_quantity,
+                  last_updated = now();
+
+    -- 4. Record transaction
+    INSERT INTO public.transactions (type, from_location, to_location, item_id, quantity, remark, recorded_by)
+    VALUES ('HANDOVER', p_from_location, p_to_location, p_item_id, p_quantity, p_remark, p_recorded_by);
+
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

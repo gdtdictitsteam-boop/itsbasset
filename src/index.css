@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Kantumruuy Pro', 'Noto Sans Khmer', sans-serif;
+  }
+  .font-moul {
+    font-family: 'Moul', serif;
+  }
+  .font-siemreap {
+    font-family: 'Siemreap', sans-serif;
+  }
+}
+
