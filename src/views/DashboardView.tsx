@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { mockInventory, mockItems, mockLocations } from '../mockData';
-import { Package, AlertCircle, MapPin, AlertTriangle } from 'lucide-react';
+import { Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 export function DashboardView() {
   const { t, language } = useLanguage();
+  const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
 
   const totalItems = mockInventory.reduce((acc, curr) => acc + curr.quantity, 0);
   const lowStockItems = mockInventory.filter(item => {
@@ -50,6 +51,11 @@ export function DashboardView() {
       status,
       minStock: item.min_stock
     };
+  });
+
+  const filteredAggregatedInventory = aggregatedInventory.filter(item => {
+    if (activeTab === 'ALL') return true;
+    return item.category === activeTab;
   });
 
   // Mock data for charts
@@ -128,8 +134,31 @@ export function DashboardView() {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden">
-        <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+        <div className="border-b border-slate-100 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h3 className="text-lg font-bold">ស្ថានភាពស្តុកសម្ភារៈគ្រប់ទីតាំង (All Locations Inventory Status)</h3>
+          
+          <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg">
+            <button
+              onClick={() => setActiveTab('ALL')}
+              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              ទូទៅ (All)
+            </button>
+            <button
+              onClick={() => setActiveTab('Tools')}
+              className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'Tools' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Wrench size={16} />
+              <span>សម្ភារ Tools</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('Suppliers')}
+              className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'Suppliers' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <PackageIcon size={16} />
+              <span>សម្ភារ Suppliers</span>
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -146,7 +175,7 @@ export function DashboardView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {aggregatedInventory.map((item, idx) => (
+              {filteredAggregatedInventory.map((item, idx) => (
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 text-sm font-medium text-slate-500 text-center">{item.no}</td>
                   <td className="px-4 py-3">
@@ -154,8 +183,12 @@ export function DashboardView() {
                     <div className="text-sm text-slate-600 line-clamp-1">{item.name}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-600 rounded-md text-xs font-semibold whitespace-nowrap">
-                      {item.category}
+                    <span className={`px-2.5 py-1 border rounded-md text-xs font-bold whitespace-nowrap ${
+                      item.category === 'Tools' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
+                      item.category === 'Suppliers' ? 'bg-teal-50 text-teal-700 border-teal-200' : 
+                      'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}>
+                      {item.category === 'Tools' ? 'សម្ភារ Tools' : item.category === 'Suppliers' ? 'សម្ភារ Suppliers' : item.category}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-500 text-center">{item.unit}</td>
@@ -175,6 +208,13 @@ export function DashboardView() {
                   </td>
                 </tr>
               ))}
+              {filteredAggregatedInventory.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500 text-sm">
+                    មិនមានទិន្នន័យ
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
