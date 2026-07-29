@@ -7,12 +7,63 @@ export function HandoverView() {
   const { t, language } = useLanguage();
   const [loading, setLoading] = useState(false);
 
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setSubmitSuccess(false);
+
+    const form = e.target as HTMLFormElement;
+    const fromLocationId = (form.elements[0] as HTMLSelectElement).value;
+    const toBranchId = (form.elements[1] as HTMLSelectElement).value;
+    const itemId = (form.elements[2] as HTMLSelectElement).value;
+    const quantity = parseInt((form.elements[3] as HTMLInputElement).value || '0', 10);
+
     setTimeout(() => {
+      // Find source inventory
+      const sourceInvIndex = mockInventory.findIndex(inv => inv.item_id === itemId && inv.location_id === fromLocationId);
+      
+      if (sourceInvIndex >= 0 && mockInventory[sourceInvIndex].quantity >= quantity && fromLocationId !== toBranchId) {
+        // Reduce source inventory
+        mockInventory[sourceInvIndex].quantity -= quantity;
+        mockInventory[sourceInvIndex].last_updated = new Date().toISOString();
+
+        // Add to destination
+        const destInvIndex = mockInventory.findIndex(inv => inv.item_id === itemId && inv.location_id === toBranchId);
+        if (destInvIndex >= 0) {
+          mockInventory[destInvIndex].quantity += quantity;
+          mockInventory[destInvIndex].last_updated = new Date().toISOString();
+        } else {
+          const item = mockItems.find(i => i.id === itemId);
+          const loc = mockLocations.find(l => l.id === toBranchId);
+          if (item) {
+            mockInventory.push({
+              location_id: toBranchId,
+              item_id: itemId,
+              quantity: quantity,
+              last_updated: new Date().toISOString(),
+              item_code: item.code,
+              item_name_kh: item.name_kh,
+              item_name_en: item.name_en,
+              category: item.category,
+              unit: item.unit,
+              location_name_kh: loc?.name_kh || '',
+              location_name_en: loc?.name_en || ''
+            });
+          }
+        }
+        setSubmitSuccess(true);
+        form.reset();
+      } else {
+        alert('បរិមាណស្តុកមិនគ្រប់គ្រាន់ ឬទីតាំងមិនត្រឹមត្រូវ!');
+      }
+
       setLoading(false);
-      alert('Handover transaction completed via handle_branch_handover RPC!');
+      
+      setTimeout(() => {
+        setSubmitSuccess(false);
+      }, 3000);
     }, 800);
   };
 
@@ -21,6 +72,20 @@ export function HandoverView() {
 
   return (
     <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-lg flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
+      {submitSuccess && (
+        <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-100 p-1.5 rounded-full text-emerald-700">
+              <ArrowRightLeft size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm">ប្រគល់-ទទួល ជោគជ័យ</h3>
+              <p className="text-xs opacity-90">សម្ភារៈត្រូវបានផ្ទេរដោយជោគជ័យ។</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between bg-white">
         <div className="flex items-center space-x-3">
           <div className="bg-blue-50 p-2 rounded-lg">

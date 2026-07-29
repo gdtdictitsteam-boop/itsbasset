@@ -10,6 +10,7 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './views/DashboardView';
 import { InventoryView } from './views/InventoryView';
+import { StockInView } from './views/StockInView';
 import { StockOutView } from './views/StockOutView';
 import { HandoverView } from './views/HandoverView';
 import { SqlCodeView } from './views/SqlCodeView';
@@ -34,7 +35,7 @@ function MainLayout() {
       case 'sql':
         return <SqlCodeView />;
       case 'stockIn':
-        return <PlaceholderView title={t.stockIn} />;
+        return <StockInView />;
       case 'newSku':
         return <NewItemView />;
       case 'adjustment':
