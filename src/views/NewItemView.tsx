@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X } from 'lucide-react';
 
-import { mockItems, mockInventory } from '../mockData';
+import { supabase } from '../lib/supabase';
 
 export function NewItemView() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -113,45 +113,41 @@ export function NewItemView() {
     const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
     
     // Simulate API call
-    setTimeout(() => {
-      // Mutate the mock items arrays to make the new item appear in the app
-      const newItemId = Math.random().toString(36).substring(7);
-      
-      mockItems.push({
-        id: newItemId,
-        code: materialCode,
-        name_kh: materialName,
-        name_en: brand || materialName,
-        category: categoryName,
-        unit: unitSearch || 'គ្រឿង',
-        min_stock: minStock,
-        image_url: imagePreview || undefined,
-      });
+    const insertData = async () => {
+      try {
+        const { error } = await supabase
+          .from('items')
+          .insert([
+            {
+              code: materialCode,
+              name_kh: materialName,
+              name_en: brand || materialName,
+              category: categoryName,
+              unit: unitSearch || 'គ្រឿង',
+              min_stock: minStock,
+            }
+          ]);
 
-      // Add a dummy inventory record so it appears in the dashboard
-      mockInventory.push({
-        location_id: '1',
-        item_id: newItemId,
-        quantity: 0,
-        last_updated: new Date().toISOString(),
-        item_code: materialCode,
-        item_name_kh: materialName,
-        item_name_en: brand || materialName,
-        category: categoryName,
-        unit: unitSearch || 'គ្រឿង',
-        location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-        location_name_en: 'HQ-ITSB Technical Inventory'
-      });
-
-      setIsSubmitting(false);
-      setSubmitSuccess(true);
-      resetForm();
-      
-      // Hide success message after 3 seconds
-      setTimeout(() => {
-        setSubmitSuccess(false);
-      }, 3000);
-    }, 800);
+        if (error) {
+          console.error("Error inserting item:", error);
+          alert('បរាជ័យក្នុងការរក្សាទុក');
+        } else {
+          setSubmitSuccess(true);
+          resetForm();
+          
+          // Hide success message after 3 seconds
+          setTimeout(() => {
+            setSubmitSuccess(false);
+          }, 3000);
+        }
+      } catch (err) {
+        console.error("Exception:", err);
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+    
+    insertData();
   };
 
   return (

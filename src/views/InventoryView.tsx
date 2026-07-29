@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
-import { mockInventory } from '../mockData';
 import { Wrench, Package as PackageIcon, MapPin } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
+import { supabase } from '../lib/supabase';
+import { Item, Location, InventoryItem } from '../types';
 
 export function InventoryView() {
   const { t, language } = useLanguage();
@@ -11,7 +12,40 @@ export function InventoryView() {
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredInventory = mockInventory.filter(item => {
+  const [items, setItems] = useState<Item[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const [{ data: itemsData }, { data: locationsData }, { data: inventoryData }] = await Promise.all([
+        supabase.from('items').select('*'),
+        supabase.from('locations').select('*'),
+        supabase.from('inventory').select('*')
+      ]);
+      if (itemsData) setItems(itemsData);
+      if (locationsData) setLocations(locationsData);
+      if (inventoryData) setInventory(inventoryData);
+    };
+    fetchData();
+  }, []);
+
+  const enhancedInventory = inventory.map(inv => {
+    const item = items.find(i => i.id === inv.item_id);
+    const loc = locations.find(l => l.id === inv.location_id);
+    return {
+      ...inv,
+      item_code: item?.code || '',
+      item_name_kh: item?.name_kh || '',
+      item_name_en: item?.name_en || '',
+      category: item?.category || '',
+      unit: item?.unit || '',
+      location_name_kh: loc?.name_kh || '',
+      location_name_en: loc?.name_en || ''
+    };
+  });
+
+  const filteredInventory = enhancedInventory.filter(item => {
     const matchesLocation = selectedLocationId === 'ALL' || selectedLocation.code === 'ALL' || item.location_id === selectedLocationId || item.location_name_kh.includes(selectedLocation.code) || item.location_name_kh.includes(selectedLocation.name_kh);
     const matchesTab = activeTab === 'ALL' || item.category === activeTab;
     const matchesSearch = item.item_code.toLowerCase().includes(searchQuery.toLowerCase()) || 

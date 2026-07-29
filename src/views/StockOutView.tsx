@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { mockLocations, mockItems, mockInventory } from '../mockData';
 import { MinusCircle, Check, X } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { Item, Location } from '../types';
 
 export function StockOutView() {
   const { t, language } = useLanguage();
@@ -9,9 +10,24 @@ export function StockOutView() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState('');
 
-  const selectedItem = mockItems.find(i => i.id === selectedItemId);
+  const [items, setItems] = useState<Item[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchData = async () => {
+      const [{ data: itemsData }, { data: locationsData }] = await Promise.all([
+        supabase.from('items').select('*'),
+        supabase.from('locations').select('*')
+      ]);
+      if (itemsData) setItems(itemsData);
+      if (locationsData) setLocations(locationsData);
+    };
+    fetchData();
+  }, []);
+
+  const selectedItem = items.find(i => i.id === selectedItemId);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setSubmitSuccess(false);
@@ -19,16 +35,37 @@ export function StockOutView() {
     const form = e.target as HTMLFormElement;
     const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement).value;
     const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement).value || '0', 10);
+    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
+    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement).value;
 
-    setTimeout(() => {
+    try {
       // Find source inventory
-      const sourceInvIndex = mockInventory.findIndex(inv => inv.item_id === selectedItemId && inv.location_id === locationId);
+      const { data: sourceInv } = await supabase
+        .from('inventory')
+        .select('id, quantity')
+        .eq('item_id', selectedItemId)
+        .eq('location_id', locationId)
+        .single();
       
-      if (sourceInvIndex >= 0 && mockInventory[sourceInvIndex].quantity >= quantity) {
+      if (sourceInv && sourceInv.quantity >= quantity) {
         // Reduce source inventory
-        mockInventory[sourceInvIndex].quantity -= quantity;
-        mockInventory[sourceInvIndex].last_updated = new Date().toISOString();
-        
+        await supabase
+          .from('inventory')
+          .update({ quantity: sourceInv.quantity - quantity, last_updated: new Date().toISOString() })
+          .eq('id', sourceInv.id);
+
+        // Insert transaction log
+        await supabase
+          .from('transactions')
+          .insert({
+            type: 'STOCK_OUT',
+            from_location: locationId,
+            item_id: selectedItemId,
+            quantity: quantity,
+            remark: purpose,
+            recorded_by: officerName
+          });
+
         setSubmitSuccess(true);
         form.reset();
         setSelectedItemId('');
@@ -41,7 +78,11 @@ export function StockOutView() {
       setTimeout(() => {
         setSubmitSuccess(false);
       }, 3000);
-    }, 800);
+    } catch (err) {
+      console.error("Error during stock out:", err);
+      alert('បរាជ័យក្នុងការដកស្តុក');
+      setLoading(false);
+    }
   };
 
   return (
@@ -82,7 +123,7 @@ export function StockOutView() {
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectLocation}</label>
               <select name="locationId" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required>
                 <option value="">-- {t.selectLocation} --</option>
-                {mockLocations.map(loc => (
+                {locations.map(loc => (
                   <option key={loc.id} value={loc.id}>
                     {language === 'kh' ? loc.name_kh : loc.name_en}
                   </option>
@@ -97,7 +138,7 @@ export function StockOutView() {
                 onChange={(e) => setSelectedItemId(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required>
                 <option value="">-- {t.selectItem} --</option>
-                {mockItems.map(item => (
+                {items.map(item => (
                   <option key={item.id} value={item.id}>
                     [{item.code}] {language === 'kh' ? item.name_kh : item.name_en}
                   </option>
@@ -120,11 +161,11 @@ export function StockOutView() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.officerName}</label>
-              <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
+              <input name="officerName" type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.purpose}</label>
-              <textarea rows={4} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033] resize-none" required></textarea>
+              <textarea name="purpose" rows={4} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033] resize-none" required></textarea>
             </div>
           </div>
         </div>
