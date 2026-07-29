@@ -1,48 +1,30 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Settings, Globe } from 'lucide-react';
+import { Settings } from 'lucide-react';
 
 export function Header() {
-  const { language, setLanguage, t } = useLanguage();
+  const { language, t } = useLanguage();
 
   return (
-    <header className="bg-[#064E3B] text-white flex items-center justify-between px-6 py-3 shadow-md border-b-4 border-[#900033] shrink-0">
+    <header className="bg-[#A3D8C2] text-[#03291E] flex items-center justify-between px-6 py-3 shadow-sm border-b-4 border-[#6EC8A0] shrink-0">
       <div className="flex items-center space-x-4">
-        <div className="bg-white p-1 rounded-md">
-          <div className="w-10 h-10 bg-[#064E3B] rounded flex items-center justify-center font-bold text-lg text-white">
+        <div className="bg-[#03291E] p-1 rounded-md shadow-xs">
+          <div className="w-10 h-10 bg-[#A3D8C2] rounded flex items-center justify-center font-bold text-lg text-[#03291E]">
             GDT
           </div>
         </div>
-        <div className="flex flex-col">
-          <h1 className="text-lg font-bold leading-none tracking-wide" style={{ fontFamily: "'Kantumruuy Pro', sans-serif" }}>{t.systemTitle}</h1>
-          <span className="text-xs tracking-widest opacity-80 font-semibold uppercase">{language === 'kh' ? translations.en.systemTitle : translations.en.systemTitle}</span>
+        <div className="flex flex-col justify-center">
+          <h1 className="text-base sm:text-lg font-normal leading-snug tracking-wide text-[#03291E]" style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}>
+            {language === 'kh' ? 'ប្រព័ន្ធគ្រប់គ្រងសម្ភារបច្ចេកទេស' : t.systemTitle}
+          </h1>
         </div>
       </div>
 
-      <div className="flex items-center space-x-4">
-        <div className="flex border border-white/20 rounded overflow-hidden">
-          <button
-            onClick={() => setLanguage('kh')}
-            className={`px-3 py-1 text-xs font-bold ${language === 'kh' ? 'bg-white text-[#064E3B]' : 'bg-transparent text-white hover:bg-white/10'}`}
-          >
-            ខ្មែរ
-          </button>
-          <button
-            onClick={() => setLanguage('en')}
-            className={`px-3 py-1 text-xs font-bold ${language === 'en' ? 'bg-white text-[#064E3B]' : 'bg-transparent text-white hover:bg-white/10'}`}
-          >
-            EN
-          </button>
-        </div>
-        <button className="p-2 hover:bg-white/10 rounded-full transition-colors">
+      <div className="flex items-center space-x-3">
+        <button className="p-2 hover:bg-[#03291E]/10 rounded-full transition-colors text-[#03291E]">
           <Settings size={20} />
         </button>
       </div>
     </header>
   );
 }
-
-// Quick hack for english title in header
-const translations = {
-  en: { systemTitle: 'TECHNICAL INVENTORY SYSTEM' }
-};

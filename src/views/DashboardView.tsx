@@ -1,38 +1,51 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useLocationContext } from '../contexts/LocationContext';
 import { mockInventory, mockItems, mockLocations } from '../mockData';
-import { Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon } from 'lucide-react';
+import { 
+  Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon, Building2
+} from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { ItemAvatar } from '../components/ItemAvatar';
 
 export function DashboardView() {
   const { t, language } = useLanguage();
+  const { selectedLocationId, selectedLocation } = useLocationContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
 
-  const totalItems = mockInventory.reduce((acc, curr) => acc + curr.quantity, 0);
-  const lowStockItems = mockInventory.filter(item => {
+  // Filter inventory based on selected location
+  const locationFilteredInventory = mockInventory.filter(inv => {
+    if (selectedLocationId === 'ALL' || selectedLocation.code === 'ALL') return true;
+    return inv.location_id === selectedLocationId || inv.location_name_kh.includes(selectedLocation.code) || inv.location_name_kh.includes(selectedLocation.name_kh);
+  });
+
+  const totalItems = locationFilteredInventory.reduce((acc, curr) => acc + curr.quantity, 0);
+  const lowStockItems = locationFilteredInventory.filter(item => {
     const itemDef = mockItems.find(i => i.id === item.item_id);
     return itemDef ? item.quantity <= itemDef.min_stock : item.quantity < 10;
   });
   const lowStockCount = lowStockItems.length;
-  const locationsCount = new Set(mockInventory.map(item => item.location_id)).size;
+  const locationsCount = selectedLocationId === 'ALL' ? new Set(mockInventory.map(item => item.location_id)).size : 1;
 
   // Compute aggregated inventory data for the table
   const aggregatedInventory = mockItems.map((item, index) => {
-    const itemInventory = mockInventory.filter(inv => inv.item_id === item.id);
+    const itemInventory = locationFilteredInventory.filter(inv => inv.item_id === item.id);
     
     let hqStock = 0;
     let branchStock = 0;
     const branchesWithStock: string[] = [];
 
     itemInventory.forEach(inv => {
-      const loc = mockLocations.find(l => l.id === inv.location_id);
+      const loc = mockLocations.find(l => l.id === inv.location_id || l.code === inv.location_id);
       if (loc) {
         if (loc.type === 'HQ') {
           hqStock += inv.quantity;
-        } else if (loc.type === 'BRANCH') {
+        } else {
           branchStock += inv.quantity;
           branchesWithStock.push(language === 'kh' ? loc.name_kh : loc.name_en);
         }
+      } else {
+        hqStock += inv.quantity;
       }
     });
 
@@ -42,6 +55,8 @@ export function DashboardView() {
     return {
       no: index + 1,
       code: item.code,
+      name_kh: item.name_kh,
+      name_en: item.name_en,
       name: language === 'kh' ? item.name_kh : item.name_en,
       category: item.category,
       unit: item.unit,
@@ -74,7 +89,7 @@ export function DashboardView() {
     { name: 'Daun Penh', value: 300 },
     { name: 'Toul Kork', value: 200 },
   ];
-  const COLORS = ['#064E3B', '#10B981', '#3B82F6', '#F59E0B'];
+  const COLORS = ['#03291E', '#1E6047', '#40916C', '#74C69D'];
 
   const lineData = [
     { name: 'Week 1', totalStock: 4000 },
@@ -86,131 +101,136 @@ export function DashboardView() {
   ];
 
   return (
-    <div className="space-y-6">
-      {lowStockCount > 0 && (
-        <div className="bg-red-50 border-l-4 border-[#900033] p-4 flex items-start gap-3 rounded-r-xl">
-          <AlertTriangle className="text-[#900033] shrink-0" />
-          <div>
-            <h4 className="text-[#900033] font-bold">ចំណាំ: សម្ភារៈជិតអស់ពីស្តុក (Low Stock Alert)</h4>
-            <ul className="list-disc list-inside text-sm text-red-900 mt-1">
-              {lowStockItems.map((item, idx) => (
-                <li key={idx}>[{item.item_code}] {language === 'kh' ? item.item_name_kh : item.item_name_en} - សល់ {item.quantity} {item.unit} នៅ {language === 'kh' ? item.location_name_kh : item.location_name_en}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
-
+    <div className="space-y-5 -mt-[5px]">
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">{t.totalItems}</p>
+        <div className="bg-white p-4 rounded-xl border border-[#C5E3D5] shadow-sm hover:shadow-md transition-shadow">
+          <p className="text-xs font-bold text-[#2B6A52] uppercase mb-1">{t.totalItems}</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-2xl font-black">{totalItems}</h3>
-            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded">+12 Items</span>
+            <h3 className="text-2xl md:text-3xl font-black text-[#03291E]">{totalItems}</h3>
+            <span className="text-xs text-[#0B523A] bg-[#E1F2EA] border border-[#C2E4D5] px-2 py-0.5 rounded font-bold">+12 Items</span>
           </div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Stock Out (Today)</p>
+        <div className="bg-white p-4 rounded-xl border border-[#C5E3D5] shadow-sm hover:shadow-md transition-shadow">
+          <p className="text-xs font-bold text-[#2B6A52] uppercase mb-1">Stock Out (Today)</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-2xl font-black">84</h3>
-            <span className="text-xs text-slate-400">Transactions</span>
+            <h3 className="text-2xl md:text-3xl font-black text-[#03291E]">84</h3>
+            <span className="text-xs text-[#2B6A52] font-semibold">Transactions</span>
           </div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">{t.lowStock}</p>
+        <div className="bg-white p-4 rounded-xl border border-[#C5E3D5] shadow-sm hover:shadow-md transition-shadow">
+          <p className="text-xs font-bold text-[#2B6A52] uppercase mb-1">{t.lowStock}</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-2xl font-black text-[#900033]">{lowStockCount < 10 ? `0${lowStockCount}` : lowStockCount}</h3>
-            <span className="text-xs text-red-600 font-bold uppercase">Check SKU</span>
+            <h3 className="text-2xl md:text-3xl font-black text-[#03291E]">{lowStockCount < 10 ? `0${lowStockCount}` : lowStockCount}</h3>
+            <span className="text-xs text-[#842029] bg-[#F8D7DA] border border-[#F5C2C7] px-2 py-0.5 rounded font-bold uppercase">Check SKU</span>
           </div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">{t.totalLocations}</p>
+        <div className="bg-white p-4 rounded-xl border border-[#C5E3D5] shadow-sm hover:shadow-md transition-shadow">
+          <p className="text-xs font-bold text-[#2B6A52] uppercase mb-1">{t.totalLocations}</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-2xl font-black">{locationsCount}</h3>
-            <span className="text-xs text-slate-400">Branches</span>
+            <h3 className="text-2xl md:text-3xl font-black text-[#03291E]">{locationsCount}</h3>
+            <span className="text-xs text-[#2B6A52] font-semibold">Branches</span>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden">
-        <div className="border-b border-slate-100 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h3 className="text-lg font-bold">ស្ថានភាពស្តុកសម្ភារៈគ្រប់ទីតាំង (All Locations Inventory Status)</h3>
+      {/* Main Table Container */}
+      <div className="bg-white rounded-2xl border border-[#C2E4D5] shadow-sm overflow-hidden">
+        {/* Section Header */}
+        <div className="bg-[#C2E4D5] text-[#03291E] border-b border-[#B0DAC7] px-5 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2">
+            <MapPin size={18} className="text-[#03291E]" />
+            <h3 className="text-base font-bold text-[#03291E]">
+              {language === 'kh' 
+                ? `ស្ថានភាពស្តុក៖ ${selectedLocation.name_kh}` 
+                : `Inventory Status: ${selectedLocation.name_en}`}
+            </h3>
+          </div>
           
-          <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg">
+          <div className="flex space-x-1 bg-[#A3D8C2]/50 p-1 rounded-lg border border-[#90CDB3]">
             <button
               onClick={() => setActiveTab('ALL')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'ALL' ? 'bg-[#03291E] text-white shadow-xs' : 'text-[#03291E] hover:bg-[#90CDB3]/50'}`}
             >
               ទូទៅ (All)
             </button>
             <button
               onClick={() => setActiveTab('Tools')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'Tools' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center space-x-1.5 ${activeTab === 'Tools' ? 'bg-[#03291E] text-white shadow-xs' : 'text-[#03291E] hover:bg-[#90CDB3]/50'}`}
             >
-              <Wrench size={16} />
+              <Wrench size={14} />
               <span>សម្ភារ Tools</span>
             </button>
             <button
               onClick={() => setActiveTab('Suppliers')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'Suppliers' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center space-x-1.5 ${activeTab === 'Suppliers' ? 'bg-[#03291E] text-white shadow-xs' : 'text-[#03291E] hover:bg-[#90CDB3]/50'}`}
             >
-              <PackageIcon size={16} />
+              <PackageIcon size={14} />
               <span>សម្ភារ Suppliers</span>
             </button>
           </div>
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 text-xs uppercase tracking-wider">
-                <th className="px-4 py-3 font-bold text-center">ល.រ</th>
-                <th className="px-4 py-3 font-bold">កូដ/សម្ភារ</th>
-                <th className="px-4 py-3 font-bold">ប្រភេទ</th>
-                <th className="px-4 py-3 font-bold text-center">ឯកតា</th>
-                <th className="px-4 py-3 font-bold text-center">ស្តុក HQ</th>
-                <th className="px-4 py-3 font-bold text-center">ស្តុកសាខា</th>
-                <th className="px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
-                <th className="px-4 py-3 font-bold text-center">ស្ថានភាព</th>
+              <tr className="bg-[#D4ECE0] text-[#03291E] border-b border-[#B0DAC7] text-xs uppercase tracking-wider font-bold">
+                <th className="px-4 py-2.5 font-bold text-center">ល.រ</th>
+                <th className="px-4 py-2.5 font-bold">កូដ / សម្ភារ:</th>
+                <th className="px-4 py-2.5 font-bold">ប្រភេទ</th>
+                <th className="px-4 py-2.5 font-bold text-center">ឯកតា</th>
+                <th className="px-4 py-2.5 font-bold text-center">ស្តុក HQ</th>
+                <th className="px-4 py-2.5 font-bold text-center">ស្តុកសាខា</th>
+                <th className="px-4 py-2.5 font-bold">សាខាដែលមានស្តុក</th>
+                <th className="px-4 py-2.5 font-bold text-center">ស្ថានភាព</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#EAF5EF] text-sm">
               {filteredAggregatedInventory.map((item, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-slate-500 text-center">{item.no}</td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm font-bold text-slate-800">[{item.code}]</div>
-                    <div className="text-sm text-slate-600 line-clamp-1">{item.name}</div>
+                <tr key={idx} className="even:bg-[#F3F9F6] odd:bg-white hover:bg-[#E1F2EA] transition-colors">
+                  <td className="px-4 py-3 font-bold text-[#2B6A52] text-center">{item.no}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center space-x-3">
+                      <ItemAvatar item={{ code: item.code, name_kh: item.name_kh, name_en: item.name_en, category: item.category }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-[#03291E] text-sm leading-snug line-clamp-1">{item.name_kh}</div>
+                        <div className="text-[11px] font-mono text-[#2B6A52] mt-0.5 tracking-tight flex items-center gap-1.5 truncate">
+                          <span className="font-semibold">{item.code}</span>
+                          <span>•</span>
+                          <span className="truncate">{item.name_en}</span>
+                        </div>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2.5 py-1 border rounded-md text-xs font-bold whitespace-nowrap ${
-                      item.category === 'Tools' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                      item.category === 'Suppliers' ? 'bg-teal-50 text-teal-700 border-teal-200' : 
-                      'bg-slate-100 text-slate-600 border-slate-200'
+                  <td className="px-4 py-2.5">
+                    <span className={`px-2 py-0.5 border rounded-md text-xs font-bold whitespace-nowrap ${
+                      item.category === 'Tools' ? 'bg-[#E1F2EA] text-[#03291E] border-[#A8E6CF]' : 
+                      item.category === 'Suppliers' ? 'bg-[#D2EADF] text-[#03291E] border-[#9FE3C5]' : 
+                      'bg-[#EAF3EF] text-[#1E6047] border-[#C2E4D5]'
                     }`}>
                       {item.category === 'Tools' ? 'សម្ភារ Tools' : item.category === 'Suppliers' ? 'សម្ភារ Suppliers' : item.category}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-500 text-center">{item.unit}</td>
-                  <td className="px-4 py-3 text-sm font-black text-center text-blue-700">{item.hqStock}</td>
-                  <td className="px-4 py-3 text-sm font-black text-center text-teal-600">{item.branchStock}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate" title={item.branchesWithStock}>
+                  <td className="px-4 py-2.5 text-[#2B6A52] font-semibold text-center">{item.unit}</td>
+                  <td className="px-4 py-2.5 font-black text-center text-[#03291E]">{item.hqStock}</td>
+                  <td className="px-4 py-2.5 font-black text-center text-[#1E6047]">{item.branchStock}</td>
+                  <td className="px-4 py-2.5 text-xs text-[#2B6A52] max-w-xs truncate" title={item.branchesWithStock}>
                     {item.branchesWithStock}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-2.5 text-center">
                     {item.status === 'មានស្តុក' ? (
-                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold whitespace-nowrap">មានស្តុក</span>
+                      <span className="px-2 py-0.5 bg-[#D1E8DD] text-[#0F5132] border border-[#BADBCE] rounded text-xs font-bold whitespace-nowrap">មានស្តុក</span>
                     ) : item.status === 'ជិតអស់ស្តុក' ? (
-                      <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-bold whitespace-nowrap">ជិតអស់ស្តុក</span>
+                      <span className="px-2 py-0.5 bg-[#FFF3CD] text-[#664D03] border border-[#FFECB5] rounded text-xs font-bold whitespace-nowrap">ជិតអស់ស្តុក</span>
                     ) : (
-                      <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold whitespace-nowrap">អស់ស្តុក</span>
+                      <span className="px-2 py-0.5 bg-[#F8D7DA] text-[#842029] border border-[#F5C2C7] rounded text-xs font-bold whitespace-nowrap">អស់ស្តុក</span>
                     )}
                   </td>
                 </tr>
               ))}
               {filteredAggregatedInventory.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500 text-sm">
+                  <td colSpan={8} className="px-6 py-8 text-center text-[#2B6A52] text-sm">
                     មិនមានទិន្នន័យ
                   </td>
                 </tr>
@@ -220,35 +240,35 @@ export function DashboardView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm col-span-1 md:col-span-2 lg:col-span-2">
-          <h3 className="font-bold text-slate-800 mb-4">របាយការណ៍ទំនិញចេញ-ចូល (Stock In/Out)</h3>
-          <div className="h-64">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="bg-white p-5 rounded-xl border border-[#C5E3D5] shadow-sm hover:shadow-md transition-shadow col-span-1 md:col-span-2 lg:col-span-2">
+          <h3 className="font-bold text-[#03291E] text-sm mb-3">របាយការណ៍ទំនិញចេញ-ចូល (Stock In/Out)</h3>
+          <div className="h-60">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={transactionData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                <YAxis axisLine={false} tickLine={false} />
-                <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+              <BarChart data={transactionData} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EAF5EF" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#2B6A52', fontSize: 12 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#2B6A52', fontSize: 12 }} />
+                <Tooltip cursor={{ fill: 'rgba(163, 216, 194, 0.2)' }} />
                 <Legend />
-                <Bar dataKey="in" fill="#064E3B" name="Stock In" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="out" fill="#900033" name="Stock Out" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="in" fill="#03291E" name="Stock In" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="out" fill="#74C69D" name="Stock Out" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-4">ការបែងចែកតាមសាខា (By Branch)</h3>
-          <div className="h-64">
+        <div className="bg-white p-5 rounded-xl border border-[#C5E3D5] shadow-sm hover:shadow-md transition-shadow">
+          <h3 className="font-bold text-[#03291E] text-sm mb-3">ការបែងចែកតាមសាខា (By Branch)</h3>
+          <div className="h-60">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={branchData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
+                  innerRadius={55}
+                  outerRadius={75}
                   fill="#8884d8"
                   paddingAngle={5}
                   dataKey="value"
@@ -264,18 +284,38 @@ export function DashboardView() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm col-span-1 md:col-span-2 lg:col-span-3">
-          <h3 className="font-bold text-slate-800 mb-4">និន្នាការស្តុកទូទៅ (Overall Stock Trend)</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                <YAxis axisLine={false} tickLine={false} />
-                <Tooltip />
-                <Line type="monotone" dataKey="totalStock" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
+        {/* Dedicated Low Stock Alert Widget Card */}
+        <div className="bg-white p-5 rounded-xl border border-[#C5E3D5] shadow-sm hover:shadow-md transition-shadow flex flex-col col-span-1 md:col-span-2 lg:col-span-3">
+          <div className="flex items-center justify-between mb-3 border-b border-[#EAF5EF] pb-2.5">
+            <div className="flex items-center space-x-2">
+              <div className="p-1.5 bg-[#F8D7DA] text-[#842029] rounded-lg">
+                <AlertTriangle size={16} />
+              </div>
+              <h3 className="font-bold text-[#03291E] text-sm">សម្ភារៈជិតអស់ពីស្តុក</h3>
+            </div>
+            <span className="px-2 py-0.5 bg-[#F8D7DA] text-[#842029] rounded-full text-xs font-bold border border-[#F5C2C7]">
+              {lowStockCount} មុខ
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto max-h-52 divide-y divide-[#EAF5EF] pr-1">
+            {lowStockItems.length > 0 ? (
+              lowStockItems.map((item, idx) => (
+                <div key={idx} className="py-2 flex items-start justify-between text-xs gap-2">
+                  <div>
+                    <div className="font-bold text-[#03291E]">[{item.item_code}] {language === 'kh' ? item.item_name_kh : item.item_name_en}</div>
+                    <div className="text-[#2B6A52] text-[11px] mt-0.5">{language === 'kh' ? item.location_name_kh : item.location_name_en}</div>
+                  </div>
+                  <span className="shrink-0 font-black text-[#842029] bg-[#F8D7DA] border border-[#F5C2C7] px-2 py-0.5 rounded text-[11px]">
+                    សល់ {item.quantity} {item.unit}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="py-8 text-center text-[#2B6A52] text-xs">
+                គ្រប់សម្ភារៈមានស្តុកគ្រប់គ្រាន់
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -16,6 +16,7 @@ export interface Item {
   category: string;
   unit: string;
   min_stock: number;
+  image_url?: string;
 }
 
 export interface InventoryItem {
@@ -31,6 +32,7 @@ export interface InventoryItem {
   unit: string;
   location_name_kh: string;
   location_name_en: string;
+  image_url?: string;
 }
 
 export interface Transaction {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useLocationContext } from '../contexts/LocationContext';
 import { 
   LayoutDashboard, 
   Package, 
@@ -8,7 +9,8 @@ import {
   PlusCircle, 
   MinusCircle, 
   SlidersHorizontal,
-  Database
+  Database,
+  MapPin
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -18,6 +20,7 @@ interface SidebarProps {
 
 export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
   const { t, language } = useLanguage();
+  const { selectedLocationId, setSelectedLocationId, locations } = useLocationContext();
 
   const menuGroups = [
     {
@@ -51,21 +54,34 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
   ];
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 p-4 flex flex-col shrink-0">
+    <aside className="w-[266px] bg-[#F2F9F6] border-r border-[#CDE5DA] p-4 flex flex-col shrink-0">
       {/* User Info */}
-      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+      <div className="bg-[#E1F2EA] p-4 rounded-xl border border-[#C2E4D5] mb-6 shadow-2xs">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center">
-            <svg className="w-6 h-6 text-slate-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"></path></svg>
+          <div className="w-10 h-10 rounded-full bg-[#C2E4D5] border-2 border-white flex items-center justify-center">
+            <svg className="w-6 h-6 text-[#1E6047]" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"></path></svg>
           </div>
           <div className="flex-1 overflow-hidden">
-            <p className="text-[10px] font-bold text-slate-400 uppercase">User Role</p>
-            <p className="text-sm font-bold truncate">{t.userRole}</p>
+            <p className="text-[10px] font-bold text-[#2B6A52] uppercase">User Role</p>
+            <p className="text-sm font-bold text-[#03291E] truncate">{t.userRole}</p>
           </div>
         </div>
-        <div className="mt-3 pt-3 border-t border-slate-200">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">Location</p>
-          <p className="text-xs font-semibold">{t.userLocation.replace('Location: ', '').replace('ទីតាំង៖ ', '')}</p>
+        <div className="mt-3 pt-3 border-t border-[#C2E4D5]">
+          <label className="text-[10px] font-bold text-[#2B6A52] uppercase flex items-center justify-between mb-1">
+            <span>LOCATION (ទីតាំងស្តុក)</span>
+            <MapPin size={12} className="text-[#1E6047]" />
+          </label>
+          <select
+            value={selectedLocationId}
+            onChange={(e) => setSelectedLocationId(e.target.value)}
+            className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-[#BDE0D0] rounded-lg p-2 focus:ring-2 focus:ring-[#1E6047]/20 focus:border-[#1E6047] outline-none cursor-pointer truncate shadow-2xs hover:border-[#9FD2BC] transition-colors"
+          >
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {language === 'kh' ? loc.name_kh : loc.name_en}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -73,7 +89,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
       <nav className="flex-1 overflow-y-auto space-y-6">
         {menuGroups.map((group, groupIdx) => (
           <div key={groupIdx}>
-            <h4 className="px-3 text-xs font-bold text-slate-400 uppercase mb-2">{group.title}</h4>
+            <h4 className="px-3 text-[11px] font-bold text-[#2B6A52] uppercase mb-2 whitespace-nowrap truncate">{group.title}</h4>
             <div className="space-y-1">
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -82,14 +98,14 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
                   <button
                     key={item.id}
                     onClick={() => setCurrentView(item.id)}
-                    className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
+                    className={`w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-lg transition-all text-left ${
                       isActive 
-                        ? 'bg-[#900033]/5 text-[#900033] border border-[#900033]/10' 
-                        : 'text-slate-600 hover:bg-slate-50'
+                        ? 'bg-[#9FE3C5] text-[#03291E] border border-[#6EC8A0] font-bold shadow-xs' 
+                        : 'text-[#1E6047] hover:bg-[#DDF0E7] hover:text-[#03291E]'
                     }`}
                   >
-                    <Icon size={20} className={isActive ? '' : 'opacity-70'} />
-                    <span className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                    <Icon size={18} className={`shrink-0 ${isActive ? 'text-[#03291E]' : 'text-[#1E6047] opacity-85'}`} />
+                    <span className={`text-xs md:text-sm whitespace-nowrap truncate ${isActive ? 'font-bold' : 'font-semibold'}`}>{item.label}</span>
                   </button>
                 );
               })}

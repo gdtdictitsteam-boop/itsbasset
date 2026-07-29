@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { LocationProvider } from './contexts/LocationContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './views/DashboardView';
@@ -12,6 +13,7 @@ import { InventoryView } from './views/InventoryView';
 import { StockOutView } from './views/StockOutView';
 import { HandoverView } from './views/HandoverView';
 import { SqlCodeView } from './views/SqlCodeView';
+import { NewItemView } from './views/NewItemView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { useLanguage } from './contexts/LanguageContext';
 
@@ -34,7 +36,7 @@ function MainLayout() {
       case 'stockIn':
         return <PlaceholderView title={t.stockIn} />;
       case 'newSku':
-        return <PlaceholderView title={t.newSku} />;
+        return <NewItemView />;
       case 'adjustment':
         return <PlaceholderView title={t.adjustment} />;
       default:
@@ -43,21 +45,21 @@ function MainLayout() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#FAF9F6] text-[#0F172A] overflow-hidden font-siemreap">
+    <div className="flex flex-col h-screen bg-[#EBF4F0] text-[#0B3C2D] overflow-hidden font-siemreap">
       <Header />
       
       <div className="flex flex-1 overflow-hidden">
         <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
         
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 -ml-5 mr-0 -mt-[11px]">
           {renderView()}
         </main>
       </div>
 
-      <footer className="bg-white border-t border-slate-200 py-2.5 px-6 flex justify-between items-center text-[11px] font-medium text-slate-400 shrink-0">
+      <footer className="bg-[#D2EADF] border-t border-[#B8DEC8] py-2.5 px-6 flex justify-between items-center text-[11px] font-semibold text-[#124D3A] shrink-0">
         <div className="flex items-center space-x-4">
           <span>Version 2.4.0-stable</span>
-          <span className="text-slate-300">|</span>
+          <span className="text-[#8BCAAD]">|</span>
           <span>Support: it-support@tax.gov.kh</span>
         </div>
         <div>
@@ -71,7 +73,9 @@ function MainLayout() {
 export default function App() {
   return (
     <LanguageProvider>
-      <MainLayout />
+      <LocationProvider>
+        <MainLayout />
+      </LocationProvider>
     </LanguageProvider>
   );
 }

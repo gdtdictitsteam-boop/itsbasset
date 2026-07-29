@@ -1,14 +1,18 @@
 @import "tailwindcss";
 
 @layer base {
+  * {
+    font-family: 'Khmer OS Siemreap', 'Siemreap', 'Noto Sans Khmer', sans-serif;
+  }
   body {
-    font-family: 'Kantumruuy Pro', 'Noto Sans Khmer', sans-serif;
+    font-family: 'Khmer OS Siemreap', 'Siemreap', 'Noto Sans Khmer', sans-serif;
   }
   .font-moul {
     font-family: 'Moul', serif;
   }
   .font-siemreap {
-    font-family: 'Siemreap', sans-serif;
+    font-family: 'Khmer OS Siemreap', 'Siemreap', sans-serif;
   }
 }
+
 
