@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X } from 'lucide-react';
 
+import { mockItems, mockInventory } from '../mockData';
+
 export function NewItemView() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -103,9 +105,44 @@ export function NewItemView() {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmitSuccess(false);
+
+    const form = e.target as HTMLFormElement;
+    const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value;
+    const brand = (form.elements.namedItem('brand') as HTMLInputElement).value;
+    const minStock = parseInt((form.elements.namedItem('minStock') as HTMLInputElement).value || '0', 10);
+    const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
     
     // Simulate API call
     setTimeout(() => {
+      // Mutate the mock items arrays to make the new item appear in the app
+      const newItemId = Math.random().toString(36).substring(7);
+      
+      mockItems.push({
+        id: newItemId,
+        code: materialCode,
+        name_kh: materialName,
+        name_en: brand || materialName,
+        category: categoryName,
+        unit: unitSearch || 'គ្រឿង',
+        min_stock: minStock,
+        image_url: imagePreview || undefined,
+      });
+
+      // Add a dummy inventory record so it appears in the dashboard
+      mockInventory.push({
+        location_id: '1',
+        item_id: newItemId,
+        quantity: 0,
+        last_updated: new Date().toISOString(),
+        item_code: materialCode,
+        item_name_kh: materialName,
+        item_name_en: brand || materialName,
+        category: categoryName,
+        unit: unitSearch || 'គ្រឿង',
+        location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
+        location_name_en: 'HQ-ITSB Technical Inventory'
+      });
+
       setIsSubmitting(false);
       setSubmitSuccess(true);
       resetForm();
@@ -114,7 +151,7 @@ export function NewItemView() {
       setTimeout(() => {
         setSubmitSuccess(false);
       }, 3000);
-    }, 1000);
+    }, 800);
   };
 
   return (
@@ -210,7 +247,7 @@ export function NewItemView() {
               <label htmlFor="materialName" className="block text-sm font-semibold text-gray-700 mb-2">ឈ្មោះសម្ភារ <span className="text-red-500">*</span></label>
               <input
                 type="text"
-                id="materialName"
+                id="materialName" name="materialName"
                 placeholder="ឧ. ខ្សែបណ្តាញ Network"
                 required
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
@@ -299,7 +336,7 @@ export function NewItemView() {
               <label htmlFor="minStock" className="block text-sm font-semibold text-gray-700 mb-2">បរិមាណអប្បបរមា</label>
               <input
                 type="number"
-                id="minStock"
+                id="minStock" name="minStock"
                 min="0"
                 placeholder="ឧ. 10"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
@@ -311,7 +348,7 @@ export function NewItemView() {
               <label htmlFor="brand" className="block text-sm font-semibold text-gray-700 mb-2">ម៉ាក/ម៉ូដែល</label>
               <input
                 type="text"
-                id="brand"
+                id="brand" name="brand"
                 placeholder="បញ្ចូលម៉ាក ឬម៉ូដែល"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
               />
