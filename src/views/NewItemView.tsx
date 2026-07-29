@@ -1,7 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, PlusCircle, ChevronDown, Check } from 'lucide-react';
+import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X } from 'lucide-react';
 
 export function NewItemView() {
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [category, setCategory] = useState('tools');
+  const [materialCode, setMaterialCode] = useState(() => `TOL-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
+
   const [unitSearch, setUnitSearch] = useState('');
   const [isUnitDropdownOpen, setIsUnitDropdownOpen] = useState(false);
   const [units, setUnits] = useState(['គ្រឿង', 'ម៉ែត្រ', 'ប្រអប់', 'កេស', 'រ៉ាម']);
@@ -33,6 +38,55 @@ export function NewItemView() {
     }
   };
 
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setCategory(val);
+    const prefix = val === 'tools' ? 'TOL' : 'SUP';
+    const randomSeq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    setMaterialCode(`${prefix}-${randomSeq}`);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setImagePreview(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -51,20 +105,40 @@ export function NewItemView() {
           {/* Material Image (Full Width) */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">រូបភាពសម្ភារ</label>
-            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:border-teal-500 hover:bg-teal-50/50 transition-colors cursor-pointer">
-              <div className="space-y-2 text-center">
-                <div className="mx-auto h-12 w-12 text-gray-400 bg-gray-50 rounded-full flex items-center justify-center">
-                  <ImageIcon size={24} />
+            <div 
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-xl transition-colors cursor-pointer relative overflow-hidden group ${
+                isDragging ? 'border-teal-500 bg-teal-50' : 'border-gray-300 hover:border-teal-500 hover:bg-teal-50/50'
+              }`}
+            >
+              {imagePreview ? (
+                <div className="relative w-full h-48 flex items-center justify-center">
+                  <img src={imagePreview} alt="Preview" className="max-h-full max-w-full object-contain rounded-lg shadow-sm" />
+                  <button 
+                    onClick={handleRemoveImage} 
+                    className="absolute top-2 right-2 bg-white/90 text-red-600 p-1.5 rounded-full hover:bg-red-50 hover:text-red-700 transition-colors shadow-sm border border-red-100 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    title="លុបរូបភាព (Remove Image)"
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
-                <div className="flex text-sm text-gray-600 justify-center">
-                  <span className="relative cursor-pointer bg-transparent rounded-md font-medium text-teal-600 hover:text-teal-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-600">
-                    <span>ជ្រើសរើសរូបភាព</span>
-                    <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*" />
-                  </span>
-                  <p className="pl-1">ឬអូសទម្លាក់ទីនេះ</p>
+              ) : (
+                <div className="space-y-2 text-center">
+                  <div className="mx-auto h-12 w-12 text-gray-400 bg-gray-50 rounded-full flex items-center justify-center group-hover:text-teal-500 group-hover:bg-teal-50 transition-colors">
+                    <ImageIcon size={24} />
+                  </div>
+                  <div className="flex text-sm text-gray-600 justify-center">
+                    <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-teal-600 hover:text-teal-700 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-600">
+                      <span>ជ្រើសរើសរូបភាព</span>
+                      <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*" onChange={handleImageChange} />
+                    </label>
+                    <p className="pl-1">ឬអូសទម្លាក់ទីនេះ</p>
+                  </div>
+                  <p className="text-xs text-gray-500">PNG, JPG, GIF ទំហំមិនលើសពី 5MB</p>
                 </div>
-                <p className="text-xs text-gray-500">PNG, JPG, GIF ទំហំមិនលើសពី 5MB</p>
-              </div>
+              )}
             </div>
           </div>
 
@@ -76,9 +150,11 @@ export function NewItemView() {
               <input
                 type="text"
                 id="materialCode"
+                value={materialCode}
+                onChange={(e) => setMaterialCode(e.target.value)}
                 placeholder="ឧ. MAT-001"
                 required
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 bg-gray-50 font-medium"
               />
             </div>
 
@@ -99,6 +175,8 @@ export function NewItemView() {
               <label htmlFor="category" className="block text-sm font-semibold text-gray-700 mb-2">ប្រភេទសម្ភារ</label>
               <select
                 id="category"
+                value={category}
+                onChange={handleCategoryChange}
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white"
               >
                 <option value="tools">សម្ភារ Tools</option>
