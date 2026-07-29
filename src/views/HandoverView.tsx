@@ -1,24 +1,29 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { mockLocations, mockItems } from '../mockData';
-import { ArrowRightLeft } from 'lucide-react';
+import { mockLocations, mockItems, mockInventory } from '../mockData';
+import { ArrowRightLeft, Check, X } from 'lucide-react';
 
 export function HandoverView() {
   const { t, language } = useLanguage();
   const [loading, setLoading] = useState(false);
 
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState('');
+
+  const selectedItem = mockItems.find(i => i.id === selectedItemId);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setSubmitSuccess(false);
+    setSubmitError(false);
 
     const form = e.target as HTMLFormElement;
-    const fromLocationId = (form.elements[0] as HTMLSelectElement).value;
-    const toBranchId = (form.elements[1] as HTMLSelectElement).value;
-    const itemId = (form.elements[2] as HTMLSelectElement).value;
-    const quantity = parseInt((form.elements[3] as HTMLInputElement).value || '0', 10);
+    const fromLocationId = (form.elements.namedItem('fromLocationId') as HTMLSelectElement).value;
+    const toBranchId = (form.elements.namedItem('toBranchId') as HTMLSelectElement).value;
+    const itemId = (form.elements.namedItem('itemId') as HTMLSelectElement).value;
+    const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement).value || '0', 10);
 
     setTimeout(() => {
       // Find source inventory
@@ -55,14 +60,16 @@ export function HandoverView() {
         }
         setSubmitSuccess(true);
         form.reset();
+        setSelectedItemId('');
       } else {
-        alert('បរិមាណស្តុកមិនគ្រប់គ្រាន់ ឬទីតាំងមិនត្រឹមត្រូវ!');
+        setSubmitError(true);
       }
 
       setLoading(false);
       
       setTimeout(() => {
         setSubmitSuccess(false);
+        setSubmitError(false);
       }, 3000);
     }, 800);
   };
@@ -76,13 +83,33 @@ export function HandoverView() {
         <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="flex items-center gap-3">
             <div className="bg-emerald-100 p-1.5 rounded-full text-emerald-700">
-              <ArrowRightLeft size={20} />
+              <Check size={20} />
             </div>
             <div>
               <h3 className="font-bold text-sm">ប្រគល់-ទទួល ជោគជ័យ</h3>
               <p className="text-xs opacity-90">សម្ភារៈត្រូវបានផ្ទេរដោយជោគជ័យ។</p>
             </div>
           </div>
+          <button onClick={() => setSubmitSuccess(false)} className="text-emerald-600 hover:text-emerald-800 p-1">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
+      {submitError && (
+        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="bg-rose-100 p-1.5 rounded-full text-rose-700">
+              <X size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm">បរាជ័យ</h3>
+              <p className="text-xs opacity-90">បរិមាណស្តុកមិនគ្រប់គ្រាន់ ឬទីតាំងមិនត្រឹមត្រូវ!</p>
+            </div>
+          </div>
+          <button onClick={() => setSubmitError(false)} className="text-rose-600 hover:text-rose-800 p-1">
+            <X size={18} />
+          </button>
         </div>
       )}
 
@@ -104,7 +131,7 @@ export function HandoverView() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.fromLocation}</label>
-                <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required>
+                <select name="fromLocationId" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required>
                   {hqLocations.map(loc => (
                     <option key={loc.id} value={loc.id}>
                       {language === 'kh' ? loc.name_kh : loc.name_en}
@@ -115,7 +142,7 @@ export function HandoverView() {
               
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.toBranch}</label>
-                <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required>
+                <select name="toBranchId" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required>
                   <option value="">-- {t.toBranch} --</option>
                   {branchLocations.map(loc => (
                     <option key={loc.id} value={loc.id}>
@@ -128,7 +155,7 @@ export function HandoverView() {
 
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectItem}</label>
-              <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required>
+              <select name="itemId" value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required>
                 <option value="">-- {t.selectItem} --</option>
                 {mockItems.map(item => (
                   <option key={item.id} value={item.id}>
@@ -141,11 +168,11 @@ export function HandoverView() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.quantity}</label>
-                <input type="number" min="1" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required />
+                <input name="quantity" type="number" min="1" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.unit}</label>
-                <input type="text" disabled className="w-full bg-slate-100 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-500" value="គ្រឿង" />
+                <input type="text" disabled className="w-full bg-slate-100 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-500" value={selectedItem?.unit || 'ឯកតា'} />
               </div>
             </div>
           </div>
@@ -176,9 +203,17 @@ export function HandoverView() {
             <button 
               type="submit" 
               disabled={loading}
-              className="px-8 py-2.5 bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-800 transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center"
+              className="px-8 py-2.5 bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-800 transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
             >
-              {loading ? 'Processing...' : t.confirmHandover}
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  កំពុងដំណើរការ...
+                </>
+              ) : t.confirmHandover}
             </button>
           </div>
         </div>
