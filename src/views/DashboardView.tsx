@@ -33,7 +33,7 @@ export function DashboardView() {
     
     let hqStock = 0;
     let branchStock = 0;
-    const branchesWithStock: string[] = [];
+    const branchesWithStock: { code: string, quantity: number }[] = [];
 
     itemInventory.forEach(inv => {
       const loc = mockLocations.find(l => l.id === inv.location_id || l.code === inv.location_id);
@@ -42,10 +42,22 @@ export function DashboardView() {
           hqStock += inv.quantity;
         } else {
           branchStock += inv.quantity;
-          branchesWithStock.push(language === 'kh' ? loc.name_kh : loc.name_en);
+        }
+        
+        if (inv.quantity > 0) {
+          branchesWithStock.push({
+            code: loc.code === 'HQ-ITSB' ? 'ITS-HQ' : loc.code,
+            quantity: inv.quantity
+          });
         }
       } else {
         hqStock += inv.quantity;
+        if (inv.quantity > 0) {
+          branchesWithStock.push({
+            code: 'ITS-HQ',
+            quantity: inv.quantity
+          });
+        }
       }
     });
 
@@ -62,7 +74,7 @@ export function DashboardView() {
       unit: item.unit,
       hqStock,
       branchStock,
-      branchesWithStock: branchesWithStock.join(', ') || '-',
+      branchesWithStock,
       status,
       minStock: item.min_stock
     };
@@ -214,8 +226,19 @@ export function DashboardView() {
                   <td className="px-4 py-2.5 text-[#2B6A52] font-semibold text-center">{item.unit}</td>
                   <td className="px-4 py-2.5 font-black text-center text-[#03291E]">{item.hqStock}</td>
                   <td className="px-4 py-2.5 font-black text-center text-[#1E6047]">{item.branchStock}</td>
-                  <td className="px-4 py-2.5 text-xs text-[#2B6A52] max-w-xs truncate" title={item.branchesWithStock}>
-                    {item.branchesWithStock}
+                  <td className="px-4 py-2.5 max-w-[200px]">
+                    <div className="flex flex-wrap gap-1.5">
+                      {item.branchesWithStock.length > 0 ? (
+                        item.branchesWithStock.map((branch, i) => (
+                          <div key={i} className="inline-flex items-center rounded-md border border-[#D1F1F0] bg-[#EBF9F9] overflow-hidden shadow-sm">
+                            <span className="px-1.5 py-0.5 text-[10px] font-bold text-[#355B61]">{branch.code}</span>
+                            <span className="px-1.5 py-0.5 text-[10px] font-bold bg-[#D1F1F0] text-[#0A7B83]">{branch.quantity}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">គ្មាន</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5 text-center">
                     {item.status === 'មានស្តុក' ? (
