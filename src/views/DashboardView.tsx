@@ -1,55 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
+import { mockInventory, mockItems, mockLocations } from '../mockData';
 import { 
   Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon, Building2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { ItemAvatar } from '../components/ItemAvatar';
-import { supabase } from '../lib/supabase';
-import { Item, Location, InventoryItem } from '../types';
 
 export function DashboardView() {
   const { t, language } = useLanguage();
   const { selectedLocationId, selectedLocation } = useLocationContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
-  
-  const [items, setItems] = useState<Item[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-
-  const fetchData = async () => {
-    const [{ data: itemsData }, { data: locationsData }, { data: inventoryData }] = await Promise.all([
-      supabase.from('items').select('*'),
-      supabase.from('locations').select('*'),
-      supabase.from('inventory').select('*')
-    ]);
-    if (itemsData) setItems(itemsData);
-    if (locationsData) setLocations(locationsData);
-    if (inventoryData) setInventory(inventoryData);
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   // Filter inventory based on selected location
-  const locationFilteredInventory = inventory.filter(inv => {
+  const locationFilteredInventory = mockInventory.filter(inv => {
     if (selectedLocationId === 'ALL' || selectedLocation.code === 'ALL') return true;
-    const loc = locations.find(l => l.id === inv.location_id);
-    return inv.location_id === selectedLocationId || (loc && loc.code === selectedLocation.code) || (loc && loc.name_kh === selectedLocation.name_kh);
+    return inv.location_id === selectedLocationId || inv.location_name_kh.includes(selectedLocation.code) || inv.location_name_kh.includes(selectedLocation.name_kh);
   });
 
   const totalItems = locationFilteredInventory.reduce((acc, curr) => acc + curr.quantity, 0);
   const lowStockItems = locationFilteredInventory.filter(item => {
-    const itemDef = items.find(i => i.id === item.item_id);
+    const itemDef = mockItems.find(i => i.id === item.item_id);
     return itemDef ? item.quantity <= itemDef.min_stock : item.quantity < 10;
   });
   const lowStockCount = lowStockItems.length;
-  const locationsCount = selectedLocationId === 'ALL' ? new Set(inventory.map(item => item.location_id)).size : 1;
+  const locationsCount = selectedLocationId === 'ALL' ? new Set(mockInventory.map(item => item.location_id)).size : 1;
 
   // Compute aggregated inventory data for the table
-  const aggregatedInventory = items.map((item, index) => {
+  const aggregatedInventory = mockItems.map((item, index) => {
     const itemInventory = locationFilteredInventory.filter(inv => inv.item_id === item.id);
     
     let hqStock = 0;
@@ -57,7 +36,7 @@ export function DashboardView() {
     const branchesWithStock: { code: string, quantity: number }[] = [];
 
     itemInventory.forEach(inv => {
-      const loc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
+      const loc = mockLocations.find(l => l.id === inv.location_id || l.code === inv.location_id);
       if (loc) {
         if (loc.type === 'HQ') {
           hqStock += inv.quantity;

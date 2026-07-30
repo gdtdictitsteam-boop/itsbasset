@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { mockLocations, mockItems, mockInventory } from '../mockData';
 import { ArrowRightLeft, Check, X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { Item, Location } from '../types';
 
 export function HandoverView() {
   const { t, language } = useLanguage();
@@ -12,24 +11,9 @@ export function HandoverView() {
   const [submitError, setSubmitError] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState('');
 
-  const [items, setItems] = useState<Item[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const selectedItem = mockItems.find(i => i.id === selectedItemId);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const [{ data: itemsData }, { data: locationsData }] = await Promise.all([
-        supabase.from('items').select('*'),
-        supabase.from('locations').select('*')
-      ]);
-      if (itemsData) setItems(itemsData);
-      if (locationsData) setLocations(locationsData);
-    };
-    fetchData();
-  }, []);
-
-  const selectedItem = items.find(i => i.id === selectedItemId);
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setSubmitSuccess(false);
@@ -40,61 +24,40 @@ export function HandoverView() {
     const toBranchId = (form.elements.namedItem('toBranchId') as HTMLSelectElement).value;
     const itemId = (form.elements.namedItem('itemId') as HTMLSelectElement).value;
     const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement).value || '0', 10);
-    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement).value;
-    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
 
-    try {
+    setTimeout(() => {
       // Find source inventory
-      const { data: sourceInv } = await supabase
-        .from('inventory')
-        .select('id, quantity')
-        .eq('item_id', itemId)
-        .eq('location_id', fromLocationId)
-        .single();
+      const sourceInvIndex = mockInventory.findIndex(inv => inv.item_id === itemId && inv.location_id === fromLocationId);
       
-      if (sourceInv && sourceInv.quantity >= quantity && fromLocationId !== toBranchId) {
+      if (sourceInvIndex >= 0 && mockInventory[sourceInvIndex].quantity >= quantity && fromLocationId !== toBranchId) {
         // Reduce source inventory
-        await supabase
-          .from('inventory')
-          .update({ quantity: sourceInv.quantity - quantity, last_updated: new Date().toISOString() })
-          .eq('id', sourceInv.id);
+        mockInventory[sourceInvIndex].quantity -= quantity;
+        mockInventory[sourceInvIndex].last_updated = new Date().toISOString();
 
         // Add to destination
-        const { data: destInv } = await supabase
-          .from('inventory')
-          .select('id, quantity')
-          .eq('item_id', itemId)
-          .eq('location_id', toBranchId)
-          .single();
-
-        if (destInv) {
-          await supabase
-            .from('inventory')
-            .update({ quantity: destInv.quantity + quantity, last_updated: new Date().toISOString() })
-            .eq('id', destInv.id);
+        const destInvIndex = mockInventory.findIndex(inv => inv.item_id === itemId && inv.location_id === toBranchId);
+        if (destInvIndex >= 0) {
+          mockInventory[destInvIndex].quantity += quantity;
+          mockInventory[destInvIndex].last_updated = new Date().toISOString();
         } else {
-          await supabase
-            .from('inventory')
-            .insert({
+          const item = mockItems.find(i => i.id === itemId);
+          const loc = mockLocations.find(l => l.id === toBranchId);
+          if (item) {
+            mockInventory.push({
               location_id: toBranchId,
               item_id: itemId,
-              quantity: quantity
+              quantity: quantity,
+              last_updated: new Date().toISOString(),
+              item_code: item.code,
+              item_name_kh: item.name_kh,
+              item_name_en: item.name_en,
+              category: item.category,
+              unit: item.unit,
+              location_name_kh: loc?.name_kh || '',
+              location_name_en: loc?.name_en || ''
             });
+          }
         }
-
-        // Insert transaction log
-        await supabase
-          .from('transactions')
-          .insert({
-            type: 'HANDOVER',
-            from_location: fromLocationId,
-            to_location: toBranchId,
-            item_id: itemId,
-            quantity: quantity,
-            remark: purpose,
-            recorded_by: officerName
-          });
-
         setSubmitSuccess(true);
         form.reset();
         setSelectedItemId('');
@@ -108,16 +71,11 @@ export function HandoverView() {
         setSubmitSuccess(false);
         setSubmitError(false);
       }, 3000);
-    } catch (err) {
-      console.error("Error during handover:", err);
-      setSubmitError(true);
-      setLoading(false);
-      setTimeout(() => setSubmitError(false), 3000);
-    }
+    }, 800);
   };
 
-  const branchLocations = locations.filter(loc => loc.type === 'BRANCH');
-  const hqLocations = locations.filter(loc => loc.type === 'HQ');
+  const branchLocations = mockLocations.filter(loc => loc.type === 'BRANCH');
+  const hqLocations = mockLocations.filter(loc => loc.type === 'HQ');
 
   return (
     <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-lg flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
@@ -199,7 +157,7 @@ export function HandoverView() {
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectItem}</label>
               <select name="itemId" value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required>
                 <option value="">-- {t.selectItem} --</option>
-                {items.map(item => (
+                {mockItems.map(item => (
                   <option key={item.id} value={item.id}>
                     [{item.code}] {language === 'kh' ? item.name_kh : item.name_en}
                   </option>
@@ -222,11 +180,11 @@ export function HandoverView() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.officerName}</label>
-              <input name="officerName" type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required />
+              <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" required />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.purpose}</label>
-              <textarea name="purpose" rows={4} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700 resize-none" required></textarea>
+              <textarea rows={4} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700 resize-none" required></textarea>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { createContext, useContext, useState } from 'react';
+import { mockLocations } from '../mockData';
 import { Location } from '../types';
 
 export const ALL_LOCATIONS_OPTION: Location = {
@@ -21,17 +21,8 @@ const LocationContext = createContext<LocationContextType | undefined>(undefined
 
 export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
-  const [locationsList, setLocationsList] = useState<Location[]>([]);
 
-  useEffect(() => {
-    const fetchLocations = async () => {
-      const { data } = await supabase.from('locations').select('*');
-      if (data) setLocationsList(data);
-    };
-    fetchLocations();
-  }, []);
-
-  const locations = [ALL_LOCATIONS_OPTION, ...locationsList];
+  const locations = [ALL_LOCATIONS_OPTION, ...mockLocations];
 
   const selectedLocation = locations.find(l => l.id === selectedLocationId || l.code === selectedLocationId) || ALL_LOCATIONS_OPTION;
 

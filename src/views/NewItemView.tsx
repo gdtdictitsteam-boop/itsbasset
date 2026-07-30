@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X } from 'lucide-react';
+import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, AlertTriangle, Database, Info } from 'lucide-react';
 
-import { supabase } from '../lib/supabase';
+import { mockItems, mockInventory, mockLocations } from '../mockData';
+import { insertItemToSupabase, isSupabaseConfigured } from '../lib/supabase';
 
 export function NewItemView() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -10,13 +11,20 @@ export function NewItemView() {
   const [materialCode, setMaterialCode] = useState(() => `TOL-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitResult, setSubmitResult] = useState<{
+    success: boolean;
+    savedToSupabase: boolean;
+    message: string;
+    details?: string;
+  } | null>(null);
 
   const [unitSearch, setUnitSearch] = useState('');
   const [isUnitDropdownOpen, setIsUnitDropdownOpen] = useState(false);
   const [units, setUnits] = useState(['គ្រឿង', 'ម៉ែត្រ', 'ប្រអប់', 'កេស', 'រ៉ាម']);
   const unitInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isConfigured = isSupabaseConfigured();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -43,12 +51,17 @@ export function NewItemView() {
     }
   };
 
+  const generateRandomCode = (catVal?: string) => {
+    const currentCat = catVal || category;
+    const prefix = currentCat === 'tools' ? 'TOL' : 'SUP';
+    const randomSeq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    setMaterialCode(`${prefix}-${randomSeq}`);
+  };
+
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     setCategory(val);
-    const prefix = val === 'tools' ? 'TOL' : 'SUP';
-    const randomSeq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    setMaterialCode(`${prefix}-${randomSeq}`);
+    generateRandomCode(val);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,89 +108,177 @@ export function NewItemView() {
   const resetForm = () => {
     setImagePreview(null);
     setCategory('tools');
-    setMaterialCode(`TOL-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
+    generateRandomCode('tools');
     setUnitSearch('');
     const form = document.getElementById('new-item-form') as HTMLFormElement;
     if (form) form.reset();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setSubmitSuccess(false);
+    setSubmitResult(null);
 
     const form = e.target as HTMLFormElement;
-    const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value;
-    const brand = (form.elements.namedItem('brand') as HTMLInputElement).value;
+    const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value.trim();
+    const brand = (form.elements.namedItem('brand') as HTMLInputElement).value.trim();
     const minStock = parseInt((form.elements.namedItem('minStock') as HTMLInputElement).value || '0', 10);
-    const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
-    
-    // Simulate API call
-    const insertData = async () => {
-      try {
-        const { error } = await supabase
-          .from('items')
-          .insert([
-            {
-              code: materialCode,
-              name_kh: materialName,
-              name_en: brand || materialName,
-              category: categoryName,
-              unit: unitSearch || 'គ្រឿង',
-              min_stock: minStock,
-            }
-          ]);
+    const initialStock = parseInt((form.elements.namedItem('initialStock') as HTMLInputElement)?.value || '0', 10);
+    const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement)?.value || '1';
+    const description = (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || '';
 
-        if (error) {
-          console.error("Error inserting item:", error);
-          alert('បរាជ័យក្នុងការរក្សាទុក');
-        } else {
-          setSubmitSuccess(true);
-          resetForm();
-          
-          // Hide success message after 3 seconds
-          setTimeout(() => {
-            setSubmitSuccess(false);
-          }, 3000);
-        }
-      } catch (err) {
-        console.error("Exception:", err);
-      } finally {
-        setIsSubmitting(false);
-      }
-    };
-    
-    insertData();
+    const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
+    const selectedUnit = unitSearch.trim() || 'គ្រឿង';
+
+    // 1. Send data to Supabase
+    const res = await insertItemToSupabase({
+      code: materialCode,
+      name_kh: materialName,
+      name_en: brand || materialName,
+      category: categoryName,
+      unit: selectedUnit,
+      min_stock: minStock,
+      initial_stock: initialStock,
+      location_id: locationId,
+      remark: description || 'បញ្ចូលសម្ភារថ្មី',
+      recorded_by: 'Admin-GDT',
+    });
+
+    // 2. Add to local memory array so UI updates immediately
+    const newItemId = res.item?.id || Math.random().toString(36).substring(7);
+    const targetLoc = mockLocations.find(l => l.id === locationId) || mockLocations[0];
+
+    mockItems.push({
+      id: newItemId,
+      code: materialCode,
+      name_kh: materialName,
+      name_en: brand || materialName,
+      category: categoryName,
+      unit: selectedUnit,
+      min_stock: minStock,
+      image_url: imagePreview || undefined,
+    });
+
+    mockInventory.push({
+      location_id: locationId,
+      item_id: newItemId,
+      quantity: initialStock,
+      last_updated: new Date().toISOString(),
+      item_code: materialCode,
+      item_name_kh: materialName,
+      item_name_en: brand || materialName,
+      category: categoryName,
+      unit: selectedUnit,
+      location_name_kh: targetLoc.name_kh,
+      location_name_en: targetLoc.name_en,
+      image_url: imagePreview || undefined,
+    });
+
+    setIsSubmitting(false);
+
+    if (res.success && res.savedToSupabase) {
+      setSubmitResult({
+        success: true,
+        savedToSupabase: true,
+        message: `រក្សាទុកក្នុង Supabase Database ជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`,
+      });
+      resetForm();
+    } else {
+      setSubmitResult({
+        success: false,
+        savedToSupabase: false,
+        message: res.error || 'បរាជ័យបញ្ចូលទៅក្នុង Supabase Database',
+        details: res.errorDetails || 'ទិន្នន័យត្រូវបញ្ចូលក្នុង Local Memory ប្រព័ន្ធជាបណ្តោះអាសន្ន។',
+      });
+    }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {submitSuccess && (
-        <div className="bg-teal-50 border border-teal-200 text-teal-800 rounded-xl p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-3">
-            <div className="bg-teal-100 p-1.5 rounded-full text-teal-700">
-              <Check size={20} />
+      {/* Supabase Database Connection Status Banner */}
+      <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+        isConfigured 
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+          : 'bg-amber-50 border-amber-200 text-amber-900'
+      }`}>
+        <div className="flex items-center gap-2.5">
+          <Database size={18} className={isConfigured ? 'text-emerald-600' : 'text-amber-600'} />
+          <div>
+            <div className="font-bold flex items-center gap-2">
+              <span>ស្ថាបត្យកម្មមូលទិន្នន័យ Supabase DB:</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                isConfigured ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'
+              }`}>
+                {isConfigured ? 'បានតភ្ជាប់ (Configured)' : 'មិនទាន់កំណត់ Credentials (.env)'}
+              </span>
             </div>
-            <div>
-              <h3 className="font-bold text-sm">រក្សាទុកជោគជ័យ</h3>
-              <p className="text-xs opacity-90">ព័ត៌មានសម្ភារថ្មីត្រូវបានបញ្ចូលទៅក្នុងប្រព័ន្ធ។</p>
-            </div>
+            <p className="opacity-80 mt-0.5">
+              {isConfigured 
+                ? 'ប្រព័ន្ធត្រូវបានតភ្ជាប់ជាមួយ Supabase API ដោយស្វ័យប្រវត្តិ។ រាល់ការបញ្ចូលនឹងទាញយក id ពី Supabase។' 
+                : 'សូមកំណត់ VITE_SUPABASE_URL និង VITE_SUPABASE_ANON_KEY ក្នុងឯកសារ .env ដើម្បីរក្សាទុកក្នុង Supabase Remote DB។'}
+            </p>
           </div>
-          <button onClick={() => setSubmitSuccess(false)} className="text-teal-600 hover:text-teal-800 p-1">
-            <X size={18} />
-          </button>
+        </div>
+      </div>
+
+      {/* Result Notification Banner */}
+      {submitResult && (
+        <div className={`border rounded-xl p-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300 ${
+          submitResult.success && submitResult.savedToSupabase
+            ? 'bg-teal-50 border-teal-200 text-teal-900'
+            : 'bg-amber-50 border-amber-300 text-amber-950'
+        }`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-full mt-0.5 ${
+                submitResult.success ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-800'
+              }`}>
+                {submitResult.success ? <Check size={20} /> : <AlertTriangle size={20} />}
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-sm">
+                  {submitResult.success ? 'រក្សាទុកជោគជ័យ' : 'បរាជ័យក្នុងការបញ្ចូល Supabase'}
+                </h3>
+                <p className="text-xs font-medium">{submitResult.message}</p>
+                {submitResult.details && (
+                  <p className="text-[11px] font-mono opacity-90 bg-white/70 p-2 rounded border border-amber-200 mt-1">
+                    💡 {submitResult.details}
+                  </p>
+                )}
+                {!submitResult.savedToSupabase && (
+                  <div className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1.5 mt-2 bg-emerald-100/70 p-2 rounded border border-emerald-200">
+                    <Info size={14} />
+                    <span>ទិន្នន័យសម្ភារត្រូវបានបញ្ចូលក្នុង Local Inventory ប្រព័ន្ធរួចរាល់សម្រាប់តេស្តប្រើប្រាស់!</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <button 
+              onClick={() => setSubmitResult(null)} 
+              className="text-gray-500 hover:text-gray-800 p-1 rounded-lg hover:bg-black/5"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {/* Header Section */}
-        <div className="px-6 py-4 border-b border-gray-100 bg-[#F2F9F6] flex items-center gap-3">
-          <div className="p-2 bg-teal-100 text-teal-700 rounded-lg">
-            <PlusCircle size={20} />
+        <div className="px-6 py-4 border-b border-gray-100 bg-[#F2F9F6] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-teal-100 text-teal-700 rounded-lg">
+              <PlusCircle size={20} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-[#03291E]" style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}>
+                បញ្ចូលព័ត៌មានសម្ភារថ្មី (New Item Entry)
+              </h2>
+              <p className="text-xs text-teal-800 mt-0.5">
+                បំពេញព័ត៌មានសម្ភារដើម្បីបញ្ចូលទៅក្នុង Supabase Database និងប្រព័ន្ធគ្រប់គ្រងស្តុក
+              </p>
+            </div>
           </div>
-          <h2 className="text-xl font-bold text-[#03291E]" style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}>
-            បញ្ចូលព័ត៌មានសម្ភារថ្មី
-          </h2>
         </div>
 
         {/* Form Section */}
@@ -226,26 +327,53 @@ export function NewItemView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Material Code */}
             <div>
-              <label htmlFor="materialCode" className="block text-sm font-semibold text-gray-700 mb-2">លេខកូដសម្ភារ <span className="text-red-500">*</span></label>
+              <div className="flex justify-between items-center mb-2">
+                <label htmlFor="materialCode" className="block text-sm font-semibold text-gray-700">
+                  លេខកូដសម្ភារ <span className="text-red-500">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => generateRandomCode()}
+                  className="text-xs text-teal-700 hover:text-teal-900 font-bold flex items-center gap-1 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded border border-teal-200 transition-colors"
+                >
+                  <RefreshCw size={12} />
+                  <span>បង្កើតកូដថ្មី</span>
+                </button>
+              </div>
               <input
                 type="text"
                 id="materialCode"
                 value={materialCode}
                 onChange={(e) => setMaterialCode(e.target.value)}
-                placeholder="ឧ. MAT-001"
+                placeholder="ឧ. TOL-0001"
                 required
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 bg-gray-50 font-medium"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 bg-gray-50 font-mono font-semibold"
               />
             </div>
 
             {/* Material Name */}
             <div>
-              <label htmlFor="materialName" className="block text-sm font-semibold text-gray-700 mb-2">ឈ្មោះសម្ភារ <span className="text-red-500">*</span></label>
+              <label htmlFor="materialName" className="block text-sm font-semibold text-gray-700 mb-2">
+                ឈ្មោះសម្ភារ (ភាសាខ្មែរ) <span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 id="materialName" name="materialName"
-                placeholder="ឧ. ខ្សែបណ្តាញ Network"
+                placeholder="ឧ. ខ្សែបណ្តាញ Network Cat6"
                 required
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 font-medium"
+              />
+            </div>
+
+            {/* Brand / English Name */}
+            <div>
+              <label htmlFor="brand" className="block text-sm font-semibold text-gray-700 mb-2">
+                ម៉ាក/ឈ្មោះជាភាសាអង់គ្លេស (Brand / English Name)
+              </label>
+              <input
+                type="text"
+                id="brand" name="brand"
+                placeholder="ឧ. Link Basic Cat6 UTP Cable"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
               />
             </div>
@@ -257,7 +385,7 @@ export function NewItemView() {
                 id="category"
                 value={category}
                 onChange={handleCategoryChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white font-medium"
               >
                 <option value="tools">សម្ភារ Tools</option>
                 <option value="suppliers">សម្ភារ Suppliers</option>
@@ -329,35 +457,56 @@ export function NewItemView() {
 
             {/* Min Stock Alert */}
             <div>
-              <label htmlFor="minStock" className="block text-sm font-semibold text-gray-700 mb-2">បរិមាណអប្បបរមា</label>
+              <label htmlFor="minStock" className="block text-sm font-semibold text-gray-700 mb-2">បរិមាណអប្បបរមា (Min Stock Alert)</label>
               <input
                 type="number"
                 id="minStock" name="minStock"
                 min="0"
+                defaultValue={5}
+                placeholder="ឧ. 5"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
+              />
+            </div>
+
+            {/* Initial Quantity */}
+            <div>
+              <label htmlFor="initialStock" className="block text-sm font-semibold text-gray-700 mb-2">បរិមាណស្តុកដើមដំបូង (Initial Stock Quantity)</label>
+              <input
+                type="number"
+                id="initialStock" name="initialStock"
+                min="0"
+                defaultValue={0}
                 placeholder="ឧ. 10"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
               />
             </div>
 
-            {/* Brand/Model */}
+            {/* Default Location */}
             <div>
-              <label htmlFor="brand" className="block text-sm font-semibold text-gray-700 mb-2">ម៉ាក/ម៉ូដែល</label>
-              <input
-                type="text"
-                id="brand" name="brand"
-                placeholder="បញ្ចូលម៉ាក ឬម៉ូដែល"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
-              />
+              <label htmlFor="locationId" className="block text-sm font-semibold text-gray-700 mb-2">ទីតាំងរក្សាទុកស្តុកដើម</label>
+              <select
+                id="locationId"
+                name="locationId"
+                defaultValue="1"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white"
+              >
+                {mockLocations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    [{loc.code}] {loc.name_kh}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           {/* Description (Full Width) */}
           <div>
-            <label htmlFor="description" className="block text-sm font-semibold text-gray-700 mb-2">ការពិពណ៌នា</label>
+            <label htmlFor="description" className="block text-sm font-semibold text-gray-700 mb-2">ការពិពណ៌នាបន្ថែម</label>
             <textarea
               id="description"
+              name="description"
               rows={3}
-              placeholder="បញ្ចូលការពិពណ៌នាបន្ថែម..."
+              placeholder="បញ្ចូលការពិពណ៌នាបន្ថែមពីសម្ភារថ្មីនេះ..."
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 resize-y"
             ></textarea>
           </div>
@@ -383,10 +532,10 @@ export function NewItemView() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  កំពុងរក្សាទុក...
+                  កំពុងបញ្ចូលទៅក្នុង Supabase DB...
                 </>
               ) : (
-                'រក្សាទុក'
+                'រក្សាទុកសម្ភារថ្មី'
               )}
             </button>
           </div>
@@ -395,3 +544,4 @@ export function NewItemView() {
     </div>
   );
 }
+
