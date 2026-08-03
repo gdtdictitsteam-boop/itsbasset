@@ -239,3 +239,164 @@ FOR SELECT
 TO authenticated
 USING (bucket_id = 'handover_docs');
 
+
+-- =========================================================================
+-- STEP 4: 2-STEP HANDOVER & ACKNOWLEDGEMENT WITH AI OCR VERIFICATION
+-- =========================================================================
+
+-- 1. Add status column to transactions table (PENDING -> RECEIVED)
+ALTER TABLE public.transactions 
+ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'PENDING';
+
+-- 2. Step 1 RPC: CentralAdmin initiates handover (Deducts stock from HQ, status = 'PENDING')
+CREATE OR REPLACE FUNCTION handle_branch_handover(
+    p_from_location UUID,
+    p_to_location UUID,
+    p_item_id UUID,
+    p_quantity INT,
+    p_recorded_by VARCHAR,
+    p_remark TEXT DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_available_qty INT;
+    v_transaction_id UUID;
+    v_item_code VARCHAR;
+    v_item_name_kh VARCHAR;
+    v_item_unit VARCHAR;
+BEGIN
+    -- Authorization Check
+    IF (auth.jwt() ->> 'role') NOT IN ('CentralAdmin', 'Admin-GDT') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM public.user_profiles 
+            WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+        ) THEN
+            RAISE EXCEPTION 'Unauthorized: Only CentralAdmin can perform stock handover.';
+        END IF;
+    END IF;
+
+    -- Validate quantity
+    IF p_quantity <= 0 THEN
+        RAISE EXCEPTION 'Quantity must be greater than zero.';
+    END IF;
+
+    -- Check source inventory
+    SELECT quantity INTO v_available_qty
+    FROM public.inventory
+    WHERE location_id = p_from_location AND item_id = p_item_id;
+
+    IF v_available_qty IS NULL OR v_available_qty < p_quantity THEN
+        RAISE EXCEPTION 'Insufficient stock in source location. Available: %, Requested: %', COALESCE(v_available_qty, 0), p_quantity;
+    END IF;
+
+    -- Fetch item metadata
+    SELECT code, name_kh, unit INTO v_item_code, v_item_name_kh, v_item_unit
+    FROM public.items WHERE id = p_item_id;
+
+    -- 1. Deduct stock from Central HQ
+    UPDATE public.inventory
+    SET quantity = quantity - p_quantity,
+        updated_at = NOW()
+    WHERE location_id = p_from_location AND item_id = p_item_id;
+
+    -- 2. Record transaction with status = 'PENDING'
+    INSERT INTO public.transactions (
+        type,
+        from_location_id,
+        to_location_id,
+        item_id,
+        item_code,
+        item_name_kh,
+        quantity,
+        unit,
+        recorded_by,
+        remark,
+        status
+    ) VALUES (
+        'HANDOVER',
+        p_from_location,
+        p_to_location,
+        p_item_id,
+        v_item_code,
+        v_item_name_kh,
+        p_quantity,
+        v_item_unit,
+        p_recorded_by,
+        p_remark,
+        'PENDING'
+    )
+    RETURNING id INTO v_transaction_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'transaction_id', v_transaction_id,
+        'status', 'PENDING',
+        'message', 'Stock deducted from HQ. Status set to PENDING awaiting branch acknowledgment.'
+    );
+END;
+$$;
+
+-- 3. Step 2 RPC: Branch User acknowledges receipt (Adds stock to Branch, status = 'RECEIVED')
+CREATE OR REPLACE FUNCTION acknowledge_handover(
+    p_transaction_id UUID,
+    p_received_by VARCHAR DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_tx RECORD;
+    v_user_role VARCHAR;
+    v_user_location UUID;
+BEGIN
+    -- Fetch Transaction details
+    SELECT * INTO v_tx
+    FROM public.transactions
+    WHERE id = p_transaction_id;
+
+    IF v_tx.id IS NULL THEN
+        RAISE EXCEPTION 'Transaction record not found.';
+    END IF;
+
+    IF v_tx.status = 'RECEIVED' THEN
+        RAISE EXCEPTION 'Transaction has already been acknowledged and received.';
+    END IF;
+
+    -- Role & Location Authorization Check
+    SELECT role, location_id INTO v_user_role, v_user_location
+    FROM public.user_profiles
+    WHERE id = auth.uid();
+
+    -- Strictly ensure the user is either CentralAdmin OR belongs to the destination branch (to_location_id)
+    IF v_user_role NOT IN ('CentralAdmin', 'Admin-GDT') AND (v_user_location IS NULL OR v_user_location != v_tx.to_location_id) THEN
+        RAISE EXCEPTION 'Unauthorized: You can only acknowledge transfers destined for your assigned branch location.';
+    END IF;
+
+    -- 1. Update Transaction status to 'RECEIVED'
+    UPDATE public.transactions
+    SET status = 'RECEIVED',
+        recorded_by = CASE WHEN p_received_by <> '' THEN p_received_by ELSE recorded_by END
+    WHERE id = p_transaction_id;
+
+    -- 2. Add stock to destination branch location
+    INSERT INTO public.inventory (location_id, item_id, quantity, updated_at)
+    VALUES (v_tx.to_location_id, v_tx.item_id, v_tx.quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = public.inventory.quantity + EXCLUDED.quantity,
+        updated_at = NOW();
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'transaction_id', p_transaction_id,
+        'status', 'RECEIVED',
+        'message', 'Handover acknowledged successfully. Stock added to destination branch.'
+    );
+END;
+$$;
+
+

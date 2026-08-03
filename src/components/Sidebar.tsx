@@ -7,10 +7,12 @@ import {
   Package, 
   ArrowDownToLine, 
   ArrowRightLeft, 
+  Clock,
   PlusCircle, 
   MinusCircle, 
   SlidersHorizontal,
   Database,
+  History,
   MapPin,
   ShieldCheck,
   Building2
@@ -59,6 +61,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
     {
       title: language === 'kh' ? 'ព័ត៌មានប្រតិបត្តិការសាខា' : 'Branch Operations',
       items: [
+        { id: 'pendingTransfers', icon: Clock, label: language === 'kh' ? 'ទំនិញកំពុងផ្ទេរ' : 'Pending Transfers', restrictedForBranchUser: false },
         { id: 'stockOut', icon: MinusCircle, label: t.stockOut, restrictedForBranchUser: false },
         { id: 'adjustment', icon: SlidersHorizontal, label: t.adjustment, restrictedForBranchUser: false },
       ]
@@ -66,6 +69,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
     {
       title: language === 'kh' ? 'ប្រព័ន្ធ' : 'System',
       items: [
+        { id: 'auditTrail', icon: History, label: language === 'kh' ? 'ប្រវត្តិសវនកម្ម (Audit Trail)' : 'Audit Trail', restrictedForBranchUser: false },
         { id: 'sql', icon: Database, label: t.sqlCode, restrictedForBranchUser: false },
       ]
     }
