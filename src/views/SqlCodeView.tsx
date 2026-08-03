@@ -32,12 +32,12 @@ export function SqlCodeView() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-[#C2E4D5] text-[#03291E] rounded-xl border border-[#A3D8C2]">
+          <div className="p-2.5 bg-emerald-100/80 text-emerald-800 rounded-xl border border-emerald-200/80">
             <Database size={24} />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-[#03291E]">មូលទិន្នន័យ និង កូដកម្មវិធី (Database & Python Streamlit)</h2>
-            <p className="text-xs text-[#2B6A52] font-semibold mt-0.5">
+            <h2 className="text-2xl font-bold text-slate-900">មូលទិន្នន័យ និង កូដកម្មវិធី (Database & Python Streamlit)</h2>
+            <p className="text-xs text-slate-500 font-semibold mt-0.5">
               Supabase Backend Schema & Functional Python Streamlit Application
             </p>
           </div>
@@ -45,23 +45,23 @@ export function SqlCodeView() {
 
         <button
           onClick={handleCopy}
-          className="flex items-center space-x-2 bg-[#03291E] hover:bg-[#1E6047] text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-xs shrink-0 self-start sm:self-auto"
+          className="flex items-center space-x-2 bg-[#03291E] hover:bg-[#1E6047] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 self-start sm:self-auto"
         >
           {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
           <span>{copied ? 'បានចម្លង! (Copied)' : 'ចម្លងកូដ (Copy Code)'}</span>
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-[#C2E4D5] shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         {/* Tabs */}
-        <div className="bg-[#C2E4D5] border-b border-[#B0DAC7] px-4 py-3 flex items-center justify-between">
+        <div className="bg-slate-50/90 border-b border-slate-200/80 px-4 py-3 flex items-center justify-between">
           <div className="flex space-x-2">
             <button
               onClick={() => setActiveTab('python')}
               className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 ${
                 activeTab === 'python'
                   ? 'bg-[#03291E] text-white shadow-xs'
-                  : 'text-[#03291E] hover:bg-[#A3D8C2]/50'
+                  : 'text-slate-700 hover:bg-slate-200/60'
               }`}
             >
               <FileText size={16} />
@@ -72,7 +72,7 @@ export function SqlCodeView() {
               className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 ${
                 activeTab === 'sql'
                   ? 'bg-[#03291E] text-white shadow-xs'
-                  : 'text-[#03291E] hover:bg-[#A3D8C2]/50'
+                  : 'text-slate-700 hover:bg-slate-200/60'
               }`}
             >
               <Code2 size={16} />
@@ -80,12 +80,12 @@ export function SqlCodeView() {
             </button>
           </div>
 
-          <span className="text-xs font-mono text-[#03291E] font-bold hidden md:inline-block">
+          <span className="text-xs font-mono text-slate-600 font-bold hidden md:inline-block">
             {activeTab === 'python' ? 'app.py' : 'schema.sql'}
           </span>
         </div>
 
-        <div className="p-4 bg-[#1E293B] overflow-auto max-h-[620px]">
+        <div className="p-4 bg-[#0F172A] overflow-auto max-h-[620px]">
           <pre className="text-xs font-mono text-[#7DD3FC] leading-relaxed whitespace-pre-wrap">
             <code>{activeTab === 'python' ? pythonCode : sqlCode}</code>
           </pre>

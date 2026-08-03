@@ -263,18 +263,18 @@ export function NewItemView() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-xs border border-slate-200/90 overflow-hidden">
         {/* Header Section */}
-        <div className="px-6 py-4 border-b border-gray-100 bg-[#F2F9F6] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-200/80 bg-slate-50/90 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-teal-100 text-teal-700 rounded-lg">
+            <div className="p-2 bg-teal-100/80 text-teal-800 rounded-lg">
               <PlusCircle size={20} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-[#03291E]" style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}>
+              <h2 className="text-xl font-bold text-slate-900">
                 បញ្ចូលព័ត៌មានសម្ភារថ្មី (New Item Entry)
               </h2>
-              <p className="text-xs text-teal-800 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 បំពេញព័ត៌មានសម្ភារដើម្បីបញ្ចូលទៅក្នុង Supabase Database និងប្រព័ន្ធគ្រប់គ្រងស្តុក
               </p>
             </div>

@@ -45,9 +45,9 @@ export function StockOutView() {
   };
 
   return (
-    <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-lg flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
+    <div className="flex-1 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
       {submitSuccess && (
-        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 p-4 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="flex items-center gap-3">
             <div className="bg-rose-100 p-1.5 rounded-full text-rose-700">
               <MinusCircle size={20} />
@@ -63,13 +63,13 @@ export function StockOutView() {
         </div>
       )}
 
-      <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between bg-white">
+      <div className="border-b border-slate-200/80 px-6 py-4 flex items-center justify-between bg-slate-50/90">
         <div className="flex items-center space-x-3">
-          <div className="bg-red-100 p-2 rounded-lg">
-            <MinusCircle size={24} className="text-[#900033]" />
+          <div className="bg-rose-100/80 p-2 rounded-lg">
+            <MinusCircle size={24} className="text-rose-800" />
           </div>
           <div>
-            <h2 className="text-lg font-bold">{t.stockOut}</h2>
+            <h2 className="text-lg font-bold text-slate-900">{t.stockOut}</h2>
             <p className="text-xs text-slate-500">បំពេញព័ត៌មានខាងក្រោមដើម្បីកាត់បន្ថយស្តុកបច្ចុប្បន្ន</p>
           </div>
         </div>

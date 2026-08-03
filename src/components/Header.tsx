@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Settings } from 'lucide-react';
+import { Settings, User } from 'lucide-react';
 
 export function Header() {
   const { language, t } = useLanguage();
@@ -21,6 +21,17 @@ export function Header() {
       </div>
 
       <div className="flex items-center space-x-3">
+        {/* User Role Admin-GDT */}
+        <div className="flex items-center space-x-2.5 bg-[#03291E]/10 px-3 py-1.5 rounded-xl border border-[#03291E]/20 shadow-2xs">
+          <div className="w-8 h-8 rounded-full bg-[#03291E] text-[#A3D8C2] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+            <User size={18} />
+          </div>
+          <div className="flex flex-col text-left pr-1">
+            <span className="text-[9px] font-bold text-[#03291E]/70 uppercase leading-none">User Role</span>
+            <span className="text-xs font-bold text-[#03291E] leading-tight">{t.userRole}</span>
+          </div>
+        </div>
+
         <button className="p-2 hover:bg-[#03291E]/10 rounded-full transition-colors text-[#03291E]">
           <Settings size={20} />
         </button>
@@ -28,3 +39,4 @@ export function Header() {
     </header>
   );
 }
+

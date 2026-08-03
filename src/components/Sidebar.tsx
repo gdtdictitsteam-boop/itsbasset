@@ -55,34 +55,23 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
 
   return (
     <aside className="w-[266px] bg-[#F2F9F6] border-r border-[#CDE5DA] p-4 flex flex-col shrink-0">
-      {/* User Info */}
-      <div className="bg-[#E1F2EA] p-4 rounded-xl border border-[#C2E4D5] mb-6 shadow-2xs">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-[#C2E4D5] border-2 border-white flex items-center justify-center">
-            <svg className="w-6 h-6 text-[#1E6047]" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"></path></svg>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-[10px] font-bold text-[#2B6A52] uppercase">User Role</p>
-            <p className="text-sm font-bold text-[#03291E] truncate">{t.userRole}</p>
-          </div>
-        </div>
-        <div className="mt-3 pt-3 border-t border-[#C2E4D5]">
-          <label className="text-[10px] font-bold text-[#2B6A52] uppercase flex items-center justify-between mb-1">
-            <span>LOCATION (ទីតាំងស្តុក)</span>
-            <MapPin size={12} className="text-[#1E6047]" />
-          </label>
-          <select
-            value={selectedLocationId}
-            onChange={(e) => setSelectedLocationId(e.target.value)}
-            className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-[#BDE0D0] rounded-lg p-2 focus:ring-2 focus:ring-[#1E6047]/20 focus:border-[#1E6047] outline-none cursor-pointer truncate shadow-2xs hover:border-[#9FD2BC] transition-colors"
-          >
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.id}>
-                {language === 'kh' ? loc.name_kh : loc.name_en}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Location Selector */}
+      <div className="bg-[#E1F2EA] p-3.5 rounded-xl border border-[#C2E4D5] mb-6 shadow-2xs">
+        <label className="text-[10px] font-bold text-[#2B6A52] uppercase flex items-center justify-between mb-1.5">
+          <span>LOCATION (ទីតាំងស្តុក)</span>
+          <MapPin size={13} className="text-[#1E6047]" />
+        </label>
+        <select
+          value={selectedLocationId}
+          onChange={(e) => setSelectedLocationId(e.target.value)}
+          className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-[#BDE0D0] rounded-lg p-2 focus:ring-2 focus:ring-[#1E6047]/20 focus:border-[#1E6047] outline-none cursor-pointer truncate shadow-2xs hover:border-[#9FD2BC] transition-colors"
+        >
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>
+              {language === 'kh' ? loc.name_kh : loc.name_en}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Menu Navigation */}

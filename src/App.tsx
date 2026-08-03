@@ -52,7 +52,7 @@ function MainLayout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
         
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 -ml-5 mr-0 -mt-[11px]">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 -ml-5 mr-0 -mt-[11px] bg-[#F4F7F6]">
           {renderView()}
         </main>
       </div>

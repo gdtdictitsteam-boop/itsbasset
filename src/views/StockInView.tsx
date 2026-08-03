@@ -59,9 +59,9 @@ export function StockInView() {
   };
 
   return (
-    <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-lg flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
+    <div className="flex-1 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
       {submitSuccess && (
-        <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 p-4 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="flex items-center gap-3">
             <div className="bg-emerald-100 p-1.5 rounded-full text-emerald-700">
               <Check size={20} />
@@ -77,13 +77,13 @@ export function StockInView() {
         </div>
       )}
 
-      <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between bg-white">
+      <div className="border-b border-slate-200/80 px-6 py-4 flex items-center justify-between bg-slate-50/90">
         <div className="flex items-center space-x-3">
-          <div className="bg-emerald-50 p-2 rounded-lg">
-            <PlusSquare size={24} className="text-emerald-700" />
+          <div className="bg-emerald-100/80 p-2 rounded-lg">
+            <PlusSquare size={24} className="text-emerald-800" />
           </div>
           <div>
-            <h2 className="text-lg font-bold">{t.stockIn}</h2>
+            <h2 className="text-lg font-bold text-slate-900">{t.stockIn}</h2>
             <p className="text-xs text-slate-500">បញ្ចូលស្តុកសម្ភារៈថ្មីទៅក្នុងប្រព័ន្ធ</p>
           </div>
         </div>
