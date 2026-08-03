@@ -6,6 +6,8 @@
 import React, { useState } from 'react';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { LocationProvider } from './contexts/LocationContext';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './views/DashboardView';
@@ -28,18 +30,30 @@ function MainLayout() {
         return <DashboardView />;
       case 'inventory':
         return <InventoryView />;
+      case 'stockIn':
+        return (
+          <ProtectedRoute allowedRoles={['CentralAdmin', 'Admin-GDT']}>
+            <StockInView />
+          </ProtectedRoute>
+        );
+      case 'handover':
+        return (
+          <ProtectedRoute allowedRoles={['CentralAdmin', 'Admin-GDT']}>
+            <HandoverView />
+          </ProtectedRoute>
+        );
+      case 'newSku':
+        return (
+          <ProtectedRoute allowedRoles={['CentralAdmin', 'Admin-GDT']}>
+            <NewItemView />
+          </ProtectedRoute>
+        );
       case 'stockOut':
         return <StockOutView />;
-      case 'handover':
-        return <HandoverView />;
-      case 'sql':
-        return <SqlCodeView />;
-      case 'stockIn':
-        return <StockInView />;
-      case 'newSku':
-        return <NewItemView />;
       case 'adjustment':
         return <PlaceholderView title={t.adjustment} />;
+      case 'sql':
+        return <SqlCodeView />;
       default:
         return <DashboardView />;
     }
@@ -71,13 +85,22 @@ function MainLayout() {
   );
 }
 
+function AuthenticatedApp() {
+  return (
+    <ProtectedRoute>
+      <MainLayout />
+    </ProtectedRoute>
+  );
+}
+
 export default function App() {
   return (
     <LanguageProvider>
       <LocationProvider>
-        <MainLayout />
+        <AuthProvider>
+          <AuthenticatedApp />
+        </AuthProvider>
       </LocationProvider>
     </LanguageProvider>
   );
 }
-

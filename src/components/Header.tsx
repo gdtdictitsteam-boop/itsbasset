@@ -1,9 +1,11 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Settings, User } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { Settings, User, LogOut } from 'lucide-react';
 
 export function Header() {
   const { language, t } = useLanguage();
+  const { user, userRole, userDisplayName, signOut } = useAuth();
 
   return (
     <header className="bg-[#A3D8C2] text-[#03291E] flex items-center justify-between px-6 py-3 shadow-sm border-b-4 border-[#6EC8A0] shrink-0">
@@ -21,22 +23,35 @@ export function Header() {
       </div>
 
       <div className="flex items-center space-x-3">
-        {/* User Role Admin-GDT */}
+        {/* Real User Role & Identity Badge */}
         <div className="flex items-center space-x-2.5 bg-[#03291E]/10 px-3 py-1.5 rounded-xl border border-[#03291E]/20 shadow-2xs">
           <div className="w-8 h-8 rounded-full bg-[#03291E] text-[#A3D8C2] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
             <User size={18} />
           </div>
           <div className="flex flex-col text-left pr-1">
-            <span className="text-[9px] font-bold text-[#03291E]/70 uppercase leading-none">User Role</span>
-            <span className="text-xs font-bold text-[#03291E] leading-tight">{t.userRole}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-bold text-[#03291E]/70 uppercase leading-none">{userRole}</span>
+            </div>
+            <span className="text-xs font-bold text-[#03291E] leading-tight max-w-[140px] truncate">
+              {userDisplayName || user?.email || t.userRole}
+            </span>
           </div>
         </div>
 
-        <button className="p-2 hover:bg-[#03291E]/10 rounded-full transition-colors text-[#03291E]">
+        <button className="p-2 hover:bg-[#03291E]/10 rounded-full transition-colors text-[#03291E]" title="Settings">
           <Settings size={20} />
+        </button>
+
+        {/* Logout Button */}
+        <button
+          onClick={signOut}
+          className="flex items-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs"
+          title="Logout (ចាកចេញ)"
+        >
+          <LogOut size={15} />
+          <span className="hidden sm:inline">ចាកចេញ</span>
         </button>
       </div>
     </header>
   );
 }
-

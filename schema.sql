@@ -124,3 +124,118 @@ INSERT INTO public.locations (name_kh, name_en, type, code) VALUES
 ('សាខាពន្ធដារខេត្តក្រចេះ', 'Kratie Branch', 'BRANCH', 'KTI'),
 ('សាខាពន្ធដារខេត្តប៉ៃលិន', 'Pailin Branch', 'BRANCH', 'PLI')
 ON CONFLICT (code) DO NOTHING;
+
+-- =========================================================================
+-- STEP 2: USER PROFILES & ROW LEVEL SECURITY (RLS) POLICIES
+-- =========================================================================
+
+-- 1. Create User Profiles Table linked to Supabase auth.users
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
+    role VARCHAR(50) NOT NULL DEFAULT 'BranchUser', -- 'CentralAdmin' or 'BranchUser'
+    location_id UUID REFERENCES public.locations(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS on user_profiles
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policy: CentralAdmin full access, User read own profile
+CREATE POLICY "CentralAdmin full access on user_profiles"
+ON public.user_profiles FOR ALL
+USING (
+    auth.jwt() ->> 'role' = 'CentralAdmin' 
+    OR auth.jwt() ->> 'role' = 'Admin-GDT'
+    OR EXISTS (
+        SELECT 1 FROM public.user_profiles 
+        WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+    )
+);
+
+CREATE POLICY "Users view own user_profile"
+ON public.user_profiles FOR SELECT
+USING (auth.uid() = id);
+
+-- 2. ENABLE ROW LEVEL SECURITY ON INVENTORY TABLE
+ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
+
+-- 2.1 CentralAdmin Policy: Can SELECT, INSERT, UPDATE, DELETE all inventory rows
+CREATE POLICY "CentralAdmin full access to inventory"
+ON public.inventory
+FOR ALL
+USING (
+    auth.jwt() ->> 'role' = 'CentralAdmin'
+    OR auth.jwt() ->> 'role' = 'Admin-GDT'
+    OR EXISTS (
+        SELECT 1 FROM public.user_profiles
+        WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+    )
+)
+WITH CHECK (
+    auth.jwt() ->> 'role' = 'CentralAdmin'
+    OR auth.jwt() ->> 'role' = 'Admin-GDT'
+    OR EXISTS (
+        SELECT 1 FROM public.user_profiles
+        WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+    )
+);
+
+-- 2.2 BranchUser Policy: Can ONLY SELECT inventory rows matching their assigned location_id
+CREATE POLICY "BranchUser view assigned location inventory only"
+ON public.inventory
+FOR SELECT
+USING (
+    location_id IN (
+        SELECT location_id FROM public.user_profiles
+        WHERE id = auth.uid() AND role = 'BranchUser'
+    )
+    OR location_id = (auth.jwt() ->> 'location_id')::uuid
+);
+
+-- =========================================================================
+-- STEP 3: SUPABASE STORAGE BUCKET & STORAGE POLICIES FOR HANDOVER DOCS
+-- =========================================================================
+
+-- 1. Create Public Storage Bucket "handover_docs"
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'handover_docs', 
+    'handover_docs', 
+    true, 
+    5242880, -- 5MB limit in bytes
+    ARRAY['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+)
+ON CONFLICT (id) DO UPDATE 
+SET public = true,
+    file_size_limit = 5242880,
+    allowed_mime_types = ARRAY['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+
+-- 2. Enable RLS on storage.objects (if not already enabled)
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- 3. Policy: CentralAdmin Can Upload / Insert documents to handover_docs bucket
+CREATE POLICY "CentralAdmin upload handover documents"
+ON storage.objects
+FOR INSERT
+TO authenticated
+WITH CHECK (
+    bucket_id = 'handover_docs'
+    AND (
+        auth.jwt() ->> 'role' = 'CentralAdmin'
+        OR auth.jwt() ->> 'role' = 'Admin-GDT'
+        OR EXISTS (
+            SELECT 1 FROM public.user_profiles
+            WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+        )
+    )
+);
+
+-- 4. Policy: Authenticated users can SELECT / Read handover documents
+CREATE POLICY "Authenticated users view handover documents"
+ON storage.objects
+FOR SELECT
+TO authenticated
+USING (bucket_id = 'handover_docs');
+

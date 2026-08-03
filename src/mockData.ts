@@ -103,3 +103,20 @@ export const mockInventory: InventoryItem[] = [
     item_code: 'S-005', item_name_kh: 'ម៉ាសពេទ្យ', item_name_en: 'Medical Mask', category: 'Suppliers', unit: 'ប្រអប់', location_name_kh: 'សាខាពន្ធដារខណ្ឌដង្កោ', location_name_en: 'Dangkor Branch'
   }
 ];
+
+export const mockTransactions: any[] = [
+  {
+    id: 'tx-001',
+    date: new Date(Date.now() - 86400000 * 2).toISOString(),
+    type: 'HANDOVER',
+    from_location: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
+    to_location: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)',
+    item_code: 'T-001',
+    item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
+    quantity: 2,
+    unit: 'គ្រឿង',
+    recorded_by: 'មន្ត្រីគ្រប់គ្រងស្តុកកណ្តាល',
+    remark: 'ផ្ទេរសម្ភារៈបច្ចេកទេសជូនសាខា ៧មករា | ឯកសារយោង: https://supabase.gdt.gov.kh/storage/v1/object/public/handover_docs/demo_handover_7mk.pdf'
+  }
+];
+

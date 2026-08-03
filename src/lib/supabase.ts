@@ -8,7 +8,13 @@ const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || '';
 const validUrl = supabaseUrl && supabaseUrl.startsWith('http') ? supabaseUrl : 'https://placeholder.supabase.co';
 const validKey = supabaseAnonKey || 'placeholder-key';
 
-export const supabase = createClient(validUrl, validKey);
+export const supabase = createClient(validUrl, validKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
 
 /**
  * Check whether valid Supabase credentials have been provided
@@ -205,4 +211,3 @@ export async function fetchAllRows(tableName: string, query = '*', orderBy = 'id
 
   return allData;
 }
-
