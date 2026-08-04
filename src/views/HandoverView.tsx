@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mockData';
@@ -27,6 +27,29 @@ export function HandoverView() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadedDocUrl, setUploadedDocUrl] = useState<string | null>(null);
 
+  // Data States
+  const [locations, setLocations] = useState(isSupabaseConfigured() ? [] : mockLocations);
+  const [items, setItems] = useState(isSupabaseConfigured() ? [] : mockItems);
+
+  // Fetch real data from Supabase if configured
+  useEffect(() => {
+    async function fetchData() {
+      if (isSupabaseConfigured()) {
+        const [locsRes, itemsRes] = await Promise.all([
+          supabase.from('locations').select('*'),
+          supabase.from('items').select('*')
+        ]);
+        
+        let fetchedLocations = locsRes.data as any || [];
+        let fetchedItems = itemsRes.data as any || [];
+        
+        setLocations(fetchedLocations);
+        setItems(fetchedItems);
+      }
+    }
+    fetchData();
+  }, []);
+
   // Form States
   const [selectedItemId, setSelectedItemId] = useState('');
   const [fromLocationId, setFromLocationId] = useState('');
@@ -40,19 +63,26 @@ export function HandoverView() {
   const [fileValidationError, setFileValidationError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
-  const selectedItem = mockItems.find(i => i.id === selectedItemId);
-  const branchLocations = mockLocations.filter(loc => loc.type === 'BRANCH');
-  const hqLocations = mockLocations.filter(loc => loc.type === 'HQ');
+  const selectedItem = items.find(i => i.id === selectedItemId);
+  const branchLocations = locations.filter(loc => loc.type === 'BRANCH');
+  const hqLocations = locations.filter(loc => loc.type === 'HQ');
 
   // Automatically select default HQ location if available
   React.useEffect(() => {
-    if (hqLocations.length > 0 && !fromLocationId) {
+    // If fromLocationId is invalid, reset it
+    const isValidFrom = hqLocations.some(l => l.id === fromLocationId);
+    if (hqLocations.length > 0 && (!fromLocationId || !isValidFrom)) {
       setFromLocationId(hqLocations[0].id);
     }
+    
+    // Clear selections if invalid
+    if (toBranchId && !branchLocations.some(l => l.id === toBranchId)) setToBranchId('');
+    if (selectedItemId && !items.some(i => i.id === selectedItemId)) setSelectedItemId('');
+
     if (!officerName && userDisplayName) {
       setOfficerName(userDisplayName);
     }
-  }, [hqLocations, userDisplayName]);
+  }, [hqLocations, branchLocations, items, fromLocationId, toBranchId, selectedItemId, userDisplayName]);
 
   // File Validation Handler (Strict Security Rules: PDF/JPG/PNG & Max 5MB)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -412,7 +442,7 @@ export function HandoverView() {
                 disabled={!isCentralAdmin}
               >
                 <option value="">-- {t.selectItem} --</option>
-                {mockItems.map(item => (
+                {items.map(item => (
                   <option key={item.id} value={item.id}>
                     [{item.code}] {language === 'kh' ? item.name_kh : item.name_en}
                   </option>

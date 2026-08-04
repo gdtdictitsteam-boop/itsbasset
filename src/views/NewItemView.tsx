@@ -26,6 +26,19 @@ export function NewItemView() {
 
   const isConfigured = isSupabaseConfigured();
 
+  const [locations, setLocations] = useState(isConfigured ? [] : mockLocations);
+
+  useEffect(() => {
+    async function fetchLocations() {
+      if (isConfigured) {
+        const { supabase } = await import('../lib/supabase');
+        const { data } = await supabase.from('locations').select('*');
+        if (data) setLocations(data as any);
+      }
+    }
+    fetchLocations();
+  }, [isConfigured]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -487,14 +500,13 @@ export function NewItemView() {
               <select
                 id="locationId"
                 name="locationId"
-                defaultValue="1"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white"
               >
-                {mockLocations.map((loc) => (
+                {locations.length > 0 ? locations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
                     [{loc.code}] {loc.name_kh}
                   </option>
-                ))}
+                )) : <option value="">-- {isConfigured ? 'កំពុងទាញយក...' : 'គ្មានទីតាំង'} --</option>}
               </select>
             </div>
           </div>
