@@ -63,9 +63,40 @@ export function HandoverView() {
   const [fileValidationError, setFileValidationError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
+  const [availableQty, setAvailableQty] = useState<number | null>(null);
+
   const selectedItem = items.find(i => i.id === selectedItemId);
   const branchLocations = locations.filter(loc => loc.type === 'BRANCH');
   const hqLocations = locations.filter(loc => loc.type === 'HQ');
+
+  // Fetch available stock for selected location and item
+  useEffect(() => {
+    async function checkStock() {
+      if (!selectedItemId || !fromLocationId) {
+        setAvailableQty(null);
+        return;
+      }
+      
+      if (isSupabaseConfigured()) {
+        const { data, error } = await supabase
+          .from('inventory')
+          .select('quantity')
+          .eq('location_id', fromLocationId)
+          .eq('item_id', selectedItemId)
+          .maybeSingle();
+          
+        if (data) {
+          setAvailableQty(data.quantity);
+        } else {
+          setAvailableQty(0);
+        }
+      } else {
+        const inv = mockInventory.find(i => i.item_id === selectedItemId && i.location_id === fromLocationId);
+        setAvailableQty(inv ? inv.quantity : 0);
+      }
+    }
+    checkStock();
+  }, [selectedItemId, fromLocationId, submitSuccess]);
 
   // Automatically select default HQ location if available
   React.useEffect(() => {
@@ -149,6 +180,11 @@ export function HandoverView() {
 
     if (fromLocationId === toBranchId) {
       setSubmitError('ទីតាំងដើម និងទីតាំងគោលដៅ មិនអាចដូចគ្នាបានទេ!');
+      return;
+    }
+
+    if (availableQty !== null && Number(quantity) > availableQty) {
+      setSubmitError(`បរាជ័យ! ចំនួនស្នើសុំ (${quantity}) ច្រើនជាងចំនួនស្តុកដែលមាន (${availableQty})`);
       return;
     }
 
@@ -455,10 +491,16 @@ export function HandoverView() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
                   {t.quantity} <span className="text-rose-500">*</span>
+                  {availableQty !== null && (
+                    <span className={`ml-2 normal-case font-medium text-[11px] ${availableQty > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      (ស្តុកមាន: {availableQty})
+                    </span>
+                  )}
                 </label>
                 <input 
                   type="number" 
                   min="1" 
+                  max={availableQty !== null ? availableQty : undefined}
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value === '' ? '' : Number(e.target.value))}
                   placeholder="0"
