@@ -1,17 +1,50 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
 import { mockInventory } from '../mockData';
 import { Wrench, Package as PackageIcon, MapPin } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 export function InventoryView() {
   const { t, language } = useLanguage();
   const { selectedLocationId, selectedLocation } = useLocationContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const [inventory, setInventory] = useState<any[]>(isSupabaseConfigured() ? [] : mockInventory);
+  
+  useEffect(() => {
+    async function fetchInventory() {
+      if (isSupabaseConfigured()) {
+        const { supabase } = await import('../lib/supabase');
+        const { data, error } = await supabase
+          .from('inventory')
+          .select(`
+            *,
+            items ( code, name_kh, name_en, category, unit ),
+            locations ( name_kh, name_en )
+          `);
+          
+        if (data && !error) {
+          const formatted = data.map((inv: any) => ({
+            ...inv,
+            item_code: inv.items?.code || '',
+            item_name_kh: inv.items?.name_kh || '',
+            item_name_en: inv.items?.name_en || '',
+            category: inv.items?.category || '',
+            unit: inv.items?.unit || '',
+            location_name_kh: inv.locations?.name_kh || '',
+            location_name_en: inv.locations?.name_en || ''
+          }));
+          setInventory(formatted);
+        }
+      }
+    }
+    fetchInventory();
+  }, []);
 
-  const filteredInventory = mockInventory.filter(item => {
+  const filteredInventory = inventory.filter(item => {
     const matchesLocation = selectedLocationId === 'ALL' || selectedLocation.code === 'ALL' || item.location_id === selectedLocationId || item.location_name_kh.includes(selectedLocation.code) || item.location_name_kh.includes(selectedLocation.name_kh);
     const matchesTab = activeTab === 'ALL' || item.category === activeTab;
     const matchesSearch = item.item_code.toLowerCase().includes(searchQuery.toLowerCase()) || 

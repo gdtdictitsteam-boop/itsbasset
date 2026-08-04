@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { mockLocations, mockItems, mockInventory } from '../mockData';
 import { PlusSquare, Check, X } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 export function StockInView() {
   const { t, language } = useLanguage();
@@ -9,7 +10,25 @@ export function StockInView() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState('');
 
-  const selectedItem = mockItems.find(i => i.id === selectedItemId);
+  const [locations, setLocations] = useState(isSupabaseConfigured() ? [] : mockLocations);
+  const [items, setItems] = useState(isSupabaseConfigured() ? [] : mockItems);
+
+  useEffect(() => {
+    async function fetchData() {
+      if (isSupabaseConfigured()) {
+        const { supabase } = await import('../lib/supabase');
+        const [locsRes, itemsRes] = await Promise.all([
+          supabase.from('locations').select('*'),
+          supabase.from('items').select('*')
+        ]);
+        if (locsRes.data) setLocations(locsRes.data as any);
+        if (itemsRes.data) setItems(itemsRes.data as any);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const selectedItem = items.find(i => i.id === selectedItemId);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,29 +40,75 @@ export function StockInView() {
     const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement).value || '0', 10);
     const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
 
-    setTimeout(() => {
+    setTimeout(async () => {
       if (selectedItem && quantity > 0) {
-        // Update inventory logic
-        const existingInventoryIndex = mockInventory.findIndex(inv => inv.item_id === selectedItem.id && inv.location_id === locationId);
-        
-        if (existingInventoryIndex >= 0) {
-          mockInventory[existingInventoryIndex].quantity += quantity;
-          mockInventory[existingInventoryIndex].last_updated = new Date().toISOString();
+        if (isSupabaseConfigured()) {
+          const { supabase } = await import('../lib/supabase');
+          
+          // Use an RPC if available, or update inventory directly
+          // We'll update directly for now:
+          
+          // 1. Check if inventory exists
+          const { data: invData } = await supabase
+            .from('inventory')
+            .select('*')
+            .eq('location_id', locationId)
+            .eq('item_id', selectedItem.id)
+            .maybeSingle();
+            
+          if (invData) {
+            await supabase
+              .from('inventory')
+              .update({ 
+                quantity: invData.quantity + quantity,
+                last_updated: new Date().toISOString()
+              })
+              .eq('id', invData.id);
+          } else {
+            await supabase
+              .from('inventory')
+              .insert([{
+                location_id: locationId,
+                item_id: selectedItem.id,
+                quantity: quantity
+              }]);
+          }
+          
+          // 2. Add transaction
+          await supabase
+            .from('transactions')
+            .insert([{
+              type: 'STOCK_IN',
+              to_location_id: locationId,
+              item_id: selectedItem.id,
+              quantity: quantity,
+              remark: purpose,
+              recorded_by: (form.elements.namedItem('officerName') as HTMLInputElement).value
+            }]);
+            
         } else {
-          const loc = mockLocations.find(l => l.id === locationId);
-          mockInventory.push({
-            location_id: locationId,
-            item_id: selectedItem.id,
-            quantity: quantity,
-            last_updated: new Date().toISOString(),
-            item_code: selectedItem.code,
-            item_name_kh: selectedItem.name_kh,
-            item_name_en: selectedItem.name_en,
-            category: selectedItem.category,
-            unit: selectedItem.unit,
-            location_name_kh: loc?.name_kh || '',
-            location_name_en: loc?.name_en || ''
-          });
+          // Fallback to local mock data
+          const existingInventoryIndex = mockInventory.findIndex(inv => inv.item_id === selectedItem.id && inv.location_id === locationId);
+          
+          if (existingInventoryIndex >= 0) {
+            mockInventory[existingInventoryIndex].quantity += quantity;
+            mockInventory[existingInventoryIndex].last_updated = new Date().toISOString();
+          } else {
+            const loc = mockLocations.find(l => l.id === locationId);
+            mockInventory.push({
+              location_id: locationId,
+              item_id: selectedItem.id,
+              quantity: quantity,
+              last_updated: new Date().toISOString(),
+              item_code: selectedItem.code,
+              item_name_kh: selectedItem.name_kh,
+              item_name_en: selectedItem.name_en,
+              category: selectedItem.category,
+              unit: selectedItem.unit,
+              location_name_kh: loc?.name_kh || '',
+              location_name_en: loc?.name_en || ''
+            });
+          }
         }
       }
 
@@ -102,7 +167,7 @@ export function StockInView() {
                 required
               >
                 <option value="">-- {t.selectItem} --</option>
-                {mockItems.map(item => (
+                {items.map(item => (
                   <option key={item.id} value={item.id}>
                     [{item.code}] {language === 'kh' ? item.name_kh : item.name_en}
                   </option>
@@ -114,7 +179,7 @@ export function StockInView() {
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">ទីតាំងបញ្ចូល (Location)</label>
               <select name="locationId" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700" required>
                 <option value="">-- ជ្រើសរើសទីតាំង --</option>
-                {mockLocations.map(loc => (
+                {locations.map(loc => (
                   <option key={loc.id} value={loc.id}>
                     {language === 'kh' ? loc.name_kh : loc.name_en}
                   </option>
