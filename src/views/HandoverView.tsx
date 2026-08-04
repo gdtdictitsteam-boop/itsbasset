@@ -500,7 +500,7 @@ export function HandoverView() {
                 <input 
                   type="number" 
                   min="1" 
-                  max={availableQty !== null ? availableQty : undefined}
+                  max={availableQty !== null && availableQty > 0 ? availableQty : undefined}
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value === '' ? '' : Number(e.target.value))}
                   placeholder="0"
