@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mockData';
@@ -35,48 +35,24 @@ export function HandoverView() {
   const [officerName, setOfficerName] = useState('');
   const [purpose, setPurpose] = useState('');
 
-  // Data fetching states
-  const [locations, setLocations] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
-
   // File Upload States
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileValidationError, setFileValidationError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadData() {
-      if (isSupabaseConfigured()) {
-        try {
-          const { data: locData } = await supabase.from('locations').select('*').order('name_kh');
-          if (locData) setLocations(locData);
-
-          const { data: itemData } = await supabase.from('items').select('*').order('name_kh');
-          if (itemData) setItems(itemData);
-        } catch (error) {
-          console.error("Error fetching handover options data:", error);
-        }
-      } else {
-        setLocations(mockLocations);
-        setItems(mockItems);
-      }
-    }
-    loadData();
-  }, []);
-
-  const selectedItem = items.find(i => i.id === selectedItemId);
-  const branchLocations = locations.filter(loc => loc.type === 'BRANCH');
-  const hqLocations = locations.filter(loc => loc.type === 'HQ');
+  const selectedItem = mockItems.find(i => i.id === selectedItemId);
+  const branchLocations = mockLocations.filter(loc => loc.type === 'BRANCH');
+  const hqLocations = mockLocations.filter(loc => loc.type === 'HQ');
 
   // Automatically select default HQ location if available
-  useEffect(() => {
+  React.useEffect(() => {
     if (hqLocations.length > 0 && !fromLocationId) {
       setFromLocationId(hqLocations[0].id);
     }
     if (!officerName && userDisplayName) {
       setOfficerName(userDisplayName);
     }
-  }, [hqLocations, userDisplayName, fromLocationId, officerName]);
+  }, [hqLocations, userDisplayName]);
 
   // File Validation Handler (Strict Security Rules: PDF/JPG/PNG & Max 5MB)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -228,8 +204,8 @@ export function HandoverView() {
           mockInventory[targetIndex].quantity += Number(quantity);
           mockInventory[targetIndex].last_updated = new Date().toISOString();
         } else {
-          const itemObj = items.find(i => i.id === selectedItemId);
-          const locObj = locations.find(l => l.id === toBranchId);
+          const itemObj = mockItems.find(i => i.id === selectedItemId);
+          const locObj = mockLocations.find(l => l.id === toBranchId);
           if (itemObj) {
             mockInventory.push({
               location_id: toBranchId,
@@ -248,8 +224,8 @@ export function HandoverView() {
         }
 
         // Add Transaction record
-        const fromLoc = locations.find(l => l.id === fromLocationId);
-        const toLoc = locations.find(l => l.id === toBranchId);
+        const fromLoc = mockLocations.find(l => l.id === fromLocationId);
+        const toLoc = mockLocations.find(l => l.id === toBranchId);
         mockTransactions.unshift({
           id: `tx-${Date.now()}`,
           date: new Date().toISOString(),
@@ -392,9 +368,8 @@ export function HandoverView() {
                   onChange={(e) => setFromLocationId(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" 
                   required
-                  disabled={!isCentralAdmin || hqLocations.length === 0}
+                  disabled={!isCentralAdmin}
                 >
-                  <option value="">-- ទីតាំងដើម --</option>
                   {hqLocations.map(loc => (
                     <option key={loc.id} value={loc.id}>
                       {language === 'kh' ? loc.name_kh : loc.name_en}
@@ -412,7 +387,7 @@ export function HandoverView() {
                   onChange={(e) => setToBranchId(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" 
                   required
-                  disabled={!isCentralAdmin || branchLocations.length === 0}
+                  disabled={!isCentralAdmin}
                 >
                   <option value="">-- ជ្រើសរើសសាខា --</option>
                   {branchLocations.map(loc => (
@@ -434,10 +409,10 @@ export function HandoverView() {
                 onChange={(e) => setSelectedItemId(e.target.value)} 
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-700/20 focus:border-blue-700" 
                 required
-                disabled={!isCentralAdmin || items.length === 0}
+                disabled={!isCentralAdmin}
               >
                 <option value="">-- {t.selectItem} --</option>
-                {items.map(item => (
+                {mockItems.map(item => (
                   <option key={item.id} value={item.id}>
                     [{item.code}] {language === 'kh' ? item.name_kh : item.name_en}
                   </option>
