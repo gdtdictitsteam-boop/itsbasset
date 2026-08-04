@@ -277,6 +277,7 @@ $$;
 -- Seed Data for Locations
 INSERT INTO public.locations (name_kh, name_en, type, code) VALUES
 ('ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB', 'HQ-ITSB Technical Inventory', 'HQ', 'HQ-ITSB'),
+('ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', 'Central Working Group (Tech-HQ)', 'BRANCH', 'Tech-HQ'),
 ('សាខាពន្ធដារខណ្ឌ៧មករា', '7 Makara Branch', 'BRANCH', '7MK'),
 ('សាខាពន្ធដារខណ្ឌចំការមន', 'Chamkarmon Branch', 'BRANCH', 'CKM'),
 ('សាខាពន្ធដារខណ្ឌដង្កោ', 'Dangkor Branch', 'BRANCH', 'DKO'),

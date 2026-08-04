@@ -2,6 +2,7 @@ import { Location, Item, InventoryItem } from './types';
 
 export const mockLocations: Location[] = [
   { id: '1', name_kh: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ', name_en: 'ITSB-HQ Technical Inventory', type: 'HQ', code: 'HQ-ITSB' },
+  { id: '35', name_kh: 'ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', name_en: 'Central Working Group (Tech-HQ)', type: 'BRANCH', code: 'Tech-HQ' },
   { id: '2', name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)', name_en: '7 Makara Branch (7MK)', type: 'BRANCH', code: '7MK' },
   { id: '3', name_kh: 'សាខាពន្ធដារខណ្ឌចំការមន (CKM)', name_en: 'Chamkarmon Branch (CKM)', type: 'BRANCH', code: 'CKM' },
   { id: '4', name_kh: 'សាខាពន្ធដារខណ្ឌដង្កោ (DKO)', name_en: 'Dangkor Branch (DKO)', type: 'BRANCH', code: 'DKO' },
