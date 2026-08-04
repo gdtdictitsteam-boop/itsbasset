@@ -71,15 +71,31 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 -- Enable RLS
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 -- Note: strictly avoiding ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
+-- -------------------------------------------------------------------------
+-- Items, Locations, Transactions (Allow all to prevent RLS errors on insert)
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
+CREATE POLICY "Allow all access on items" ON public.items FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
+CREATE POLICY "Allow all access on locations" ON public.locations FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Allow all access on transactions" ON public.transactions;
+CREATE POLICY "Allow all access on transactions" ON public.transactions FOR ALL USING (true);
+
+-- -------------------------------------------------------------------------
 -- User Profiles Policies
+-- -------------------------------------------------------------------------
 DROP POLICY IF EXISTS "CentralAdmin full access on user_profiles" ON public.user_profiles;
 CREATE POLICY "CentralAdmin full access on user_profiles"
 ON public.user_profiles FOR ALL
 USING (
-    auth.jwt() ->> 'role' = 'CentralAdmin' 
-    OR auth.jwt() ->> 'role' = 'Admin-GDT'
+    auth.jwt() ->> 'role' IN ('CentralAdmin', 'Admin-GDT')
 );
 
 DROP POLICY IF EXISTS "Users view own user_profile" ON public.user_profiles;
@@ -87,13 +103,18 @@ CREATE POLICY "Users view own user_profile"
 ON public.user_profiles FOR SELECT
 USING (auth.uid() = id);
 
+-- -------------------------------------------------------------------------
 -- Inventory Policies
+-- -------------------------------------------------------------------------
 DROP POLICY IF EXISTS "CentralAdmin full access to inventory" ON public.inventory;
 CREATE POLICY "CentralAdmin full access to inventory"
 ON public.inventory FOR ALL
 USING (
-    auth.jwt() ->> 'role' = 'CentralAdmin'
-    OR auth.jwt() ->> 'role' = 'Admin-GDT'
+    auth.jwt() ->> 'role' IN ('CentralAdmin', 'Admin-GDT')
+    OR EXISTS (
+        SELECT 1 FROM public.user_profiles
+        WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+    )
 );
 
 DROP POLICY IF EXISTS "BranchUser view assigned location inventory only" ON public.inventory;
