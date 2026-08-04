@@ -3,7 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext } from '../contexts/LocationContext';
 import { mockTransactions, mockLocations } from '../mockData';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, fetchAllRows } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -49,16 +49,11 @@ export function AuditTrailView() {
 
     if (isSupabaseConfigured()) {
       try {
-        let query = supabase
-          .from('transactions')
-          .select('*')
-          .order('date', { ascending: false });
-
         // If user is BranchUser, RLS automatically restricts rows on backend,
         // but we can also filter explicitly by location if desired
-        const { data, error } = await query;
+        // Use fetchAllRows to bypass the 1000 rows limit on Supabase Free Plan
+        const data = await fetchAllRows('transactions', '*', 'date', false);
 
-        if (error) throw error;
         setTransactions(data || []);
       } catch (err: any) {
         console.error('Error fetching audit trail from Supabase:', err);
