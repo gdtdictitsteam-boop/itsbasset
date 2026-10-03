@@ -102,10 +102,14 @@ export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): bo
   if (!rowOrLoc) return false;
   const locId = String(rowOrLoc.location_id || rowOrLoc.id || '').trim();
   const locCode = String(rowOrLoc.location_code || rowOrLoc.code || '').trim();
-  const locType = String(rowOrLoc.type || '').trim().toUpperCase();
+  const locType = String(rowOrLoc.type || rowOrLoc.location_type || '').trim().toUpperCase();
   const locNameKh = String(rowOrLoc.location_name_kh || rowOrLoc.name_kh || '').trim();
+  const locNameEn = String(rowOrLoc.location_name_en || rowOrLoc.name_en || '').trim();
 
-  // 1. Direct IDs or Codes
+  // If ALL or combined filter, never HQ
+  if (locId === 'ALL' || locCode === 'ALL' || locType === 'ALL') return false;
+
+  // 1. Direct IDs or Codes for HQ
   if (locId === '1' || locId === 'HQ-ITSB' || locCode === 'HQ-ITSB') return true;
   if (locId === '35' || locId === 'Tech-HQ' || locCode === 'Tech-HQ') return true;
   if (locType === 'HQ') return true;
@@ -115,16 +119,20 @@ export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): bo
     const found = locationsList.find(l => 
       String(l.id) === locId || 
       String(l.code) === locId || 
-      String(l.code) === locCode
+      (locCode && String(l.code) === locCode)
     );
     if (found) {
+      if (found.id === 'ALL' || found.code === 'ALL' || String(found.type).toUpperCase() === 'ALL') return false;
       if (found.type === 'HQ' || found.code === 'HQ-ITSB' || found.code === 'Tech-HQ') return true;
-      if (found.name_kh && (found.name_kh.includes('HQ') || found.name_kh.includes('ថ្នាក់កណ្តាល'))) return true;
+      if (found.name_kh && !found.name_kh.includes('ខេត្តកណ្តាល') && (found.name_kh.includes('HQ') || found.name_kh.includes('ថ្នាក់កណ្តាល'))) return true;
     }
   }
 
-  // 3. Name heuristics (covers ITSB-HQ, Tech-HQ, and central team)
-  if (locNameKh && (locNameKh.includes('HQ') || locNameKh.includes('ថ្នាក់កណ្តាល') || locNameKh.includes('កណ្តាល'))) {
+  // 3. Name heuristics (covers ITSB-HQ, Tech-HQ, and central team, explicitly excluding Kandal Province)
+  if (locNameKh && !locNameKh.includes('ខេត្តកណ្តាល') && (locNameKh.includes('HQ') || locNameKh.includes('ថ្នាក់កណ្តាល'))) {
+    return true;
+  }
+  if (locNameEn && (locNameEn.includes('HQ') || locNameEn.includes('Central Working Group'))) {
     return true;
   }
 
@@ -258,6 +266,34 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         min_stock: newItem.min_stock,
         location_name_kh: targetLoc.name_kh,
         location_name_en: targetLoc.name_en,
+        location_code: targetLoc.code,
+        type: targetLoc.type,
+        image_url: newItem.image_url,
+      });
+    }
+
+    // Ensure an HQ row exists for this item so HQ stock can always be tracked and displayed
+    const hasHqRow = mockInventory.some(inv => 
+      (String(inv.item_code) === String(newItem.code) || String(inv.item_id) === String(newItem.id)) &&
+      isHqLocationOrRow(inv, locations)
+    );
+    if (!hasHqRow) {
+      const hqLoc = locations.find(l => isHqLocationOrRow(l, locations)) || mockLocations[0];
+      mockInventory.push({
+        location_id: hqLoc.id,
+        item_id: newItem.id,
+        quantity: isTargetHq ? initialStock : 0,
+        last_updated: new Date().toISOString(),
+        item_code: newItem.code,
+        item_name_kh: newItem.name_kh,
+        item_name_en: newItem.name_en,
+        category: newItem.category,
+        unit: newItem.unit,
+        min_stock: newItem.min_stock,
+        location_name_kh: hqLoc.name_kh,
+        location_name_en: hqLoc.name_en,
+        location_code: hqLoc.code,
+        type: hqLoc.type,
         image_url: newItem.image_url,
       });
     }
@@ -352,6 +388,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         min_stock: targetItem.min_stock,
         location_name_kh: targetLocation.name_kh,
         location_name_en: targetLocation.name_en,
+        location_code: targetLocation.code,
+        type: targetLocation.type,
         image_url: targetItem.image_url,
       };
       mockInventory.push(newInvRow);

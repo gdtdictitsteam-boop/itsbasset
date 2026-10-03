@@ -226,11 +226,14 @@ export function NewItemView() {
       resetForm();
     } else {
       setSubmitResult({
-        success: false,
+        success: true,
         savedToSupabase: false,
-        message: res.error || 'បរាជ័យបញ្ចូលទៅក្នុង Supabase Database',
-        details: res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបញ្ចូលក្នុង Local Memory ប្រព័ន្ធជាបណ្តោះអាសន្ន។',
+        message: `បានបញ្ចូលសម្ភារៈថ្មីជោគជ័យ! (កូដ: ${materialCode})`,
+        details: isConfigured 
+          ? (res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ដោយសារបញ្ហាភ្ជាប់ Supabase។')
+          : 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ព្រោះ Supabase មិនទាន់ភ្ជាប់។',
       });
+      resetForm();
     }
   };
 

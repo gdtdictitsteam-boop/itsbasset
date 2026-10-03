@@ -6,7 +6,7 @@ export const ALL_LOCATIONS_OPTION: Location = {
   id: 'ALL',
   name_kh: 'ទីតាំងស្តុករួម (គ្រប់ទីតាំង)',
   name_en: 'All Combined Locations',
-  type: 'HQ',
+  type: 'ALL',
   code: 'ALL'
 };
 

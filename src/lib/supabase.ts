@@ -345,6 +345,8 @@ export async function fetchFullInventoryFromSupabase() {
           min_stock: it.min_stock ?? 0,
           location_name_kh: loc?.name_kh || 'មិនស្គាល់ទីតាំង',
           location_name_en: loc?.name_en || 'Unknown Location',
+          location_code: loc?.code || '',
+          type: loc?.type || '',
           image_url: it.image_url || undefined,
         });
       }
@@ -368,6 +370,8 @@ export async function fetchFullInventoryFromSupabase() {
           min_stock: it.min_stock ?? 0,
           location_name_kh: defaultHqLoc.name_kh,
           location_name_en: defaultHqLoc.name_en,
+          location_code: defaultHqLoc.code || '',
+          type: defaultHqLoc.type || 'HQ',
           image_url: it.image_url || undefined,
         });
       }
