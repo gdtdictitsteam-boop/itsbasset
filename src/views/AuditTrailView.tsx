@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useLocationContext } from '../contexts/LocationContext';
+import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { mockTransactions, mockLocations } from '../mockData';
 import { supabase, isSupabaseConfigured, fetchAllRows } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
@@ -77,7 +77,7 @@ export function AuditTrailView() {
           id: 'tx-001',
           date: new Date(Date.now() - 86400000 * 1).toISOString(),
           type: 'HANDOVER',
-          from_location: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
+          from_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
           from_location_id: 'loc-hq-1',
           to_location: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)',
           to_location_id: 'loc-branch-1',
@@ -94,7 +94,7 @@ export function AuditTrailView() {
           date: new Date(Date.now() - 86400000 * 2).toISOString(),
           type: 'STOCK_IN',
           from_location: 'ក្រុមហ៊ុនផ្គត់ផ្គង់ (Supplier Corp)',
-          to_location: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
+          to_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
           to_location_id: 'loc-hq-1',
           item_code: 'T-002',
           item_name_kh: 'ស្វានបុកម៉ាក BOSCH Rotary Hammer (GBH 2-26 DRE)',
@@ -140,7 +140,7 @@ export function AuditTrailView() {
           id: 'tx-005',
           date: new Date(Date.now() - 86400000 * 5).toISOString(),
           type: 'HANDOVER',
-          from_location: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
+          from_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
           from_location_id: 'loc-hq-1',
           to_location: 'សាខាពន្ធដារខណ្ឌដង្កោ',
           to_location_id: 'loc-branch-2',
@@ -480,10 +480,10 @@ export function AuditTrailView() {
               onChange={(e) => setSelectedLocation(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 cursor-pointer truncate"
             >
-              <option value="ALL">-- គ្រប់ទីតាំង (All Locations) --</option>
-              {locations.map(loc => (
+              <option value="ALL">[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)</option>
+              {locations.filter(l => l.code !== 'ALL').map(loc => (
                 <option key={loc.id} value={loc.id}>
-                  {loc.name_kh}
+                  {formatLocationOption(loc, language)}
                 </option>
               ))}
             </select>

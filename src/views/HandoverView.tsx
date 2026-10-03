@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
+import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
@@ -479,7 +480,7 @@ export function HandoverView() {
                 >
                   {hqLocations.map(loc => (
                     <option key={loc.id} value={loc.id}>
-                      {language === 'kh' ? loc.name_kh : loc.name_en}
+                      {formatLocationOption(loc, language)}
                     </option>
                   ))}
                 </select>
@@ -499,7 +500,7 @@ export function HandoverView() {
                   <option value="">-- ជ្រើសរើសសាខា --</option>
                   {branchLocations.map(loc => (
                     <option key={loc.id} value={loc.id}>
-                      {language === 'kh' ? loc.name_kh : loc.name_en}
+                      {formatLocationOption(loc, language)}
                     </option>
                   ))}
                 </select>

@@ -4,6 +4,7 @@ import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, Alert
 import { mockItems, mockInventory, mockLocations } from '../mockData';
 import { insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured } from '../lib/supabase';
 import { useInventoryContext } from '../contexts/InventoryContext';
+import { formatLocationOption } from '../contexts/LocationContext';
 
 export function NewItemView() {
   const { refreshInventory, addNewItemToContext } = useInventoryContext();
@@ -533,9 +534,9 @@ export function NewItemView() {
                 name="locationId"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white"
               >
-                {locations.length > 0 ? locations.map((loc) => (
+                {locations.length > 0 ? locations.filter(l => l.code !== 'ALL').map((loc) => (
                   <option key={loc.id} value={loc.id}>
-                    [{loc.code}] {loc.name_kh}
+                    {formatLocationOption(loc, 'kh')}
                   </option>
                 )) : <option value="">-- {isConfigured ? 'កំពុងទាញយក...' : 'គ្មានទីតាំង'} --</option>}
               </select>

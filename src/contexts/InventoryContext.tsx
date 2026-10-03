@@ -110,7 +110,7 @@ export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): bo
   if (locId === 'ALL' || locCode === 'ALL' || locType === 'ALL') return false;
 
   // 1. Direct IDs or Codes for HQ
-  if (locId === '1' || locId === 'HQ-ITSB' || locCode === 'HQ-ITSB') return true;
+  if (locId === '1' || locId === 'HQ-ITSB' || locCode === 'HQ-ITSB' || locId === 'ITSB-HQ' || locCode === 'ITSB-HQ') return true;
   if (locId === '35' || locId === 'Tech-HQ' || locCode === 'Tech-HQ') return true;
   if (locType === 'HQ') return true;
 
@@ -123,7 +123,7 @@ export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): bo
     );
     if (found) {
       if (found.id === 'ALL' || found.code === 'ALL' || String(found.type).toUpperCase() === 'ALL') return false;
-      if (found.type === 'HQ' || found.code === 'HQ-ITSB' || found.code === 'Tech-HQ') return true;
+      if (found.type === 'HQ' || found.code === 'HQ-ITSB' || found.code === 'ITSB-HQ' || found.code === 'Tech-HQ') return true;
       if (found.name_kh && !found.name_kh.includes('ខេត្តកណ្តាល') && (found.name_kh.includes('HQ') || found.name_kh.includes('ថ្នាក់កណ្តាល'))) return true;
     }
   }
@@ -678,8 +678,10 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           category: item.category,
           unit: item.unit,
           min_stock: item.min_stock,
-          location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
-          location_name_en: 'ITSB-HQ Technical Inventory'
+          location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
+          location_name_en: 'HQ-ITSB Technical Inventory',
+          location_code: 'HQ-ITSB',
+          type: 'HQ'
         });
       });
       saveToStorage(mockItems, mockInventory, mockTransactions);

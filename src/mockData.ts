@@ -1,7 +1,7 @@
 import { Location, Item, InventoryItem } from './types';
 
 export const mockLocations: Location[] = [
-  { id: '1', name_kh: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ', name_en: 'ITSB-HQ Technical Inventory', type: 'HQ', code: 'HQ-ITSB' },
+  { id: '1', name_kh: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB', name_en: 'HQ-ITSB Technical Inventory', type: 'HQ', code: 'HQ-ITSB' },
   { id: '35', name_kh: 'ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', name_en: 'Central Working Group (Tech-HQ)', type: 'BRANCH', code: 'Tech-HQ' },
   { id: '2', name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)', name_en: '7 Makara Branch (7MK)', type: 'BRANCH', code: '7MK' },
   { id: '3', name_kh: 'សាខាពន្ធដារខណ្ឌចំការមន (CKM)', name_en: 'Chamkarmon Branch (CKM)', type: 'BRANCH', code: 'CKM' },
@@ -123,8 +123,8 @@ export const mockInventory: InventoryItem[] = [
     category: item.category,
     unit: item.unit,
     min_stock: item.min_stock,
-    location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
-    location_name_en: 'ITSB-HQ Technical Inventory'
+    location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
+    location_name_en: 'HQ-ITSB Technical Inventory'
   })),
 
   // Central Working Group (Tech-HQ) Stock
@@ -197,7 +197,7 @@ export const mockTransactions: any[] = [
     id: 'tx-001',
     date: new Date(Date.now() - 86400000 * 2).toISOString(),
     type: 'HANDOVER',
-    from_location: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
+    from_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
     to_location: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)',
     item_code: 'T-001',
     item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',

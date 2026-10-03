@@ -64,7 +64,7 @@ BEGIN
     -- 1. កាត់ស្តុកចេញពី HQ
     UPDATE public.inventory
     SET quantity = quantity - p_quantity,
-        updated_at = NOW()
+        last_updated = NOW()
     WHERE location_id = p_from_location AND item_id = p_item_id;
 
     -- 2. កត់ត្រាប្រតិបត្តិការជាមួយ status = 'PENDING'
@@ -130,12 +130,12 @@ BEGIN
     WHERE id = p_transaction_id;
 
     -- 2. បូកស្តុកចូលសាខាគោលដៅ (to_location_id)
-    INSERT INTO public.inventory (location_id, item_id, quantity, updated_at)
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
     VALUES (v_tx.to_location_id, v_tx.item_id, v_tx.quantity, NOW())
     ON CONFLICT (location_id, item_id)
     DO UPDATE SET 
         quantity = public.inventory.quantity + EXCLUDED.quantity,
-        updated_at = NOW();
+        last_updated = NOW();
 
     RETURN jsonb_build_object(
         'success', true,

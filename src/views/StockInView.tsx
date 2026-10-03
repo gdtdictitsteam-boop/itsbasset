@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
+import { useLocationContext, formatLocationOption, getActiveWarehouseLocation } from '../contexts/LocationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   PlusSquare, Check, X, AlertTriangle, ArrowRight, Package, 
@@ -16,6 +17,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const { items, locations, inventory, recordStockIn } = useInventoryContext();
+  const { setSelectedLocationId, selectedLocation: globalSelectedLoc } = useLocationContext();
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ 
     type: 'success' | 'error'; 
@@ -32,15 +34,17 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   const [selectedLocId, setSelectedLocId] = useState('');
   const [inputQuantity, setInputQuantity] = useState<number>(1);
 
-  // Set default location to HQ
+  // Sync default location with global location context (or fallback to HQ if ALL)
   useEffect(() => {
-    if (!selectedLocId && locations.length > 0) {
-      const hqLoc = locations.find(l => l.type === 'HQ' || l.code === 'HQ-ITSB' || l.id === '1') || locations[0];
-      if (hqLoc && hqLoc.code !== 'ALL') {
-        setSelectedLocId(hqLoc.id);
+    if (globalSelectedLoc && globalSelectedLoc.code !== 'ALL' && globalSelectedLoc.id !== 'ALL') {
+      setSelectedLocId(globalSelectedLoc.id);
+    } else if (!selectedLocId && locations.length > 0) {
+      const activeLoc = getActiveWarehouseLocation(globalSelectedLoc, locations);
+      if (activeLoc) {
+        setSelectedLocId(activeLoc.id);
       }
     }
-  }, [locations, selectedLocId]);
+  }, [globalSelectedLoc, locations, selectedLocId]);
 
   const selectedItem = items.find(i => i.id === selectedItemId || i.code === selectedItemId);
   const selectedLocation = locations.find(l => l.id === selectedLocId || l.code === selectedLocId);
@@ -227,14 +231,20 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               <select 
                 name="locationId" 
                 value={selectedLocId}
-                onChange={(e) => setSelectedLocId(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedLocId(val);
+                  if (val) {
+                    setSelectedLocationId(val);
+                  }
+                }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required
               >
                 <option value="">-- ជ្រើសរើសទីតាំង --</option>
                 {locations.filter(l => l.code !== 'ALL').map(loc => (
                   <option key={loc.id} value={loc.id}>
-                    [{loc.code}] {language === 'kh' ? loc.name_kh : loc.name_en} {loc.type === 'HQ' ? '(ស្តុកកណ្តាល)' : ''}
+                    {formatLocationOption(loc, language)}
                   </option>
                 ))}
               </select>

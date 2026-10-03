@@ -152,7 +152,7 @@ export function DashboardView() {
         {/* Card 2: HQ Stock */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ស្តុកកណ្តាល HQ (ITSB-HQ)</p>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ស្តុកកណ្តាល HQ (HQ-ITSB)</p>
             <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-800">
               <Building2 size={16} />
             </div>

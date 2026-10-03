@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useInventoryContext } from '../contexts/InventoryContext';
+import { useLocationContext, formatLocationOption, getActiveWarehouseLocation } from '../contexts/LocationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { MinusCircle, Check, X, AlertTriangle } from 'lucide-react';
 
@@ -8,9 +9,23 @@ export function StockOutView() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const { items, locations, recordStockOut } = useInventoryContext();
+  const { setSelectedLocationId, selectedLocation: globalSelectedLoc } = useLocationContext();
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedItemId, setSelectedItemId] = useState('');
+  const [selectedLocId, setSelectedLocId] = useState('');
+
+  // Sync with global location context
+  useEffect(() => {
+    if (globalSelectedLoc && globalSelectedLoc.code !== 'ALL' && globalSelectedLoc.id !== 'ALL') {
+      setSelectedLocId(globalSelectedLoc.id);
+    } else if (!selectedLocId && locations.length > 0) {
+      const activeLoc = getActiveWarehouseLocation(globalSelectedLoc, locations);
+      if (activeLoc) {
+        setSelectedLocId(activeLoc.id);
+      }
+    }
+  }, [globalSelectedLoc, locations, selectedLocId]);
 
   const selectedItem = items.find(i => i.id === selectedItemId || i.code === selectedItemId);
 
@@ -20,7 +35,7 @@ export function StockOutView() {
     setNotice(null);
 
     const form = e.target as HTMLFormElement;
-    const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement).value;
+    const locationId = selectedLocId || (form.elements.namedItem('locationId') as HTMLSelectElement).value;
     const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement).value || '0', 10);
     const officerName = (form.elements.namedItem('officerName') as HTMLInputElement).value;
     const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
@@ -84,11 +99,23 @@ export function StockOutView() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectLocation} <span className="text-rose-500">*</span></label>
-              <select name="locationId" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required>
+              <select 
+                name="locationId" 
+                value={selectedLocId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedLocId(val);
+                  if (val) {
+                    setSelectedLocationId(val);
+                  }
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" 
+                required
+              >
                 <option value="">-- {t.selectLocation} --</option>
                 {locations.filter(l => l.code !== 'ALL').map(loc => (
                   <option key={loc.id} value={loc.id}>
-                    [{loc.code}] {language === 'kh' ? loc.name_kh : loc.name_en}
+                    {formatLocationOption(loc, language)}
                   </option>
                 ))}
               </select>

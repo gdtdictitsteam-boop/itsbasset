@@ -10,6 +10,42 @@ export const ALL_LOCATIONS_OPTION: Location = {
   code: 'ALL'
 };
 
+/**
+ * Standardized location display formatter across the application
+ * Produces unified, consistent labels for Sidebar, StockIn, StockOut, Handover, NewItem, etc.
+ * Example for ALL: "[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)"
+ * Example for HQ: "[HQ-ITSB] ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB (ស្តុកកណ្តាល)"
+ * Example for Branch: "[7MK] សាខាពន្ធដារខណ្ឌ៧មករា"
+ */
+export function formatLocationOption(loc: Location, language: 'kh' | 'en' = 'kh'): string {
+  if (!loc) return '';
+  if (loc.id === 'ALL' || loc.code === 'ALL') {
+    return language === 'kh' ? '[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)' : '[ALL] All Combined Locations';
+  }
+
+  const code = loc.code || loc.id;
+  const isHq = loc.type === 'HQ' || code === 'HQ-ITSB';
+  let name = language === 'kh' ? (loc.name_kh || '') : (loc.name_en || loc.name_kh || '');
+  
+  // Clean duplicate code in parenthesis or brackets if present
+  let cleanName = name.replace(new RegExp(`\\s*\\(${code}\\)\\s*$`, 'i'), '').trim();
+  cleanName = cleanName.replace(new RegExp(`^\\[${code}\\]\\s*`, 'i'), '').trim();
+
+  const hqTag = isHq ? (language === 'kh' ? ' (ស្តុកកណ្តាល)' : ' (HQ Central)') : '';
+  return `[${code}] ${cleanName}${hqTag}`;
+}
+
+/**
+ * Get an active specific physical warehouse/branch (falls back to HQ-ITSB if ALL is selected)
+ */
+export function getActiveWarehouseLocation(currentLoc: Location, allLocations: Location[]): Location {
+  if (currentLoc && currentLoc.code !== 'ALL' && currentLoc.id !== 'ALL') {
+    return currentLoc;
+  }
+  const hq = allLocations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.id === '1');
+  return hq || allLocations.find(l => l.code !== 'ALL') || allLocations[0];
+}
+
 interface LocationContextType {
   selectedLocationId: string;
   setSelectedLocationId: (id: string) => void;

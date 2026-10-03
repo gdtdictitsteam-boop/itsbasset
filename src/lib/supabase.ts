@@ -353,7 +353,7 @@ export async function fetchFullInventoryFromSupabase() {
     });
 
     // 2. Also ensure items with 0 inventory or not in inventory table are visible at default HQ location
-    const defaultHqLoc = locations.find(l => l.type === 'HQ' || l.code?.includes('HQ')) || locations[0];
+    const defaultHqLoc = locations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locations[0];
     items.forEach(it => {
       const hasAnyInv = inventory.some(inv => inv.item_id === it.id);
       if (!hasAnyInv && defaultHqLoc) {
@@ -399,18 +399,30 @@ export async function seedInitialInventoryToSupabase(): Promise<{
   }
 
   try {
-    const { mockItems, standardItemQuantities } = await import('../mockData');
+    const { mockItems, mockLocations, standardItemQuantities } = await import('../mockData');
 
-    // 1. Fetch locations
-    const { data: locs, error: locErr } = await supabase.from('locations').select('*');
-    if (locErr || !locs || locs.length === 0) {
+    // 1. Fetch locations (auto-populate from mockLocations if empty)
+    let { data: locs, error: locErr } = await supabase.from('locations').select('*');
+    if (!locs || locs.length === 0) {
+      const locsToInsert = mockLocations.map(l => ({
+        code: l.code,
+        name_kh: l.name_kh,
+        name_en: l.name_en,
+        type: l.type,
+      }));
+      await supabase.from('locations').upsert(locsToInsert, { onConflict: 'code' });
+      const refreshed = await supabase.from('locations').select('*');
+      locs = refreshed.data || [];
+    }
+
+    if (!locs || locs.length === 0) {
       return {
         success: false,
-        message: 'មិនអាចទាញយកទីតាំង (locations) ពី Supabase បានឡើយ។ សូមពិនិត្យ Table locations។',
+        message: 'មិនអាចទាញយក ឬបង្កើតទីតាំង (locations) ក្នុង Supabase បានឡើយ។ សូមពិនិត្យ Table locations។',
       };
     }
 
-    const hqLoc = locs.find(l => l.type === 'HQ' || l.code?.includes('HQ')) || locs[0];
+    const hqLoc = locs.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locs[0];
 
     // 2. Upsert items
     const itemsToUpsert = mockItems.map(item => ({

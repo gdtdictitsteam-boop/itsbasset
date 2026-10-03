@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useLocationContext } from '../contexts/LocationContext';
+import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   LayoutDashboard, 
@@ -37,7 +37,7 @@ interface MenuGroup {
 
 export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
   const { t, language } = useLanguage();
-  const { selectedLocationId, setSelectedLocationId, locations } = useLocationContext();
+  const { selectedLocationId, setSelectedLocationId, selectedLocation, locations } = useLocationContext();
   const { userRole, isCentralAdmin, isBranchUser } = useAuth();
 
   // Define full menu groups
@@ -115,13 +115,13 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
           <MapPin size={13} className="text-[#1E6047]" />
         </label>
         <select
-          value={selectedLocationId}
+          value={selectedLocation.id}
           onChange={(e) => setSelectedLocationId(e.target.value)}
           className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-[#BDE0D0] rounded-lg p-2 focus:ring-2 focus:ring-[#1E6047]/20 focus:border-[#1E6047] outline-none cursor-pointer truncate shadow-2xs hover:border-[#9FD2BC] transition-colors"
         >
           {locations.map((loc) => (
             <option key={loc.id} value={loc.id}>
-              {language === 'kh' ? loc.name_kh : loc.name_en}
+              {formatLocationOption(loc, language)}
             </option>
           ))}
         </select>
