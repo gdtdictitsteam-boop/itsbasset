@@ -199,30 +199,41 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
 
     const createdItemId = itemData.id;
 
+    const isUuid = (val?: string): boolean => {
+      if (!val) return false;
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+    };
+
     // 2. Insert initial inventory record if location_id is provided or HQ exists
     let targetLocationId = params.location_id;
 
-    if (!targetLocationId) {
-      // Find default location (e.g. HQ) from Supabase
-      const { data: locs } = await supabase
+    if (!isUuid(targetLocationId)) {
+      // Find HQ location from Supabase
+      const { data: hqLoc } = await supabase
         .from('locations')
-        .select('id, code')
-        .limit(1);
+        .select('id')
+        .or('code.eq.HQ-ITSB,code.eq.ITSB-HQ,type.eq.HQ')
+        .limit(1)
+        .maybeSingle();
 
-      if (locs && locs.length > 0) {
-        targetLocationId = locs[0].id;
+      if (hqLoc?.id) {
+        targetLocationId = hqLoc.id;
+      } else {
+        const { data: anyLoc } = await supabase.from('locations').select('id').limit(1).maybeSingle();
+        if (anyLoc?.id) targetLocationId = anyLoc.id;
       }
     }
 
-    if (targetLocationId && createdItemId) {
+    if (isUuid(targetLocationId) && createdItemId) {
       // Insert inventory
-      const { error: invErr } = await supabase.from('inventory').insert([
+      const { error: invErr } = await supabase.from('inventory').upsert([
         {
           location_id: targetLocationId,
           item_id: createdItemId,
           quantity: initial_stock,
+          last_updated: new Date().toISOString(),
         },
-      ]);
+      ], { onConflict: 'location_id,item_id' });
 
       if (invErr) {
         console.warn('Supabase inventory insert notice:', invErr);
@@ -309,8 +320,12 @@ export async function fetchFullInventoryFromSupabase() {
       supabase.from('locations').select('*'),
     ]);
 
-    if (itemsRes.error) {
-      console.warn('Error fetching items from Supabase:', itemsRes.error);
+    if (itemsRes.error || invRes.error || locsRes.error) {
+      console.warn('Error fetching full inventory from Supabase:', {
+        itemsError: itemsRes.error,
+        invError: invRes.error,
+        locsError: locsRes.error
+      });
       return null;
     }
 
@@ -318,20 +333,40 @@ export async function fetchFullInventoryFromSupabase() {
     const inventory = invRes.data || [];
     const locations = locsRes.data || [];
 
+    const defaultHqLoc = locations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locations[0];
+
     const locMap = new Map<string, any>();
-    locations.forEach(loc => locMap.set(loc.id, loc));
+    locations.forEach(loc => {
+      locMap.set(loc.id, loc);
+      locMap.set(String(loc.id).toLowerCase(), loc);
+      if (loc.code) {
+        locMap.set(loc.code, loc);
+        locMap.set(String(loc.code).toUpperCase(), loc);
+      }
+    });
 
     const itemMap = new Map<string, any>();
-    items.forEach(it => itemMap.set(it.id, it));
+    items.forEach(it => {
+      itemMap.set(it.id, it);
+      itemMap.set(String(it.id).toLowerCase(), it);
+      if (it.code) {
+        itemMap.set(it.code, it);
+        itemMap.set(String(it.code).toUpperCase(), it);
+      }
+    });
 
     // Construct inventory items
     const result: any[] = [];
 
     // 1. Process existing inventory records
     inventory.forEach(inv => {
-      const it = itemMap.get(inv.item_id);
-      const loc = locMap.get(inv.location_id);
+      const it = itemMap.get(inv.item_id) || itemMap.get(String(inv.item_id).toLowerCase());
+      let loc = locMap.get(inv.location_id) || locMap.get(String(inv.location_id).toLowerCase());
+      if (!loc && defaultHqLoc && (inv.location_id === '1' || inv.location_id === 'HQ-ITSB' || inv.location_id === defaultHqLoc.id)) {
+        loc = defaultHqLoc;
+      }
       if (it) {
+        const isHq = loc ? (loc.type === 'HQ' || loc.code === 'HQ-ITSB' || loc.code === 'ITSB-HQ') : false;
         result.push({
           location_id: inv.location_id,
           item_id: inv.item_id,
@@ -343,39 +378,43 @@ export async function fetchFullInventoryFromSupabase() {
           category: it.category || 'Tools',
           unit: it.unit || 'គ្រឿង',
           min_stock: it.min_stock ?? 0,
-          location_name_kh: loc?.name_kh || 'មិនស្គាល់ទីតាំង',
-          location_name_en: loc?.name_en || 'Unknown Location',
-          location_code: loc?.code || '',
-          type: loc?.type || '',
+          location_name_kh: loc?.name_kh || (isHq ? 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB' : 'មិនស្គាល់ទីតាំង'),
+          location_name_en: loc?.name_en || (isHq ? 'HQ-ITSB Technical Inventory' : 'Unknown Location'),
+          location_code: loc?.code || (isHq ? 'HQ-ITSB' : ''),
+          type: loc?.type || (isHq ? 'HQ' : ''),
           image_url: it.image_url || undefined,
         });
       }
     });
 
-    // 2. Also ensure items with 0 inventory or not in inventory table are visible at default HQ location
-    const defaultHqLoc = locations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locations[0];
-    items.forEach(it => {
-      const hasAnyInv = inventory.some(inv => inv.item_id === it.id);
-      if (!hasAnyInv && defaultHqLoc) {
-        result.push({
-          location_id: defaultHqLoc.id,
-          item_id: it.id,
-          quantity: 0,
-          last_updated: it.created_at || new Date().toISOString(),
-          item_code: it.code || '',
-          item_name_kh: it.name_kh || '',
-          item_name_en: it.name_en || it.name_kh || '',
-          category: it.category || 'Tools',
-          unit: it.unit || 'គ្រឿង',
-          min_stock: it.min_stock ?? 0,
-          location_name_kh: defaultHqLoc.name_kh,
-          location_name_en: defaultHqLoc.name_en,
-          location_code: defaultHqLoc.code || '',
-          type: defaultHqLoc.type || 'HQ',
-          image_url: it.image_url || undefined,
-        });
-      }
-    });
+    // 2. Also ensure every item has at least an HQ row so HQ stock column always tracks it
+    if (defaultHqLoc) {
+      items.forEach(it => {
+        const hasHqInv = inventory.some(inv => 
+          (inv.item_id === it.id || String(inv.item_id).toLowerCase() === String(it.id).toLowerCase()) &&
+          (inv.location_id === defaultHqLoc.id || String(inv.location_id).toLowerCase() === String(defaultHqLoc.id).toLowerCase() || inv.location_id === '1' || inv.location_id === 'HQ-ITSB')
+        );
+        if (!hasHqInv) {
+          result.push({
+            location_id: defaultHqLoc.id,
+            item_id: it.id,
+            quantity: 0,
+            last_updated: it.created_at || new Date().toISOString(),
+            item_code: it.code || '',
+            item_name_kh: it.name_kh || '',
+            item_name_en: it.name_en || it.name_kh || '',
+            category: it.category || 'Tools',
+            unit: it.unit || 'គ្រឿង',
+            min_stock: it.min_stock ?? 0,
+            location_name_kh: defaultHqLoc.name_kh,
+            location_name_en: defaultHqLoc.name_en,
+            location_code: defaultHqLoc.code || 'HQ-ITSB',
+            type: 'HQ',
+            image_url: it.image_url || undefined,
+          });
+        }
+      });
+    }
 
     return result;
   } catch (err) {

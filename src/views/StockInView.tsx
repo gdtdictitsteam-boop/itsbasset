@@ -38,16 +38,19 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   useEffect(() => {
     if (globalSelectedLoc && globalSelectedLoc.code !== 'ALL' && globalSelectedLoc.id !== 'ALL') {
       setSelectedLocId(globalSelectedLoc.id);
-    } else if (!selectedLocId && locations.length > 0) {
+    } else {
       const activeLoc = getActiveWarehouseLocation(globalSelectedLoc, locations);
       if (activeLoc) {
         setSelectedLocId(activeLoc.id);
       }
     }
-  }, [globalSelectedLoc, locations, selectedLocId]);
+  }, [globalSelectedLoc, locations]);
 
-  const selectedItem = items.find(i => i.id === selectedItemId || i.code === selectedItemId);
-  const selectedLocation = locations.find(l => l.id === selectedLocId || l.code === selectedLocId);
+  const selectedItem = items.find(i => String(i.id) === String(selectedItemId) || String(i.code) === String(selectedItemId));
+  const selectedLocation = locations.find(l => 
+    l.id !== 'ALL' && l.code !== 'ALL' && 
+    (String(l.id) === String(selectedLocId) || String(l.code) === String(selectedLocId))
+  ) || locations.find(l => isHqLocationOrRow(l, locations)) || locations[0];
 
   // Calculate current stock at selected location and across all locations
   const currentLocStock = React.useMemo(() => {
@@ -242,7 +245,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                 required
               >
                 <option value="">-- ជ្រើសរើសទីតាំង --</option>
-                {locations.filter(l => l.code !== 'ALL').map(loc => (
+                {locations.filter(l => l.code !== 'ALL' && l.id !== 'ALL').map(loc => (
                   <option key={loc.id} value={loc.id}>
                     {formatLocationOption(loc, language)}
                   </option>

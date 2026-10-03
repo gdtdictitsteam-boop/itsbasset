@@ -97,11 +97,11 @@ const loadFromStorage = () => {
   }
 };
 
-// Global unified helper to test if a location or inventory row is HQ
+// Global unified helper to test if a location or inventory row is HQ (HQ-ITSB Central Warehouse)
 export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): boolean => {
   if (!rowOrLoc) return false;
   const locId = String(rowOrLoc.location_id || rowOrLoc.id || '').trim();
-  const locCode = String(rowOrLoc.location_code || rowOrLoc.code || '').trim();
+  const locCode = String(rowOrLoc.location_code || rowOrLoc.code || '').trim().toUpperCase();
   const locType = String(rowOrLoc.type || rowOrLoc.location_type || '').trim().toUpperCase();
   const locNameKh = String(rowOrLoc.location_name_kh || rowOrLoc.name_kh || '').trim();
   const locNameEn = String(rowOrLoc.location_name_en || rowOrLoc.name_en || '').trim();
@@ -109,30 +109,33 @@ export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): bo
   // If ALL or combined filter, never HQ
   if (locId === 'ALL' || locCode === 'ALL' || locType === 'ALL') return false;
 
+  // Tech-HQ is Central Working Group branch, NOT the HQ central stock
+  if (locId === '35' || locCode === 'TECH-HQ' || locNameKh.includes('Tech-HQ') || locNameEn.includes('Tech-HQ')) return false;
+
   // 1. Direct IDs or Codes for HQ
   if (locId === '1' || locId === 'HQ-ITSB' || locCode === 'HQ-ITSB' || locId === 'ITSB-HQ' || locCode === 'ITSB-HQ') return true;
-  if (locId === '35' || locId === 'Tech-HQ' || locCode === 'Tech-HQ') return true;
   if (locType === 'HQ') return true;
 
   // 2. Lookup in locations list if available
   if (locationsList && locationsList.length > 0) {
     const found = locationsList.find(l => 
       String(l.id) === locId || 
-      String(l.code) === locId || 
-      (locCode && String(l.code) === locCode)
+      String(l.code).toUpperCase() === locCode || 
+      (locId && String(l.code).toUpperCase() === locId.toUpperCase())
     );
     if (found) {
       if (found.id === 'ALL' || found.code === 'ALL' || String(found.type).toUpperCase() === 'ALL') return false;
-      if (found.type === 'HQ' || found.code === 'HQ-ITSB' || found.code === 'ITSB-HQ' || found.code === 'Tech-HQ') return true;
-      if (found.name_kh && !found.name_kh.includes('ខេត្តកណ្តាល') && (found.name_kh.includes('HQ') || found.name_kh.includes('ថ្នាក់កណ្តាល'))) return true;
+      if (found.type === 'HQ' || found.code === 'HQ-ITSB' || found.code === 'ITSB-HQ') return true;
+      if (found.code === 'Tech-HQ' || String(found.type).toUpperCase() === 'BRANCH') return false;
+      if (found.name_kh && !found.name_kh.includes('ខេត្តកណ្តាល') && (found.name_kh.includes('HQ-ITSB') || found.name_kh.includes('ITSB-HQ') || found.name_kh.includes('ស្តុកសម្ភារបច្ចេកទេស'))) return true;
     }
   }
 
-  // 3. Name heuristics (covers ITSB-HQ, Tech-HQ, and central team, explicitly excluding Kandal Province)
-  if (locNameKh && !locNameKh.includes('ខេត្តកណ្តាល') && (locNameKh.includes('HQ') || locNameKh.includes('ថ្នាក់កណ្តាល'))) {
+  // 3. Name heuristics (strictly HQ-ITSB warehouse, excluding Kandal Province and Tech-HQ)
+  if (locNameKh && !locNameKh.includes('ខេត្តកណ្តាល') && !locNameKh.includes('Tech-HQ') && (locNameKh.includes('HQ-ITSB') || locNameKh.includes('ITSB-HQ') || locNameKh.includes('ស្តុកសម្ភារបច្ចេកទេស'))) {
     return true;
   }
-  if (locNameEn && (locNameEn.includes('HQ') || locNameEn.includes('Central Working Group'))) {
+  if (locNameEn && (locNameEn.includes('HQ-ITSB') || locNameEn.includes('ITSB-HQ') || locNameEn.includes('HQ Technical Inventory'))) {
     return true;
   }
 
@@ -323,15 +326,31 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     setInventory([...mockInventory]);
   };
 
-  // Record Stock-In (Increases stock at target location)
+  // Record Stock-In (Increases stock at target location, defaulting to HQ if ALL is selected)
   const recordStockIn = async (params: StockInParams): Promise<{ success: boolean; message: string; newQuantity?: number }> => {
     const targetItem = items.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId)) 
       || mockItems.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId));
 
-    const targetLocation = locations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId)) 
-      || mockLocations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
-      || locations[0]
-      || mockLocations[0];
+    // Resolve target location - must always be a concrete physical warehouse (never 'ALL')
+    let targetLocation = locations.find(l => 
+      l.id !== 'ALL' && l.code !== 'ALL' && 
+      (String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
+    );
+
+    if (!targetLocation && params.locationId !== 'ALL') {
+      targetLocation = mockLocations.find(l => 
+        l.id !== 'ALL' && l.code !== 'ALL' &&
+        (String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
+      );
+    }
+
+    // Default fallback is ALWAYS the central HQ warehouse (HQ-ITSB)
+    if (!targetLocation) {
+      targetLocation = locations.find(l => isHqLocationOrRow(l, locations))
+        || mockLocations.find(l => isHqLocationOrRow(l, mockLocations))
+        || locations.find(l => l.code !== 'ALL')
+        || mockLocations[0];
+    }
 
     if (!targetItem) {
       return { success: false, message: 'រកមិនឃើញសម្ភារៈដែលបានជ្រើសរើសឡើយ!' };
@@ -347,7 +366,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
     // 1. Update in-memory mock data with flexible matching
     const existingIndex = mockInventory.findIndex(inv => {
-      const matchItem = String(inv.item_code) === String(targetItem.code) || 
+      const matchItem = String(inv.item_code)?.trim().toUpperCase() === String(targetItem.code)?.trim().toUpperCase() || 
                         String(inv.item_id) === String(targetItem.id);
       if (!matchItem) return false;
 
@@ -355,7 +374,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       if (String(inv.location_id) === String(targetLocation.id) || 
           String(inv.location_id) === String(targetLocation.code)) return true;
 
-      // HQ match
+      // HQ match: If target is HQ and this inventory row is HQ
       if (isTargetHq && isHqLocationOrRow(inv, locations)) {
         return true;
       }
@@ -373,6 +392,12 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     if (existingIndex >= 0) {
       mockInventory[existingIndex].quantity = (mockInventory[existingIndex].quantity || 0) + params.quantity;
       mockInventory[existingIndex].last_updated = new Date().toISOString();
+      if (isTargetHq) {
+        mockInventory[existingIndex].type = 'HQ';
+        mockInventory[existingIndex].location_code = targetLocation.code || 'HQ-ITSB';
+        mockInventory[existingIndex].location_name_kh = targetLocation.name_kh;
+        mockInventory[existingIndex].location_name_en = targetLocation.name_en;
+      }
       calculatedNewQty = mockInventory[existingIndex].quantity;
     } else {
       const newInvRow: InventoryItem = {
@@ -388,12 +413,39 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         min_stock: targetItem.min_stock,
         location_name_kh: targetLocation.name_kh,
         location_name_en: targetLocation.name_en,
-        location_code: targetLocation.code,
-        type: targetLocation.type,
+        location_code: targetLocation.code || (isTargetHq ? 'HQ-ITSB' : ''),
+        type: isTargetHq ? 'HQ' : targetLocation.type,
         image_url: targetItem.image_url,
       };
       mockInventory.push(newInvRow);
       calculatedNewQty = params.quantity;
+    }
+
+    // Ensure an HQ row always exists for this item
+    const hasHq = mockInventory.some(inv => 
+      (String(inv.item_code)?.trim().toUpperCase() === String(targetItem.code)?.trim().toUpperCase() || 
+       String(inv.item_id) === String(targetItem.id)) &&
+      isHqLocationOrRow(inv, locations)
+    );
+    if (!hasHq) {
+      const hqLoc = locations.find(l => isHqLocationOrRow(l, locations)) || mockLocations[0];
+      mockInventory.push({
+        location_id: hqLoc.id,
+        item_id: targetItem.id,
+        quantity: isTargetHq ? params.quantity : 0,
+        last_updated: new Date().toISOString(),
+        item_code: targetItem.code,
+        item_name_kh: targetItem.name_kh,
+        item_name_en: targetItem.name_en,
+        category: targetItem.category,
+        unit: targetItem.unit,
+        min_stock: targetItem.min_stock,
+        location_name_kh: hqLoc.name_kh,
+        location_name_en: hqLoc.name_en,
+        location_code: hqLoc.code || 'HQ-ITSB',
+        type: 'HQ',
+        image_url: targetItem.image_url,
+      });
     }
 
     // 2. Add Transaction record to mockTransactions
@@ -427,22 +479,42 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           const { data: itemRows } = await supabase
             .from('items')
             .select('id')
-            .eq('code', targetItem.code)
+            .or(`code.eq.${targetItem.code},code.ilike.${targetItem.code}`)
             .maybeSingle();
           if (itemRows?.id) {
             dbItemId = itemRows.id;
+          } else {
+            const { data: newItemDb } = await supabase
+              .from('items')
+              .insert([{
+                code: targetItem.code,
+                name_kh: targetItem.name_kh,
+                name_en: targetItem.name_en || targetItem.name_kh,
+                category: targetItem.category || 'Tools',
+                unit: targetItem.unit || 'គ្រឿង',
+                min_stock: targetItem.min_stock ?? 5,
+                image_url: targetItem.image_url
+              }])
+              .select('id')
+              .maybeSingle();
+            if (newItemDb?.id) dbItemId = newItemDb.id;
           }
         }
 
         let dbLocId = targetLocation.id;
         if (!isValidUuid(dbLocId)) {
-          const { data: locRows } = await supabase
-            .from('locations')
-            .select('id')
-            .eq('code', targetLocation.code)
-            .maybeSingle();
+          let locQuery = supabase.from('locations').select('id');
+          if (isTargetHq) {
+            locQuery = locQuery.or('code.eq.HQ-ITSB,code.eq.ITSB-HQ,type.eq.HQ,code.ilike.%HQ%');
+          } else {
+            locQuery = locQuery.or(`code.eq.${targetLocation.code},code.ilike.${targetLocation.code}`);
+          }
+          const { data: locRows } = await locQuery.limit(1).maybeSingle();
           if (locRows?.id) {
             dbLocId = locRows.id;
+          } else if (isTargetHq) {
+            const { data: anyHq } = await supabase.from('locations').select('id').eq('type', 'HQ').limit(1).maybeSingle();
+            if (anyHq?.id) dbLocId = anyHq.id;
           }
         }
 
@@ -457,7 +529,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           const currentQty = invRows ? (invRows.quantity || 0) : 0;
           const newQty = currentQty + params.quantity;
 
-          await supabase.from('inventory').upsert([
+          const { error: upsertErr } = await supabase.from('inventory').upsert([
             {
               location_id: dbLocId,
               item_id: dbItemId,
@@ -481,12 +553,14 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
             }
           ]);
 
-          const liveInv = await fetchFullInventoryFromSupabase();
-          if (liveInv && liveInv.length > 0) {
-            setInventory(liveInv);
-            mockInventory.length = 0;
-            mockInventory.push(...liveInv);
-            saveToStorage(mockItems, mockInventory, mockTransactions);
+          if (!upsertErr) {
+            const liveInv = await fetchFullInventoryFromSupabase();
+            if (liveInv && liveInv.length > 0) {
+              setInventory(liveInv);
+              mockInventory.length = 0;
+              mockInventory.push(...liveInv);
+              saveToStorage(mockItems, mockInventory, mockTransactions);
+            }
           }
         }
       } catch (dbErr: any) {
@@ -506,10 +580,25 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     const targetItem = items.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId))
       || mockItems.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId));
 
-    const targetLocation = locations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
-      || mockLocations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
-      || locations[0]
-      || mockLocations[0];
+    // Resolve target location - must always be a concrete physical warehouse (never 'ALL')
+    let targetLocation = locations.find(l => 
+      l.id !== 'ALL' && l.code !== 'ALL' && 
+      (String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
+    );
+
+    if (!targetLocation && params.locationId !== 'ALL') {
+      targetLocation = mockLocations.find(l => 
+        l.id !== 'ALL' && l.code !== 'ALL' &&
+        (String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
+      );
+    }
+
+    if (!targetLocation) {
+      targetLocation = locations.find(l => isHqLocationOrRow(l, locations))
+        || mockLocations.find(l => isHqLocationOrRow(l, mockLocations))
+        || locations.find(l => l.code !== 'ALL')
+        || mockLocations[0];
+    }
 
     if (!targetItem || !targetLocation) {
       return { success: false, message: 'រកមិនឃើញសម្ភារៈ ឬទីតាំងឡើយ!' };

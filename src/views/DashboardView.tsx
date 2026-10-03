@@ -45,10 +45,13 @@ export function DashboardView() {
     !isHqLocationOrRow(selectedLocation, locations) && 
     selectedLocation.code !== 'ALL';
 
+  const isSelHq = selectedLocationId !== 'ALL' && isHqLocationOrRow(selectedLocation, locations);
+
   // Calculate live aggregated inventory per item (reliable code and ID matching)
   const aggregatedInventory = items.map((item, index) => {
     const itemInventory = inventory.filter(
-      inv => (String(inv.item_id) === String(item.id) || String(inv.item_code) === String(item.code))
+      inv => (String(inv.item_id) === String(item.id) || 
+              String(inv.item_code)?.trim().toUpperCase() === String(item.code)?.trim().toUpperCase())
     );
     
     let hqStock = 0;
@@ -67,8 +70,8 @@ export function DashboardView() {
         }
       }
 
-      if ((inv.quantity || 0) > 0) {
-        const branchCode = loc ? (loc.code === 'HQ-ITSB' ? 'ITS-HQ' : loc.code) : (inv.location_name_kh || 'Branch');
+      if (!isHq && (inv.quantity || 0) > 0) {
+        const branchCode = loc ? loc.code : (inv.location_code || inv.location_name_kh || 'Branch');
         branchesWithStock.push({
           code: branchCode,
           quantity: inv.quantity
@@ -76,7 +79,7 @@ export function DashboardView() {
       }
     });
 
-    const totalStock = hqStock + branchStock;
+    const totalStock = isSpecificBranch ? branchStock : (isSelHq ? hqStock : (hqStock + branchStock));
     const minStock = item.min_stock ?? 5;
     const status = totalStock === 0 ? 'អស់ស្តុក' : (totalStock <= minStock ? 'ជិតអស់ស្តុក' : 'មានស្តុក');
 
@@ -113,7 +116,7 @@ export function DashboardView() {
   const totalBranchUnits = inventory
     .filter(inv => !isHqLocationOrRow(inv, locations) && (!isSpecificBranch || matchesLocationFilter(inv)))
     .reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-  const totalStockUnits = totalHqUnits + totalBranchUnits;
+  const totalStockUnits = isSpecificBranch ? totalBranchUnits : (isSelHq ? totalHqUnits : (totalHqUnits + totalBranchUnits));
   const lowStockCount = aggregatedInventory.filter(item => item.totalStock > 0 && item.totalStock <= item.minStock).length;
   const outOfStockCount = aggregatedInventory.filter(item => item.totalStock === 0).length;
 

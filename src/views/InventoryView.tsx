@@ -62,10 +62,13 @@ export function InventoryView() {
     selectedLocation.code !== 'ALL';
 
   // 1. Consolidated mode: One row per item (Accurately calculates HQ Stock, Branch Stock, and Total Stock)
+  const isSelHq = selectedLocationId !== 'ALL' && isHqLocationOrRow(selectedLocation, locations);
+
   const consolidatedItems = items.map((item, idx) => {
     // Find all inventory rows for this item
     const itemRows = inventory.filter(inv => 
-      String(inv.item_code) === String(item.code) || String(inv.item_id) === String(item.id)
+      String(inv.item_code)?.trim().toUpperCase() === String(item.code)?.trim().toUpperCase() || 
+      String(inv.item_id) === String(item.id)
     );
 
     // HQ stock ALWAYS calculates total stock of this item at HQ locations
@@ -86,7 +89,7 @@ export function InventoryView() {
       }
     });
 
-    const totalQty = isSpecificBranch ? (hqQty + branchQty) : (hqQty + branchQty);
+    const totalQty = isSpecificBranch ? branchQty : (isSelHq ? hqQty : (hqQty + branchQty));
     const minStock = item.min_stock ?? 5;
     const status = totalQty === 0 ? 'អស់ស្តុក' : (totalQty <= minStock ? 'ជិតអស់ស្តុក' : 'មានស្តុក');
 

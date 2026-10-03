@@ -124,7 +124,9 @@ export const mockInventory: InventoryItem[] = [
     unit: item.unit,
     min_stock: item.min_stock,
     location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-    location_name_en: 'HQ-ITSB Technical Inventory'
+    location_name_en: 'HQ-ITSB Technical Inventory',
+    location_code: 'HQ-ITSB',
+    type: 'HQ'
   })),
 
   // Central Working Group (Tech-HQ) Stock
