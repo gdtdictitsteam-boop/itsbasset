@@ -8,89 +8,14 @@ export function SqlCodeView() {
   const [copied, setCopied] = useState<boolean>(false);
 
   const step4Code = `-- =========================================================================
--- STEP 4: STOCK-IN & 2-STEP HANDOVER WITH AUTOMATIC INVENTORY UPSERT
+-- STEP 4: 2-STEP HANDOVER & ACKNOWLEDGEMENT WITH AI OCR VERIFICATION
 -- =========================================================================
 
 -- 1. បន្ថែម Column status ក្នុង Table transactions (PENDING -> RECEIVED)
 ALTER TABLE public.transactions 
 ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'PENDING';
 
--- 2. Stock-In RPC: បញ្ចូលស្តុកថ្មីទៅកាន់ Target Location (to_location_id) & Update Inventory
-CREATE OR REPLACE FUNCTION handle_stock_in(
-    p_location_id UUID,
-    p_item_id UUID,
-    p_quantity INT,
-    p_recorded_by VARCHAR DEFAULT 'Admin-GDT',
-    p_remark TEXT DEFAULT 'បញ្ចូលស្តុកថ្មី'
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-    v_item RECORD;
-    v_tx_id UUID;
-    v_new_qty INT;
-BEGIN
-    IF p_quantity <= 0 THEN
-        RAISE EXCEPTION 'Quantity must be greater than zero.';
-    END IF;
-
-    SELECT code, name_kh, unit INTO v_item
-    FROM public.items
-    WHERE id = p_item_id;
-
-    IF v_item.code IS NULL THEN
-        RAISE EXCEPTION 'Item not found with ID: %', p_item_id;
-    END IF;
-
-    -- ក. បូកចំនួនស្តុកចូល Table inventory (ON CONFLICT UPDATE)
-    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
-    VALUES (p_location_id, p_item_id, p_quantity, NOW())
-    ON CONFLICT (location_id, item_id)
-    DO UPDATE SET 
-        quantity = public.inventory.quantity + EXCLUDED.quantity,
-        last_updated = NOW()
-    RETURNING quantity INTO v_new_qty;
-
-    -- ខ. កត់ត្រាចូល Table transactions ជាមួយ to_location_id យ៉ាងច្បាស់លាស់
-    INSERT INTO public.transactions (
-        type,
-        to_location_id,
-        item_id,
-        item_code,
-        item_name_kh,
-        quantity,
-        unit,
-        recorded_by,
-        remark,
-        status,
-        date
-    ) VALUES (
-        'STOCK_IN',
-        p_location_id,
-        p_item_id,
-        v_item.code,
-        v_item.name_kh,
-        p_quantity,
-        v_item.unit,
-        p_recorded_by,
-        p_remark,
-        'RECEIVED',
-        NOW()
-    )
-    RETURNING id INTO v_tx_id;
-
-    RETURN jsonb_build_object(
-        'success', true,
-        'transaction_id', v_tx_id,
-        'new_quantity', v_new_qty,
-        'message', 'Stock-In completed successfully'
-    );
-END;
-$$;
-
--- 3. Step 1 RPC: CentralAdmin ផ្ទេរសម្ភារៈ (កាត់ស្តុកកណ្តាល HQ, កត់ត្រា status = 'PENDING')
+-- 2. Step 1 RPC: CentralAdmin ផ្ទេរសម្ភារៈ (កាត់ស្តុកកណ្តាល HQ, កត់ត្រា status = 'PENDING')
 CREATE OR REPLACE FUNCTION handle_branch_handover(
     p_from_location UUID,
     p_to_location UUID,
