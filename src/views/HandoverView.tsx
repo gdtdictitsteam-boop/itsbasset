@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useInventoryContext } from '../contexts/InventoryContext';
 import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
@@ -21,6 +22,7 @@ import {
 export function HandoverView() {
   const { t, language } = useLanguage();
   const { userRole, isCentralAdmin, userDisplayName } = useAuth();
+  const { refreshInventory } = useInventoryContext();
   
   const [loading, setLoading] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -315,6 +317,12 @@ export function HandoverView() {
       setQuantity('');
       setPurpose('');
       setSelectedFile(null);
+
+      try {
+        await refreshInventory();
+      } catch (e) {
+        console.warn('Could not refresh inventory:', e);
+      }
 
     } catch (err: any) {
       console.error('Handover submit error:', err);

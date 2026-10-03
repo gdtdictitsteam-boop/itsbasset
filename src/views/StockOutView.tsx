@@ -1,63 +1,67 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { mockLocations, mockItems, mockInventory } from '../mockData';
-import { MinusCircle, Check, X } from 'lucide-react';
+import { useInventoryContext } from '../contexts/InventoryContext';
+import { useAuth } from '../contexts/AuthContext';
+import { MinusCircle, Check, X, AlertTriangle } from 'lucide-react';
 
 export function StockOutView() {
   const { t, language } = useLanguage();
+  const { user } = useAuth();
+  const { items, locations, recordStockOut } = useInventoryContext();
   const [loading, setLoading] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedItemId, setSelectedItemId] = useState('');
 
-  const selectedItem = mockItems.find(i => i.id === selectedItemId);
+  const selectedItem = items.find(i => i.id === selectedItemId || i.code === selectedItemId);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setSubmitSuccess(false);
+    setNotice(null);
 
     const form = e.target as HTMLFormElement;
     const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement).value;
     const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement).value || '0', 10);
+    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement).value;
+    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
 
-    setTimeout(() => {
-      // Find source inventory
-      const sourceInvIndex = mockInventory.findIndex(inv => inv.item_id === selectedItemId && inv.location_id === locationId);
-      
-      if (sourceInvIndex >= 0 && mockInventory[sourceInvIndex].quantity >= quantity) {
-        // Reduce source inventory
-        mockInventory[sourceInvIndex].quantity -= quantity;
-        mockInventory[sourceInvIndex].last_updated = new Date().toISOString();
-        
-        setSubmitSuccess(true);
-        form.reset();
-        setSelectedItemId('');
-      } else {
-        alert('បរិមាណស្តុកមិនគ្រប់គ្រាន់!');
-      }
+    const res = await recordStockOut({
+      locationId,
+      itemId: selectedItemId,
+      quantity,
+      officerName: officerName || user?.fullName || 'Admin-GDT',
+      purpose: purpose || 'ដកចេញពីស្តុក'
+    });
 
-      setLoading(false);
-      
-      setTimeout(() => {
-        setSubmitSuccess(false);
-      }, 3000);
-    }, 800);
+    setLoading(false);
+
+    if (res.success) {
+      setNotice({ type: 'success', message: res.message });
+      form.reset();
+      setSelectedItemId('');
+    } else {
+      setNotice({ type: 'error', message: res.message });
+    }
   };
 
   return (
     <div className="flex-1 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
-      {submitSuccess && (
-        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 p-4 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-4 duration-300">
+      {notice && (
+        <div className={`p-4 border-b flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-4 duration-300 ${
+          notice.type === 'success' 
+            ? 'bg-rose-50 border-rose-200 text-rose-800' 
+            : 'bg-amber-50 border-amber-200 text-amber-800'
+        }`}>
           <div className="flex items-center gap-3">
-            <div className="bg-rose-100 p-1.5 rounded-full text-rose-700">
-              <MinusCircle size={20} />
+            <div className={`p-1.5 rounded-full ${notice.type === 'success' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+              {notice.type === 'success' ? <Check size={20} /> : <AlertTriangle size={20} />}
             </div>
             <div>
-              <h3 className="font-bold text-sm">ដកចេញជោគជ័យ</h3>
-              <p className="text-xs opacity-90">បរិមាណស្តុកត្រូវបានកាត់បន្ថយដោយជោគជ័យ។</p>
+              <h3 className="font-bold text-sm">{notice.type === 'success' ? 'ដកចេញជោគជ័យ' : 'បរាជ័យក្នុងការដកចេញ'}</h3>
+              <p className="text-xs opacity-90">{notice.message}</p>
             </div>
           </div>
-          <button onClick={() => setSubmitSuccess(false)} className="text-rose-600 hover:text-rose-800 p-1">
+          <button onClick={() => setNotice(null)} className="text-slate-400 hover:text-slate-700 p-1">
             <X size={18} />
           </button>
         </div>
@@ -70,35 +74,35 @@ export function StockOutView() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-900">{t.stockOut}</h2>
-            <p className="text-xs text-slate-500">បំពេញព័ត៌មានខាងក្រោមដើម្បីកាត់បន្ថយស្តុកបច្ចុប្បន្ន</p>
+            <p className="text-xs text-slate-500">បំពេញព័ត៌មានខាងក្រោមដើម្បីកាត់បន្ថយស្តុកបច្ចុប្បន្ន (កាត់ស្តុកចេញ)</p>
           </div>
         </div>
       </div>
       
-      <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
+      <form id="stock-out-form" onSubmit={handleSubmit} className="flex-1 flex flex-col">
         <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white">
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectLocation}</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectLocation} <span className="text-rose-500">*</span></label>
               <select name="locationId" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required>
                 <option value="">-- {t.selectLocation} --</option>
-                {mockLocations.map(loc => (
+                {locations.filter(l => l.code !== 'ALL').map(loc => (
                   <option key={loc.id} value={loc.id}>
-                    {language === 'kh' ? loc.name_kh : loc.name_en}
+                    [{loc.code}] {language === 'kh' ? loc.name_kh : loc.name_en}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectItem}</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectItem} <span className="text-rose-500">*</span></label>
               <select 
                 value={selectedItemId}
                 onChange={(e) => setSelectedItemId(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required>
                 <option value="">-- {t.selectItem} --</option>
-                {mockItems.map(item => (
-                  <option key={item.id} value={item.id}>
+                {items.map(item => (
+                  <option key={item.id || item.code} value={item.id}>
                     [{item.code}] {language === 'kh' ? item.name_kh : item.name_en}
                   </option>
                 ))}
@@ -107,8 +111,8 @@ export function StockOutView() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.quantity}</label>
-                <input name="quantity" type="number" min="1" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.quantity} <span className="text-rose-500">*</span></label>
+                <input name="quantity" type="number" min="1" defaultValue={1} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.unit}</label>
@@ -119,12 +123,12 @@ export function StockOutView() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.officerName}</label>
-              <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.officerName} <span className="text-rose-500">*</span></label>
+              <input name="officerName" type="text" defaultValue={user?.fullName || 'Admin-GDT'} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.purpose}</label>
-              <textarea rows={4} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033] resize-none" required></textarea>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.purpose} <span className="text-rose-500">*</span></label>
+              <textarea name="purpose" rows={4} defaultValue="ដកចេញដើម្បីបម្រើការងារបច្ចេកទេស" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033] resize-none" required></textarea>
             </div>
           </div>
         </div>
@@ -136,6 +140,12 @@ export function StockOutView() {
           <div className="flex space-x-3">
             <button 
               type="button"
+              onClick={() => {
+                const form = document.getElementById('stock-out-form') as HTMLFormElement;
+                if (form) form.reset();
+                setSelectedItemId('');
+                setNotice(null);
+              }}
               className="px-6 py-2.5 border border-slate-300 rounded-lg text-sm font-bold hover:bg-white transition-colors"
             >
               បោះបង់ (Cancel)

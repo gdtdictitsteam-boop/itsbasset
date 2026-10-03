@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { LocationProvider } from './contexts/LocationContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { InventoryProvider } from './contexts/InventoryContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -104,7 +105,9 @@ export default function App() {
     <LanguageProvider>
       <LocationProvider>
         <AuthProvider>
-          <AuthenticatedApp />
+          <InventoryProvider>
+            <AuthenticatedApp />
+          </InventoryProvider>
         </AuthProvider>
       </LocationProvider>
     </LanguageProvider>

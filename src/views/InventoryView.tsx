@@ -1,104 +1,117 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
-import { mockInventory } from '../mockData';
+import { useInventoryContext } from '../contexts/InventoryContext';
 import { 
   Wrench, Package as PackageIcon, RefreshCw, Database, 
-  AlertTriangle, CheckCircle2, Boxes, ShieldAlert, Sparkles, X
+  AlertTriangle, CheckCircle2, Boxes, ShieldAlert, Sparkles, X,
+  Layers, MapPin, Building2
 } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
-import { 
-  isSupabaseConfigured, 
-  fetchFullInventoryFromSupabase, 
-  seedInitialInventoryToSupabase 
-} from '../lib/supabase';
-import { InventoryItem } from '../types';
 
 export function InventoryView() {
   const { t, language } = useLanguage();
   const { selectedLocationId, selectedLocation } = useLocationContext();
+  const { inventory, items, locations, isLoading, refreshInventory, reseedStandardStock } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  
-  const isConfigured = isSupabaseConfigured();
-  const [inventoryList, setInventoryList] = useState<InventoryItem[]>(mockInventory);
-  const [isLoading, setIsLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'byLocation' | 'consolidated'>('consolidated');
   const [isSeeding, setIsSeeding] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
-  const loadInventory = async () => {
-    if (!isConfigured) {
-      setInventoryList(mockInventory);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const data = await fetchFullInventoryFromSupabase();
-      if (data && data.length > 0) {
-        setInventoryList(data);
-      } else {
-        setInventoryList(mockInventory);
-      }
-    } catch (e) {
-      console.warn('Could not fetch inventory from Supabase, using mock fallback:', e);
-      setInventoryList(mockInventory);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadInventory();
-  }, [isConfigured]);
-
   const handleSeedStock = async () => {
-    if (isConfigured) {
-      setIsSeeding(true);
-      setNotice(null);
-      const res = await seedInitialInventoryToSupabase();
-      setIsSeeding(false);
-      if (res.success) {
-        setNotice({ type: 'success', message: res.message });
-        await loadInventory();
-      } else {
-        setNotice({ type: 'error', message: res.message });
-      }
+    setIsSeeding(true);
+    setNotice(null);
+    const res = await reseedStandardStock();
+    setIsSeeding(false);
+    if (res.success) {
+      setNotice({ type: 'success', message: res.message });
     } else {
-      // Local mode reset
-      setInventoryList([...mockInventory]);
-      setNotice({ 
-        type: 'success', 
-        message: 'បានកំណត់ចំនួនស្តុកឡើងវិញត្រឹមត្រូវតាមស្ដង់ដារប្រព័ន្ធជោគជ័យ (Standard Stock Restored)!' 
-      });
+      setNotice({ type: 'error', message: res.message });
     }
   };
 
-  // Filter items
-  const filteredInventory = inventoryList.filter(item => {
-    const matchesLocation = 
-      selectedLocationId === 'ALL' || 
-      selectedLocation.code === 'ALL' || 
-      item.location_id === selectedLocationId || 
-      (item.location_name_kh && (
-        item.location_name_kh.includes(selectedLocation.code) || 
-        item.location_name_kh.includes(selectedLocation.name_kh)
-      ));
-    const matchesTab = activeTab === 'ALL' || item.category === activeTab;
-    const matchesSearch = 
-      (item.item_code || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (item.item_name_kh || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.item_name_en || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesLocation && matchesTab && matchesSearch;
+  // 1. Consolidated mode: One row per item (Summed across matching locations)
+  const consolidatedItems = items.map((item, idx) => {
+    // Filter matching inventory for this item
+    const matchingInv = inventory.filter(inv => {
+      const matchItem = inv.item_code === item.code || inv.item_id === item.id;
+      if (!matchItem) return false;
+      if (selectedLocationId === 'ALL' || selectedLocation.code === 'ALL') return true;
+      return inv.location_id === selectedLocationId || 
+             inv.location_id === selectedLocation.code ||
+             (inv.location_name_kh && (
+               inv.location_name_kh.includes(selectedLocation.code) || 
+               inv.location_name_kh.includes(selectedLocation.name_kh)
+             ));
+    });
+
+    let hqQty = 0;
+    let branchQty = 0;
+    matchingInv.forEach(inv => {
+      const loc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
+      const isHq = loc ? (loc.type === 'HQ' || loc.code?.includes('HQ')) : (inv.location_name_kh?.includes('HQ') ?? true);
+      if (isHq) {
+        hqQty += (inv.quantity || 0);
+      } else {
+        branchQty += (inv.quantity || 0);
+      }
+    });
+
+    const totalQty = hqQty + branchQty;
+    const minStock = item.min_stock ?? 5;
+    const status = totalQty === 0 ? 'អស់ស្តុក' : (totalQty <= minStock ? 'ជិតអស់ស្តុក' : 'មានស្តុក');
+
+    return {
+      no: idx + 1,
+      id: item.id,
+      code: item.code,
+      name_kh: item.name_kh,
+      name_en: item.name_en,
+      category: item.category,
+      unit: item.unit,
+      image_url: item.image_url,
+      min_stock: minStock,
+      hq_quantity: hqQty,
+      branch_quantity: branchQty,
+      total_quantity: totalQty,
+      status
+    };
+  }).filter(item => {
+    const matchCategory = activeTab === 'ALL' || item.category === activeTab;
+    const q = searchQuery.toLowerCase().trim();
+    const matchSearch = !q || 
+      item.code.toLowerCase().includes(q) || 
+      item.name_kh.toLowerCase().includes(q) || 
+      item.name_en.toLowerCase().includes(q);
+    return matchCategory && matchSearch;
   });
 
-  // Calculate high-level metrics for quick review
-  const totalItemsCount = filteredInventory.length;
-  const totalQuantityUnits = filteredInventory.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-  const lowStockCount = filteredInventory.filter(item => {
-    const min = item.min_stock ?? 5;
-    return item.quantity > 0 && item.quantity <= min;
-  }).length;
-  const outOfStockCount = filteredInventory.filter(item => item.quantity === 0).length;
+  // 2. By-Location mode: Raw inventory rows matching location & search
+  const detailedLocationItems = inventory.filter(inv => {
+    const matchLocation = 
+      selectedLocationId === 'ALL' || 
+      selectedLocation.code === 'ALL' || 
+      inv.location_id === selectedLocationId || 
+      inv.location_id === selectedLocation.code ||
+      (inv.location_name_kh && (
+        inv.location_name_kh.includes(selectedLocation.code) || 
+        inv.location_name_kh.includes(selectedLocation.name_kh)
+      ));
+    const matchCategory = activeTab === 'ALL' || inv.category === activeTab;
+    const q = searchQuery.toLowerCase().trim();
+    const matchSearch = !q || 
+      (inv.item_code || '').toLowerCase().includes(q) || 
+      (inv.item_name_kh || '').toLowerCase().includes(q) || 
+      (inv.item_name_en || '').toLowerCase().includes(q);
+    return matchLocation && matchCategory && matchSearch;
+  });
+
+  // High-level metrics for quick review
+  const totalItemsCount = consolidatedItems.length;
+  const totalQuantityUnits = consolidatedItems.reduce((acc, curr) => acc + curr.total_quantity, 0);
+  const lowStockCount = consolidatedItems.filter(item => item.total_quantity > 0 && item.total_quantity <= item.min_stock).length;
+  const outOfStockCount = consolidatedItems.filter(item => item.total_quantity === 0).length;
 
   return (
     <div className="space-y-6">
@@ -107,7 +120,7 @@ export function InventoryView() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">{t.inventory}</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            គ្រប់គ្រង និងតាមដានចំនួនស្តុកជាក់ស្តែងតាមប្រភេទ និងទីតាំង (ទម្រង់ Read-Only)
+            បញ្ជីស្តុកបច្ចុប្បន្ន និងលំហូរស្តុកសម្ភារៈស្របតាមទីតាំងជាក់ស្តែង (ទម្រង់ Read-Only)
           </p>
         </div>
 
@@ -117,24 +130,22 @@ export function InventoryView() {
             onClick={handleSeedStock}
             disabled={isSeeding || isLoading}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200 shadow-2xs transition-colors disabled:opacity-50"
-            title="រៀបចំ និងកំណត់ចំនួនស្តុកដំបូងឡើងវិញឱ្យបានត្រឹមត្រូវ"
+            title="រៀបចំ និងកំណត់ចំនួនស្តុកឡើងវិញឱ្យបានត្រឹមត្រូវ"
           >
             <Sparkles size={14} className={isSeeding ? 'animate-spin text-teal-600' : 'text-teal-700'} />
             <span>{isSeeding ? 'កំពុងរៀបចំ...' : 'រៀបចំចំនួនស្តុកឡើងវិញ'}</span>
           </button>
 
-          {/* Refresh from Supabase */}
-          {isConfigured && (
-            <button
-              onClick={loadInventory}
-              disabled={isLoading}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 shadow-2xs transition-colors disabled:opacity-50"
-              title="ទាញយកទិន្នន័យចុងក្រោយពី Supabase Database"
-            >
-              <RefreshCw size={14} className={isLoading ? 'animate-spin text-teal-600' : 'text-slate-500'} />
-              <span>{isLoading ? 'កំពុងទាញ...' : 'ទាញយកទិន្នន័យ'}</span>
-            </button>
-          )}
+          {/* Refresh Button */}
+          <button
+            onClick={refreshInventory}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 shadow-2xs transition-colors disabled:opacity-50"
+            title="ទាញយកទិន្នន័យចុងក្រោយ"
+          >
+            <RefreshCw size={14} className={isLoading ? 'animate-spin text-teal-600' : 'text-slate-500'} />
+            <span>{isLoading ? 'កំពុងទាញ...' : 'ទាញយកទិន្នន័យ'}</span>
+          </button>
         </div>
       </div>
 
@@ -202,35 +213,64 @@ export function InventoryView() {
       
       {/* Table Section */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
-        {/* Filter and Search Bar */}
+        {/* Filter, View Mode and Search Bar */}
         <div className="bg-slate-50/90 border-b border-slate-200/80 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 self-start">
-            <button
-              onClick={() => setActiveTab('ALL')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                activeTab === 'ALL' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
-              }`}
-            >
-              ទូទៅ (All)
-            </button>
-            <button
-              onClick={() => setActiveTab('Tools')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${
-                activeTab === 'Tools' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
-              }`}
-            >
-              <Wrench size={16} />
-              <span>សម្ភារ Tools</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('Suppliers')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${
-                activeTab === 'Suppliers' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
-              }`}
-            >
-              <PackageIcon size={16} />
-              <span>សម្ភារ Suppliers</span>
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Category Filter */}
+            <div className="flex space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                onClick={() => setActiveTab('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'ALL' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
+                }`}
+              >
+                ទូទៅ (All)
+              </button>
+              <button
+                onClick={() => setActiveTab('Tools')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  activeTab === 'Tools' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
+                }`}
+              >
+                <Wrench size={13} />
+                <span>សម្ភារ Tools</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('Suppliers')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  activeTab === 'Suppliers' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
+                }`}
+              >
+                <PackageIcon size={13} />
+                <span>សម្ភារ Suppliers</span>
+              </button>
+            </div>
+
+            {/* View Mode Toggle when viewing All Locations */}
+            {selectedLocationId === 'ALL' && (
+              <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  onClick={() => setViewMode('consolidated')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    viewMode === 'consolidated' ? 'bg-white text-teal-900 shadow-2xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="សរុបស្តុកតាមមុខសម្ភារៈ"
+                >
+                  <Layers size={13} />
+                  <span>សរុបតាមសម្ភារៈ</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('byLocation')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    viewMode === 'byLocation' ? 'bg-white text-teal-900 shadow-2xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="បំបែកលម្អិតតាមទីតាំងនីមួយៗ"
+                >
+                  <MapPin size={13} />
+                  <span>បំបែកតាមទីតាំង</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="relative">
@@ -239,118 +279,170 @@ export function InventoryView() {
               placeholder="ស្វែងរកតាមកូដ ឬឈ្មោះសម្ភារ..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600 w-full md:w-72 shadow-2xs font-medium" 
+              className="bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600 w-full md:w-64 shadow-2xs font-medium" 
             />
           </div>
         </div>
 
         {/* Inventory Data Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
-                <th className="px-4 py-3.5 font-bold text-center w-12">ល.រ</th>
-                <th className="px-6 py-3.5 font-bold">រូបភាព / កូដ / សម្ភារ:</th>
-                <th className="px-4 py-3.5 font-bold text-center">ប្រភេទ</th>
-                <th className="px-6 py-3.5 font-bold">ទីតាំងស្តុក</th>
-                <th className="px-4 py-3.5 font-bold text-center">កម្រិតអប្បបរមា</th>
-                <th className="px-6 py-3.5 font-bold text-right">ចំនួនក្នុងស្តុក</th>
-                <th className="px-4 py-3.5 font-bold text-center">ស្ថានភាព</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredInventory.map((item, idx) => {
-                const minStock = item.min_stock ?? 5;
-                const qty = item.quantity ?? 0;
-                const isOutOfStock = qty === 0;
-                const isLowStock = !isOutOfStock && qty <= minStock;
+          {viewMode === 'consolidated' || selectedLocationId !== 'ALL' ? (
+            /* Consolidated Table (Matches Dashboard View 100%) */
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
+                  <th className="px-4 py-3.5 font-bold text-center w-12">ល.រ</th>
+                  <th className="px-6 py-3.5 font-bold">រូបភាព / កូដ / សម្ភារ:</th>
+                  <th className="px-4 py-3.5 font-bold text-center">ប្រភេទ</th>
+                  <th className="px-4 py-3.5 font-bold text-center">កម្រិតអប្បបរមា</th>
+                  <th className="px-4 py-3.5 font-bold text-center">ស្តុក HQ</th>
+                  <th className="px-4 py-3.5 font-bold text-center">ស្តុកសាខា</th>
+                  <th className="px-6 py-3.5 font-bold text-right">ស្តុកសរុប</th>
+                  <th className="px-4 py-3.5 font-bold text-center">ស្ថានភាព</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {consolidatedItems.map((item, idx) => {
+                  const isOutOfStock = item.total_quantity === 0;
+                  const isLowStock = !isOutOfStock && item.total_quantity <= item.min_stock;
 
-                return (
-                  <tr key={`${item.location_id}-${item.item_id}-${idx}`} className="even:bg-slate-50/40 odd:bg-white hover:bg-teal-50/30 transition-colors">
-                    {/* Index */}
+                  return (
+                    <tr key={`${item.code}-${idx}`} className="even:bg-slate-50/40 odd:bg-white hover:bg-teal-50/30 transition-colors">
+                      <td className="px-4 py-3.5 font-bold text-slate-500 text-center text-sm">{idx + 1}</td>
+                      <td className="px-6 py-3">
+                        <div className="flex items-center space-x-3">
+                          <ItemAvatar 
+                            item={{ 
+                              code: item.code, 
+                              name_kh: item.name_kh, 
+                              name_en: item.name_en, 
+                              category: item.category,
+                              image_url: item.image_url 
+                            }} 
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-900 text-sm leading-snug line-clamp-1">{item.name_kh}</div>
+                            <div className="text-[11px] font-mono text-slate-500 mt-0.5 tracking-tight flex items-center gap-1.5 truncate">
+                              <span className="font-semibold text-slate-700">{item.code}</span>
+                              <span>•</span>
+                              <span className="truncate">{item.name_en}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`px-2.5 py-1 border rounded-md text-xs font-bold whitespace-nowrap ${
+                          item.category === 'Tools' ? 'bg-teal-50 text-teal-800 border-teal-200' : 
+                          item.category === 'Suppliers' ? 'bg-slate-100 text-slate-800 border-slate-200' : 
+                          'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.category === 'Tools' ? 'Tools' : item.category === 'Suppliers' ? 'Suppliers' : item.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-xs font-bold text-slate-500 text-center">
+                        {item.min_stock} <span className="font-normal text-[11px]">{item.unit}</span>
+                      </td>
+                      <td className="px-4 py-4 text-sm font-bold text-center text-slate-800">
+                        {item.hq_quantity}
+                      </td>
+                      <td className="px-4 py-4 text-sm font-bold text-center text-blue-900">
+                        {item.branch_quantity}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-black text-right text-slate-900">
+                        <span className={isOutOfStock ? 'text-rose-600' : isLowStock ? 'text-amber-600' : 'text-slate-900'}>
+                          {item.total_quantity}
+                        </span>
+                        <span className="text-slate-500 font-medium ml-1.5 text-xs">{item.unit}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold inline-block whitespace-nowrap border ${
+                          item.status === 'មានស្តុក' 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : item.status === 'ជិតអស់ស្តុក' 
+                            ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {consolidatedItems.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-10 text-center text-slate-500 text-sm">
+                      {isLoading ? 'កំពុងទាញយកទិន្នន័យ...' : 'មិនមានទិន្នន័យសម្ភារៈឡើយ'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          ) : (
+            /* By-Location Detailed Table */
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
+                  <th className="px-4 py-3.5 font-bold text-center w-12">ល.រ</th>
+                  <th className="px-6 py-3.5 font-bold">រូបភាព / កូដ / សម្ភារ:</th>
+                  <th className="px-4 py-3.5 font-bold text-center">ប្រភេទ</th>
+                  <th className="px-6 py-3.5 font-bold">ទីតាំងស្តុក</th>
+                  <th className="px-6 py-3.5 font-bold text-right">ចំនួនក្នុងស្តុក</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {detailedLocationItems.map((inv, idx) => (
+                  <tr key={`${inv.location_id}-${inv.item_id}-${idx}`} className="even:bg-slate-50/40 odd:bg-white hover:bg-teal-50/30 transition-colors">
                     <td className="px-4 py-3.5 font-bold text-slate-500 text-center text-sm">{idx + 1}</td>
-                    
-                    {/* Item Thumbnail & Name */}
                     <td className="px-6 py-3">
                       <div className="flex items-center space-x-3">
                         <ItemAvatar 
                           item={{ 
-                            code: item.item_code, 
-                            name_kh: item.item_name_kh, 
-                            name_en: item.item_name_en, 
-                            category: item.category,
-                            image_url: item.image_url 
+                            code: inv.item_code, 
+                            name_kh: inv.item_name_kh, 
+                            name_en: inv.item_name_en, 
+                            category: inv.category,
+                            image_url: inv.image_url 
                           }} 
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="font-bold text-slate-900 text-sm leading-snug line-clamp-1">{item.item_name_kh}</div>
+                          <div className="font-bold text-slate-900 text-sm leading-snug line-clamp-1">{inv.item_name_kh}</div>
                           <div className="text-[11px] font-mono text-slate-500 mt-0.5 tracking-tight flex items-center gap-1.5 truncate">
-                            <span className="font-semibold text-slate-700">{item.item_code}</span>
+                            <span className="font-semibold text-slate-700">{inv.item_code}</span>
                             <span>•</span>
-                            <span className="truncate">{item.item_name_en}</span>
+                            <span className="truncate">{inv.item_name_en}</span>
                           </div>
                         </div>
                       </div>
                     </td>
-
-                    {/* Category */}
                     <td className="px-4 py-4 text-center">
                       <span className={`px-2.5 py-1 border rounded-md text-xs font-bold whitespace-nowrap ${
-                        item.category === 'Tools' ? 'bg-teal-50 text-teal-800 border-teal-200' : 
-                        item.category === 'Suppliers' ? 'bg-slate-100 text-slate-800 border-slate-200' : 
+                        inv.category === 'Tools' ? 'bg-teal-50 text-teal-800 border-teal-200' : 
+                        inv.category === 'Suppliers' ? 'bg-slate-100 text-slate-800 border-slate-200' : 
                         'bg-slate-50 text-slate-700 border-slate-200'
                       }`}>
-                        {item.category === 'Tools' ? 'Tools' : item.category === 'Suppliers' ? 'Suppliers' : item.category}
+                        {inv.category === 'Tools' ? 'Tools' : inv.category === 'Suppliers' ? 'Suppliers' : inv.category}
                       </span>
                     </td>
-
-                    {/* Location */}
                     <td className="px-6 py-4 text-sm text-slate-600 font-semibold">
-                      {language === 'kh' ? item.location_name_kh : item.location_name_en}
+                      {language === 'kh' ? inv.location_name_kh : inv.location_name_en}
                     </td>
-
-                    {/* Min Stock */}
-                    <td className="px-4 py-4 text-xs font-bold text-slate-500 text-center">
-                      {minStock} <span className="font-normal text-[11px]">{item.unit}</span>
-                    </td>
-
-                    {/* Actual Quantity */}
                     <td className="px-6 py-4 text-sm font-black text-right text-slate-900">
-                      <span className={isOutOfStock ? 'text-rose-600' : isLowStock ? 'text-amber-600' : 'text-slate-900'}>
-                        {qty}
-                      </span>
-                      <span className="text-slate-500 font-medium ml-1.5 text-xs">{item.unit}</span>
-                    </td>
-
-                    {/* Stock Status Badge */}
-                    <td className="px-4 py-4 text-center">
-                      {isOutOfStock ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                          អស់ស្តុក
-                        </span>
-                      ) : isLowStock ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                          ជិតអស់ស្តុក
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          មានស្តុក
-                        </span>
-                      )}
+                      {inv.quantity} <span className="text-slate-500 font-medium ml-1.5 text-xs">{inv.unit}</span>
                     </td>
                   </tr>
-                );
-              })}
+                ))}
 
-              {filteredInventory.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-slate-500 text-sm">
-                    {isLoading ? 'កំពុងទាញយកទិន្នន័យពី Supabase...' : 'មិនមានទិន្នន័យសម្ភារៈនៅក្នុងទីតាំងនេះឡើយ'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                {detailedLocationItems.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-slate-500 text-sm">
+                      {isLoading ? 'កំពុងទាញយកទិន្នន័យ...' : 'មិនមានទិន្នន័យ'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

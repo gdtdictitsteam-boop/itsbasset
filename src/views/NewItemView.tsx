@@ -3,8 +3,10 @@ import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, Alert
 
 import { mockItems, mockInventory, mockLocations } from '../mockData';
 import { insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured } from '../lib/supabase';
+import { useInventoryContext } from '../contexts/InventoryContext';
 
 export function NewItemView() {
+  const { refreshInventory } = useInventoryContext();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [uploadingImageText, setUploadingImageText] = useState<string | null>(null);
@@ -217,6 +219,12 @@ export function NewItemView() {
       location_name_en: targetLoc.name_en,
       image_url: finalImageUrl || imagePreview || undefined,
     });
+
+    try {
+      await refreshInventory();
+    } catch (e) {
+      console.warn('Could not refresh inventory context:', e);
+    }
 
     setIsSubmitting(false);
 
