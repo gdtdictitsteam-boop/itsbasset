@@ -81,16 +81,19 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 -- Note: strictly avoiding ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- -------------------------------------------------------------------------
--- Items, Locations, Transactions (Allow all to prevent RLS errors on insert)
+-- Items, Locations, Inventory, Transactions (Allow all to prevent RLS errors on insert/update)
 -- -------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-CREATE POLICY "Allow all access on items" ON public.items FOR ALL USING (true);
+CREATE POLICY "Allow all access on items" ON public.items FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
-CREATE POLICY "Allow all access on locations" ON public.locations FOR ALL USING (true);
+CREATE POLICY "Allow all access on locations" ON public.locations FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access on inventory" ON public.inventory;
+CREATE POLICY "Allow all access on inventory" ON public.inventory FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow all access on transactions" ON public.transactions;
-CREATE POLICY "Allow all access on transactions" ON public.transactions FOR ALL USING (true);
+CREATE POLICY "Allow all access on transactions" ON public.transactions FOR ALL USING (true) WITH CHECK (true);
 
 -- -------------------------------------------------------------------------
 -- User Profiles Policies
@@ -315,7 +318,7 @@ $$;
 
 -- Seed Data for Locations
 INSERT INTO public.locations (name_kh, name_en, type, code) VALUES
-('ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB', 'HQ-ITSB Technical Inventory', 'HQ', 'HQ-ITSB'),
+('ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ', 'ITSB-HQ Technical Inventory', 'HQ', 'HQ-ITSB'),
 ('ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', 'Central Working Group (Tech-HQ)', 'BRANCH', 'Tech-HQ'),
 ('សាខាពន្ធដារខណ្ឌ៧មករា', '7 Makara Branch', 'BRANCH', '7MK'),
 ('សាខាពន្ធដារខណ្ឌចំការមន', 'Chamkarmon Branch', 'BRANCH', 'CKM'),

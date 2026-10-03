@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext } from '../contexts/LocationContext';
+import { useInventoryContext } from '../contexts/InventoryContext';
 import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
@@ -25,6 +26,7 @@ export function PendingTransfersView() {
   const { t, language } = useLanguage();
   const { userRole, isCentralAdmin, isBranchUser, userDisplayName } = useAuth();
   const { selectedLocationId } = useLocationContext();
+  const { refreshInventory } = useInventoryContext();
 
   const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -229,6 +231,13 @@ export function PendingTransfersView() {
       }
 
       setActionSuccess(`បានទទួលស្គាល់ការផ្ទេរសម្ភារៈ "${tx.item_name_kh}" ចំនួន ${tx.quantity} ${tx.unit} ចូលស្តុកសាខាជោគជ័យ!`);
+
+      // Refresh global inventory state across all pages
+      try {
+        await refreshInventory();
+      } catch (refErr) {
+        console.warn('Error refreshing inventory:', refErr);
+      }
 
       // Remove acknowledged transaction from list
       setPendingTransfers(prev => prev.filter(t => t.id !== tx.id));

@@ -15,19 +15,31 @@ interface LocationContextType {
   setSelectedLocationId: (id: string) => void;
   selectedLocation: Location;
   locations: Location[];
+  setLocationsList: (locs: Location[]) => void;
 }
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
 export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
+  const [locationsList, setLocationsList] = useState<Location[]>(mockLocations);
 
-  const locations = [ALL_LOCATIONS_OPTION, ...mockLocations];
+  const locations = [ALL_LOCATIONS_OPTION, ...locationsList];
 
-  const selectedLocation = locations.find(l => l.id === selectedLocationId || l.code === selectedLocationId) || ALL_LOCATIONS_OPTION;
+  const selectedLocation = locations.find(l => 
+    l.id === selectedLocationId || 
+    l.code === selectedLocationId ||
+    (l.code && selectedLocationId.includes(l.code))
+  ) || ALL_LOCATIONS_OPTION;
 
   return (
-    <LocationContext.Provider value={{ selectedLocationId, setSelectedLocationId, selectedLocation, locations }}>
+    <LocationContext.Provider value={{ 
+      selectedLocationId, 
+      setSelectedLocationId, 
+      selectedLocation, 
+      locations,
+      setLocationsList
+    }}>
       {children}
     </LocationContext.Provider>
   );

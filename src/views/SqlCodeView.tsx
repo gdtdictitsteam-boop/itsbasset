@@ -178,6 +178,14 @@ ON public.user_profiles FOR SELECT
 USING (auth.uid() = id);
 
 ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+
+-- Permissive policies for application access
+DROP POLICY IF EXISTS "Allow all access on inventory" ON public.inventory;
+CREATE POLICY "Allow all access on inventory" ON public.inventory FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access on transactions" ON public.transactions;
+CREATE POLICY "Allow all access on transactions" ON public.transactions FOR ALL USING (true) WITH CHECK (true);
 
 CREATE POLICY "CentralAdmin full access to inventory"
 ON public.inventory FOR ALL

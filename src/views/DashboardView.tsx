@@ -15,16 +15,39 @@ export function DashboardView() {
   const { inventory, items, locations, isLoading, refreshInventory, reseedStandardStock } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
 
-  // Filter inventory based on selected location in top navbar
-  const locationFilteredInventory = inventory.filter(inv => {
+  // Helper to check if inventory row belongs to HQ
+  const isHqRow = (inv: any) => {
+    if (inv.location_id === '1' || inv.location_id === 'HQ-ITSB') return true;
+    const loc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
+    if (loc) return loc.type === 'HQ' || loc.code === 'HQ-ITSB';
+    return Boolean(inv.location_name_kh && (inv.location_name_kh.includes('HQ') || inv.location_name_kh.includes('ថ្នាក់កណ្តាល')));
+  };
+
+  // Helper to check if inventory row matches current location filter
+  const matchesLocationFilter = (inv: any) => {
     if (selectedLocationId === 'ALL' || selectedLocation.code === 'ALL') return true;
-    return inv.location_id === selectedLocationId || 
-           inv.location_id === selectedLocation.code || 
-           (inv.location_name_kh && (
-             inv.location_name_kh.includes(selectedLocation.code) || 
-             inv.location_name_kh.includes(selectedLocation.name_kh)
-           ));
-  });
+    if (inv.location_id === selectedLocationId || inv.location_id === selectedLocation.code) return true;
+
+    const rowLoc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
+    if (rowLoc) {
+      if (rowLoc.code === selectedLocation.code) return true;
+      if (rowLoc.id === selectedLocation.id) return true;
+    }
+
+    const isSelHq = selectedLocation.type === 'HQ' || selectedLocation.code === 'HQ-ITSB' || selectedLocation.id === '1';
+    if (isSelHq && (inv.location_id === '1' || inv.location_id === 'HQ-ITSB' || (inv.location_name_kh && inv.location_name_kh.includes('HQ')))) {
+      return true;
+    }
+
+    if (selectedLocation.code && inv.location_name_kh && inv.location_name_kh.includes(selectedLocation.code)) return true;
+    if (selectedLocation.name_kh && inv.location_name_kh && 
+        (inv.location_name_kh.includes(selectedLocation.name_kh) || selectedLocation.name_kh.includes(inv.location_name_kh))) return true;
+
+    return false;
+  };
+
+  // Filter inventory based on selected location
+  const locationFilteredInventory = inventory.filter(inv => matchesLocationFilter(inv));
 
   // Calculate live aggregated inventory per item (reliable code and ID matching)
   const aggregatedInventory = items.map((item, index) => {
@@ -38,7 +61,7 @@ export function DashboardView() {
 
     itemInventory.forEach(inv => {
       const loc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
-      const isHq = loc ? (loc.type === 'HQ' || loc.code?.includes('HQ')) : (inv.location_name_kh?.includes('HQ') ?? true);
+      const isHq = isHqRow(inv);
 
       if (isHq) {
         hqStock += (inv.quantity || 0);

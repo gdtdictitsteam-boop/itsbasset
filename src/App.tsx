@@ -36,7 +36,7 @@ function MainLayout() {
       case 'stockIn':
         return (
           <ProtectedRoute allowedRoles={['CentralAdmin', 'Admin-GDT']}>
-            <StockInView />
+            <StockInView onNavigate={(view) => setCurrentView(view)} />
           </ProtectedRoute>
         );
       case 'handover':
