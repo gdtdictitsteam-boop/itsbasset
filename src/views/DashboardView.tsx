@@ -69,6 +69,7 @@ export function DashboardView() {
       code: item.code,
       name_kh: item.name_kh,
       name_en: item.name_en,
+      image_url: item.image_url,
       name: language === 'kh' ? item.name_kh : item.name_en,
       category: item.category,
       unit: item.unit,
@@ -205,7 +206,7 @@ export function DashboardView() {
                   <td className="px-4 py-3 font-bold text-slate-500 text-center">{item.no}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center space-x-3">
-                      <ItemAvatar item={{ code: item.code, name_kh: item.name_kh, name_en: item.name_en, category: item.category }} />
+                      <ItemAvatar item={{ code: item.code, name_kh: item.name_kh, name_en: item.name_en, category: item.category, image_url: item.image_url }} />
                       <div className="min-w-0 flex-1">
                         <div className="font-bold text-slate-900 text-sm leading-snug line-clamp-1">{item.name_kh}</div>
                         <div className="text-[11px] font-mono text-slate-500 mt-0.5 tracking-tight flex items-center gap-1.5 truncate">

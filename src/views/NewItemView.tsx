@@ -2,10 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, AlertTriangle, Database, Info } from 'lucide-react';
 
 import { mockItems, mockInventory, mockLocations } from '../mockData';
-import { insertItemToSupabase, isSupabaseConfigured } from '../lib/supabase';
+import { insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured } from '../lib/supabase';
 
 export function NewItemView() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [uploadingImageText, setUploadingImageText] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [category, setCategory] = useState('tools');
   const [materialCode, setMaterialCode] = useState(() => `TOL-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
@@ -80,6 +82,7 @@ export function NewItemView() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setSelectedImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -91,6 +94,7 @@ export function NewItemView() {
   const handleRemoveImage = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    setSelectedImageFile(null);
     setImagePreview(null);
   };
 
@@ -110,6 +114,7 @@ export function NewItemView() {
     
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('image/')) {
+      setSelectedImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -119,7 +124,9 @@ export function NewItemView() {
   };
 
   const resetForm = () => {
+    setSelectedImageFile(null);
     setImagePreview(null);
+    setUploadingImageText(null);
     setCategory('tools');
     generateRandomCode('tools');
     setUnitSearch('');
@@ -131,6 +138,7 @@ export function NewItemView() {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmitResult(null);
+    setUploadingImageText(null);
 
     const form = e.target as HTMLFormElement;
     const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value.trim();
@@ -143,7 +151,29 @@ export function NewItemView() {
     const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
     const selectedUnit = unitSearch.trim() || 'គ្រឿង';
 
-    // 1. Send data to Supabase
+    let finalImageUrl: string | undefined = undefined;
+    let storageNotice: string | undefined = undefined;
+
+    // 1. Upload Image to Supabase Storage if file was provided
+    if (selectedImageFile) {
+      if (isConfigured) {
+        setUploadingImageText('កំពុង Upload រូបភាពសម្ភារទៅកាន់ Supabase Storage (bucket: item_images)...');
+        const uploadRes = await uploadItemImageToStorage(selectedImageFile);
+        if (uploadRes.publicUrl) {
+          finalImageUrl = uploadRes.publicUrl;
+        } else {
+          console.warn('Storage image upload notice:', uploadRes.errorMessage);
+          storageNotice = uploadRes.errorMessage || 'មិនអាច Upload រូបភាពទៅ Supabase Storage បានឡើយ។';
+        }
+      } else {
+        // Local mode preview fallback
+        finalImageUrl = imagePreview || undefined;
+      }
+    }
+
+    setUploadingImageText(null);
+
+    // 2. Send data to Supabase (with image_url)
     const res = await insertItemToSupabase({
       code: materialCode,
       name_kh: materialName,
@@ -155,9 +185,10 @@ export function NewItemView() {
       location_id: locationId,
       remark: description || 'បញ្ចូលសម្ភារថ្មី',
       recorded_by: 'Admin-GDT',
+      image_url: finalImageUrl,
     });
 
-    // 2. Add to local memory array so UI updates immediately
+    // 3. Add to local memory array so UI updates immediately
     const newItemId = res.item?.id || Math.random().toString(36).substring(7);
     const targetLoc = mockLocations.find(l => l.id === locationId) || mockLocations[0];
 
@@ -169,7 +200,7 @@ export function NewItemView() {
       category: categoryName,
       unit: selectedUnit,
       min_stock: minStock,
-      image_url: imagePreview || undefined,
+      image_url: finalImageUrl || imagePreview || undefined,
     });
 
     mockInventory.push({
@@ -184,16 +215,21 @@ export function NewItemView() {
       unit: selectedUnit,
       location_name_kh: targetLoc.name_kh,
       location_name_en: targetLoc.name_en,
-      image_url: imagePreview || undefined,
+      image_url: finalImageUrl || imagePreview || undefined,
     });
 
     setIsSubmitting(false);
 
     if (res.success && res.savedToSupabase) {
+      let successMsg = `រក្សាទុកក្នុង Supabase Database ជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`;
+      if (finalImageUrl) {
+        successMsg += ' | រូបភាពត្រូវបាន Upload ទៅកាន់ Storage bucket (item_images) និងរក្សាទុក URL រួចរាល់។';
+      }
       setSubmitResult({
         success: true,
         savedToSupabase: true,
-        message: `រក្សាទុកក្នុង Supabase Database ជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`,
+        message: successMsg,
+        details: storageNotice,
       });
       resetForm();
     } else {
@@ -201,7 +237,7 @@ export function NewItemView() {
         success: false,
         savedToSupabase: false,
         message: res.error || 'បរាជ័យបញ្ចូលទៅក្នុង Supabase Database',
-        details: res.errorDetails || 'ទិន្នន័យត្រូវបញ្ចូលក្នុង Local Memory ប្រព័ន្ធជាបណ្តោះអាសន្ន។',
+        details: res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបញ្ចូលក្នុង Local Memory ប្រព័ន្ធជាបណ្តោះអាសន្ន។',
       });
     }
   };
@@ -544,7 +580,7 @@ export function NewItemView() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  កំពុងបញ្ចូលទៅក្នុង Supabase DB...
+                  {uploadingImageText || 'កំពុងបញ្ចូលទៅក្នុង Supabase DB...'}
                 </>
               ) : (
                 'រក្សាទុកសម្ភារថ្មី'

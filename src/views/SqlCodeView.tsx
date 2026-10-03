@@ -198,9 +198,48 @@ USING (
 `;
 
   const storageCode = `-- =========================================================================
--- STEP 3: SUPABASE STORAGE BUCKET & STORAGE RLS POLICIES (handover_docs)
+-- STEP 3: SUPABASE STORAGE BUCKETS & ITEM IMAGES SCHEMA (item_images & handover_docs)
 -- =========================================================================
 
+-- 1. បន្ថែម Column image_url ក្នុង Table items (ប្រសិនបើមិនទាន់មាន)
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+-- 2. បង្កើត Public Storage Bucket "item_images" សម្រាប់ផ្ទុករូបភាពសម្ភារៈ (Item Photos)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'item_images', 
+    'item_images', 
+    true, 
+    5242880, 
+    ARRAY['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE 
+SET public = true, 
+    file_size_limit = 5242880,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'image/gif'];
+
+-- គោលការណ៍សិទ្ធិ (Storage Policies) សម្រាប់ item_images
+DROP POLICY IF EXISTS "Public can view item images" ON storage.objects;
+CREATE POLICY "Public can view item images"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'item_images');
+
+DROP POLICY IF EXISTS "Allow upload to item_images" ON storage.objects;
+CREATE POLICY "Allow upload to item_images"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'item_images');
+
+DROP POLICY IF EXISTS "Allow update to item_images" ON storage.objects;
+CREATE POLICY "Allow update to item_images"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'item_images');
+
+DROP POLICY IF EXISTS "Allow delete to item_images" ON storage.objects;
+CREATE POLICY "Allow delete to item_images"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'item_images');
+
+-- 3. បង្កើត Public Storage Bucket "handover_docs" សម្រាប់ឯកសារប្រគល់-ទទួល
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
     'handover_docs', 'handover_docs', true, 5242880,
@@ -210,8 +249,8 @@ ON CONFLICT (id) DO UPDATE
 SET public = true, file_size_limit = 5242880,
     allowed_mime_types = ARRAY['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
 
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
+-- គោលការណ៍សិទ្ធិសម្រាប់ handover_docs
+DROP POLICY IF EXISTS "CentralAdmin upload handover documents" ON storage.objects;
 CREATE POLICY "CentralAdmin upload handover documents"
 ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (
@@ -222,6 +261,7 @@ WITH CHECK (
     )
 );
 
+DROP POLICY IF EXISTS "Authenticated users view handover documents" ON storage.objects;
 CREATE POLICY "Authenticated users view handover documents"
 ON storage.objects FOR SELECT TO authenticated
 USING (bucket_id = 'handover_docs');

@@ -1,29 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
 import { mockInventory } from '../mockData';
-import { Wrench, Package as PackageIcon, MapPin } from 'lucide-react';
+import { Wrench, Package as PackageIcon, RefreshCw, Database } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
+import { isSupabaseConfigured, fetchFullInventoryFromSupabase } from '../lib/supabase';
+import { InventoryItem } from '../types';
 
 export function InventoryView() {
   const { t, language } = useLanguage();
   const { selectedLocationId, selectedLocation } = useLocationContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const isConfigured = isSupabaseConfigured();
+  const [inventoryList, setInventoryList] = useState<InventoryItem[]>(mockInventory);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const filteredInventory = mockInventory.filter(item => {
-    const matchesLocation = selectedLocationId === 'ALL' || selectedLocation.code === 'ALL' || item.location_id === selectedLocationId || item.location_name_kh.includes(selectedLocation.code) || item.location_name_kh.includes(selectedLocation.name_kh);
+  const loadInventory = async () => {
+    if (!isConfigured) {
+      setInventoryList(mockInventory);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const data = await fetchFullInventoryFromSupabase();
+      if (data && data.length > 0) {
+        setInventoryList(data);
+      } else {
+        setInventoryList(mockInventory);
+      }
+    } catch (e) {
+      console.warn('Could not fetch inventory from Supabase, using mock fallback:', e);
+      setInventoryList(mockInventory);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInventory();
+  }, [isConfigured]);
+
+  const filteredInventory = inventoryList.filter(item => {
+    const matchesLocation = 
+      selectedLocationId === 'ALL' || 
+      selectedLocation.code === 'ALL' || 
+      item.location_id === selectedLocationId || 
+      (item.location_name_kh && (
+        item.location_name_kh.includes(selectedLocation.code) || 
+        item.location_name_kh.includes(selectedLocation.name_kh)
+      ));
     const matchesTab = activeTab === 'ALL' || item.category === activeTab;
-    const matchesSearch = item.item_code.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          item.item_name_kh.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          item.item_name_en.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = 
+      (item.item_code || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (item.item_name_kh || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.item_name_en || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesLocation && matchesTab && matchesSearch;
   });
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-2xl font-bold text-slate-900">{t.inventory}</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">{t.inventory}</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            បញ្ជីសម្ភារៈ និងរូបភាពសម្ភារៈក្នុងប្រព័ន្ធ (ទម្រង់ Read-Only)
+          </p>
+        </div>
+
+        {isConfigured && (
+          <button
+            onClick={loadInventory}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 shadow-2xs transition-colors self-start sm:self-auto disabled:opacity-50"
+            title="ទាញយកទិន្នន័យចុងក្រោយពី Supabase Database"
+          >
+            <RefreshCw size={14} className={isLoading ? 'animate-spin text-teal-600' : 'text-slate-500'} />
+            <span>{isLoading ? 'កំពុងទាញយក...' : 'ធ្វើបច្ចុប្បន្នភាពទិន្នន័យ'}</span>
+          </button>
+        )}
       </div>
       
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
@@ -65,7 +121,7 @@ export function InventoryView() {
             <thead>
               <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
                 <th className="px-4 py-3.5 font-bold text-center">ល.រ</th>
-                <th className="px-6 py-3.5 font-bold">កូដ / សម្ភារ:</th>
+                <th className="px-6 py-3.5 font-bold">រូបភាព / កូដ / សម្ភារ:</th>
                 <th className="px-6 py-3.5 font-bold">{t.category}</th>
                 <th className="px-6 py-3.5 font-bold">{t.location}</th>
                 <th className="px-6 py-3.5 font-bold text-right">{t.quantity}</th>
@@ -73,11 +129,20 @@ export function InventoryView() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredInventory.map((item, idx) => (
-                <tr key={idx} className="even:bg-slate-50/40 odd:bg-white hover:bg-teal-50/30 transition-colors">
+                <tr key={`${item.location_id}-${item.item_id}-${idx}`} className="even:bg-slate-50/40 odd:bg-white hover:bg-teal-50/30 transition-colors">
                   <td className="px-4 py-3.5 font-bold text-slate-500 text-center text-sm">{idx + 1}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center space-x-3">
-                      <ItemAvatar item={{ code: item.item_code, name_kh: item.item_name_kh, name_en: item.item_name_en, category: item.category }} />
+                      {/* Strict Read-Only Item Thumbnail */}
+                      <ItemAvatar 
+                        item={{ 
+                          code: item.item_code, 
+                          name_kh: item.item_name_kh, 
+                          name_en: item.item_name_en, 
+                          category: item.category,
+                          image_url: item.image_url 
+                        }} 
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="font-bold text-slate-900 text-sm leading-snug line-clamp-1">{item.item_name_kh}</div>
                         <div className="text-[11px] font-mono text-slate-500 mt-0.5 tracking-tight flex items-center gap-1.5 truncate">
@@ -108,7 +173,7 @@ export function InventoryView() {
               {filteredInventory.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">
-                    មិនមានទិន្នន័យ
+                    {isLoading ? 'កំពុងទាញយកទិន្នន័យពី Supabase...' : 'មិនមានទិន្នន័យ'}
                   </td>
                 </tr>
               )}

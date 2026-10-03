@@ -23,8 +23,12 @@ CREATE TABLE IF NOT EXISTS public.items (
     category VARCHAR(100),
     unit VARCHAR(50),
     min_stock INTEGER DEFAULT 0,
+    image_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Ensure image_url column exists in items table for existing databases
+ALTER TABLE public.items ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 -- 3. User Profiles Table (Depends on locations and auth.users)
 CREATE TABLE IF NOT EXISTS public.user_profiles (
@@ -162,6 +166,41 @@ DROP POLICY IF EXISTS "Authenticated users view handover documents" ON storage.o
 CREATE POLICY "Authenticated users view handover documents"
 ON storage.objects FOR SELECT TO authenticated
 USING (bucket_id = 'handover_docs');
+
+-- 3. Create Public Storage Bucket "item_images" (Item Photos)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'item_images', 
+    'item_images', 
+    true, 
+    5242880, 
+    ARRAY['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE 
+SET public = true,
+    file_size_limit = 5242880,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'image/gif'];
+
+-- Storage Policies for item_images bucket
+DROP POLICY IF EXISTS "Public can view item images" ON storage.objects;
+CREATE POLICY "Public can view item images"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'item_images');
+
+DROP POLICY IF EXISTS "Allow upload to item_images" ON storage.objects;
+CREATE POLICY "Allow upload to item_images"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'item_images');
+
+DROP POLICY IF EXISTS "Allow update to item_images" ON storage.objects;
+CREATE POLICY "Allow update to item_images"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'item_images');
+
+DROP POLICY IF EXISTS "Allow delete to item_images" ON storage.objects;
+CREATE POLICY "Allow delete to item_images"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'item_images');
 
 
 -- =========================================================================
