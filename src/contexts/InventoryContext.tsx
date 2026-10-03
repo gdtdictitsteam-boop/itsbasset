@@ -25,6 +25,17 @@ export interface StockOutParams {
   purpose?: string;
 }
 
+export interface HandoverParams {
+  fromLocationId: string;
+  toLocationId: string;
+  itemId: string;
+  quantity: number;
+  officerName?: string;
+  purpose?: string;
+  documentUrl?: string;
+  isRequisition?: boolean;
+}
+
 export interface InventoryContextType {
   inventory: InventoryItem[];
   items: Item[];
@@ -33,6 +44,7 @@ export interface InventoryContextType {
   refreshInventory: () => Promise<void>;
   recordStockIn: (params: StockInParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
   recordStockOut: (params: StockOutParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
+  recordHandover: (params: HandoverParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
   reseedStandardStock: () => Promise<{ success: boolean; message: string }>;
   addNewItemToContext: (item: Item, initialStock?: number, locationId?: string) => void;
 }
@@ -745,6 +757,207 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
+  // Record Handover (Transfers stock from HQ or branch to target branch)
+  const recordHandover = async (params: HandoverParams): Promise<{ success: boolean; message: string; newQuantity?: number }> => {
+    const targetItem = items.find(i => String(i.id) === String(params.itemId) || String(i.code)?.toUpperCase() === String(params.itemId)?.toUpperCase())
+      || mockItems.find(i => String(i.id) === String(params.itemId) || String(i.code)?.toUpperCase() === String(params.itemId)?.toUpperCase());
+
+    // Resolve source location
+    let fromLocation = locations.find(l => 
+      l.id !== 'ALL' && l.code !== 'ALL' && 
+      (String(l.id) === String(params.fromLocationId) || String(l.code)?.toUpperCase() === String(params.fromLocationId)?.toUpperCase())
+    );
+    if (!fromLocation && params.fromLocationId !== 'ALL') {
+      fromLocation = mockLocations.find(l => 
+        l.id !== 'ALL' && l.code !== 'ALL' &&
+        (String(l.id) === String(params.fromLocationId) || String(l.code)?.toUpperCase() === String(params.fromLocationId)?.toUpperCase())
+      );
+    }
+    if (!fromLocation) {
+      fromLocation = locations.find(l => isHqLocationOrRow(l, locations))
+        || mockLocations.find(l => isHqLocationOrRow(l, mockLocations))
+        || mockLocations[0];
+    }
+
+    // Resolve target location
+    let toLocation = locations.find(l => 
+      l.id !== 'ALL' && l.code !== 'ALL' && 
+      (String(l.id) === String(params.toLocationId) || String(l.code)?.toUpperCase() === String(params.toLocationId)?.toUpperCase())
+    );
+    if (!toLocation) {
+      toLocation = mockLocations.find(l => 
+        l.id !== 'ALL' && l.code !== 'ALL' &&
+        (String(l.id) === String(params.toLocationId) || String(l.code)?.toUpperCase() === String(params.toLocationId)?.toUpperCase())
+      );
+    }
+
+    if (!targetItem) {
+      return { success: false, message: 'រកមិនឃើញសម្ភារៈដែលបានជ្រើសរើសឡើយ!' };
+    }
+    if (!fromLocation || !toLocation) {
+      return { success: false, message: 'រកមិនឃើញទីតាំងដើម ឬទីតាំងគោលដៅឡើយ!' };
+    }
+    if (fromLocation.id === toLocation.id || fromLocation.code === toLocation.code) {
+      return { success: false, message: 'ទីតាំងដើម និងទីតាំងគោលដៅ មិនអាចដូចគ្នាបានទេ!' };
+    }
+    if (params.quantity <= 0) {
+      return { success: false, message: 'ចំនួនស្នើសុំផ្ទេរត្រូវតែធំជាង ០!' };
+    }
+
+    const isFromHq = isHqLocationOrRow(fromLocation, locations);
+
+    // 1. Calculate available stock at source location with flexible matching
+    const matchingSourceRows = mockInventory.filter(inv => {
+      const matchItem = String(inv.item_code)?.trim().toUpperCase() === String(targetItem.code)?.trim().toUpperCase() || 
+                        String(inv.item_id) === String(targetItem.id);
+      if (!matchItem) return false;
+
+      if (String(inv.location_id) === String(fromLocation.id) || 
+          String(inv.location_id) === String(fromLocation.code)) return true;
+
+      if (isFromHq && isHqLocationOrRow(inv, locations)) return true;
+
+      if (fromLocation.code && inv.location_name_kh && inv.location_name_kh.includes(fromLocation.code)) return true;
+      if (fromLocation.name_kh && inv.location_name_kh && 
+          (inv.location_name_kh.includes(fromLocation.name_kh) || fromLocation.name_kh.includes(inv.location_name_kh))) return true;
+
+      return false;
+    });
+
+    const totalAvailableSourceQty = matchingSourceRows.reduce((sum, r) => sum + (r.quantity || 0), 0);
+
+    if (totalAvailableSourceQty < params.quantity) {
+      return {
+        success: false,
+        message: `បរិមាណស្តុកមិនគ្រប់គ្រាន់! ស្តុកជាក់ស្តែងនៅ "${fromLocation.name_kh}" មានតែ ${totalAvailableSourceQty} ${targetItem.unit} ប៉ុណ្ណោះ។`
+      };
+    }
+
+    // 2. Deduct from source in-memory
+    let remainingToDeduct = params.quantity;
+    for (const row of matchingSourceRows) {
+      if (remainingToDeduct <= 0) break;
+      const deductFromThis = Math.min(row.quantity, remainingToDeduct);
+      row.quantity -= deductFromThis;
+      row.last_updated = new Date().toISOString();
+      remainingToDeduct -= deductFromThis;
+    }
+
+    // 3. Create transaction record with status PENDING until received by branch
+    const finalRemark = params.documentUrl
+      ? `${(params.purpose || 'ផ្ទេរសម្ភារៈជូនសាខា').trim()} | ឯកសារយោង: ${params.documentUrl}`
+      : (params.purpose || 'ផ្ទេរសម្ភារៈជូនសាខា').trim();
+
+    mockTransactions.unshift({
+      id: `tx-handover-${Date.now()}`,
+      date: new Date().toISOString(),
+      type: 'HANDOVER',
+      from_location: fromLocation.name_kh,
+      from_location_id: fromLocation.id,
+      to_location: toLocation.name_kh,
+      to_location_id: toLocation.id,
+      item_id: targetItem.id,
+      item_code: targetItem.code,
+      item_name_kh: targetItem.name_kh,
+      item_name_en: targetItem.name_en,
+      quantity: params.quantity,
+      unit: targetItem.unit,
+      recorded_by: params.officerName || 'Admin-GDT',
+      remark: finalRemark,
+      status: 'PENDING'
+    });
+
+    saveToStorage(mockItems, mockInventory, mockTransactions);
+    setInventory([...mockInventory]);
+
+    // 4. Supabase DB Persistence
+    if (isConfigured) {
+      try {
+        let dbItemId = targetItem.id;
+        if (!isValidUuid(dbItemId)) {
+          const { data: itemRows } = await supabase.from('items').select('id').eq('code', targetItem.code).maybeSingle();
+          if (itemRows?.id) dbItemId = itemRows.id;
+        }
+
+        let dbFromLocId = fromLocation.id;
+        if (!isValidUuid(dbFromLocId)) {
+          const { data: locRows } = await supabase.from('locations').select('id').eq('code', fromLocation.code).maybeSingle();
+          if (locRows?.id) dbFromLocId = locRows.id;
+        }
+
+        let dbToLocId = toLocation.id;
+        if (!isValidUuid(dbToLocId)) {
+          const { data: locRows } = await supabase.from('locations').select('id').eq('code', toLocation.code).maybeSingle();
+          if (locRows?.id) dbToLocId = locRows.id;
+        }
+
+        if (isValidUuid(dbItemId) && isValidUuid(dbFromLocId) && isValidUuid(dbToLocId)) {
+          // Attempt RPC atomic transaction first
+          const { error: rpcErr } = await supabase.rpc('handle_branch_handover', {
+            p_from_location: dbFromLocId,
+            p_to_location: dbToLocId,
+            p_item_id: dbItemId,
+            p_quantity: params.quantity,
+            p_recorded_by: params.officerName || 'Admin-GDT',
+            p_remark: finalRemark
+          });
+
+          if (rpcErr) {
+            console.warn('RPC handle_branch_handover error, fallback to direct query:', rpcErr);
+            // Fallback: Decrement source inventory directly
+            const { data: curSource } = await supabase
+              .from('inventory')
+              .select('quantity')
+              .eq('location_id', dbFromLocId)
+              .eq('item_id', dbItemId)
+              .maybeSingle();
+
+            if (curSource && curSource.quantity >= params.quantity) {
+              await supabase
+                .from('inventory')
+                .update({ quantity: curSource.quantity - params.quantity, last_updated: new Date().toISOString() })
+                .eq('location_id', dbFromLocId)
+                .eq('item_id', dbItemId);
+            }
+
+            await supabase.from('transactions').insert([
+              {
+                type: 'HANDOVER',
+                from_location_id: dbFromLocId,
+                to_location_id: dbToLocId,
+                item_id: dbItemId,
+                item_code: targetItem.code,
+                item_name_kh: targetItem.name_kh,
+                quantity: params.quantity,
+                unit: targetItem.unit,
+                recorded_by: params.officerName || 'Admin-GDT',
+                remark: finalRemark,
+                status: 'PENDING'
+              }
+            ]);
+          }
+
+          const liveInv = await fetchFullInventoryFromSupabase();
+          if (liveInv && liveInv.length > 0) {
+            setInventory(liveInv);
+            mockInventory.length = 0;
+            mockInventory.push(...liveInv);
+            saveToStorage(mockItems, mockInventory, mockTransactions);
+          }
+        }
+      } catch (dbErr: any) {
+        console.warn('Supabase Handover Sync Error:', dbErr);
+      }
+    }
+
+    const remainingSource = totalAvailableSourceQty - params.quantity;
+    return {
+      success: true,
+      newQuantity: remainingSource,
+      message: `បានដាក់ស្នើ/ផ្ទេរសម្ភារៈ "${targetItem.name_kh}" ចំនួន ${params.quantity} ${targetItem.unit} ទៅកាន់ "${toLocation.name_kh}" ជោគជ័យ!`
+    };
+  };
+
   // Re-seed clean standard stock
   const reseedStandardStock = async (): Promise<{ success: boolean; message: string }> => {
     if (isConfigured) {
@@ -791,6 +1004,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       refreshInventory,
       recordStockIn,
       recordStockOut,
+      recordHandover,
       reseedStandardStock,
       addNewItemToContext,
     }}>

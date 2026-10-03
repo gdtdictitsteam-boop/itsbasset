@@ -40,11 +40,7 @@ function MainLayout() {
           </ProtectedRoute>
         );
       case 'handover':
-        return (
-          <ProtectedRoute allowedRoles={['CentralAdmin', 'Admin-GDT']}>
-            <HandoverView />
-          </ProtectedRoute>
-        );
+        return <HandoverView />;
       case 'pendingTransfers':
         return <PendingTransfersView />;
       case 'newSku':
