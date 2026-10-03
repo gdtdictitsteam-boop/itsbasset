@@ -75,33 +75,120 @@ export const mockItems: Item[] = [
   { id: '212', code: 'S-012', name_kh: 'វិសអ៉ីណុកក្បាលស្នើ', name_en: 'Stainless Steel Screws', category: 'Suppliers', unit: 'កញ្ចប់', min_stock: 20 },
 ];
 
+export const standardItemQuantities: Record<string, number> = {
+  'T-001': 15,
+  'T-002': 8,
+  'T-003': 14,
+  'T-004': 10,
+  'T-005': 6,
+  'T-006': 25,
+  'T-007': 16,
+  'T-008': 12,
+  'T-009': 8,
+  'T-010': 28,
+  'T-011': 10,
+  'T-012': 20,
+  'T-013': 35,
+  'T-014': 45,
+  'T-015': 350,
+  'T-016': 5,
+  'T-017': 18,
+  'T-018': 40,
+  'T-019': 50,
+  'T-020': 800,
+  'S-001': 65,
+  'S-002': 85,
+  'S-003': 120,
+  'S-004': 180,
+  'S-005': 150,
+  'S-006': 95,
+  'S-007': 60,
+  'S-008': 160,
+  'S-009': 130,
+  'S-010': 90,
+  'S-011': 70,
+  'S-012': 110,
+};
+
 export const mockInventory: InventoryItem[] = [
-  // HQ Stock
+  // HQ Stock (Standard clean initial inventory for HQ-ITSB)
   ...mockItems.map(item => ({
     location_id: '1',
     item_id: item.id,
-    quantity: Math.floor(Math.random() * 100) + 10,
-    last_updated: new Date().toISOString(),
+    quantity: standardItemQuantities[item.code] ?? 20,
+    last_updated: '2026-10-01T08:00:00Z',
     item_code: item.code,
     item_name_kh: item.name_kh,
     item_name_en: item.name_en,
     category: item.category,
     unit: item.unit,
-    location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-    location_name_en: 'HQ-ITSB Technical Inventory'
+    min_stock: item.min_stock,
+    location_name_kh: 'ស្តុកសម្ភារបច្ចេកទេស ITSB-HQ',
+    location_name_en: 'ITSB-HQ Technical Inventory'
   })),
-  // Some Branch Stocks
+
+  // Central Working Group (Tech-HQ) Stock
   {
-    location_id: '2', item_id: '101', quantity: 2, last_updated: new Date().toISOString(),
-    item_code: 'T-001', item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)', item_name_en: 'BOSCH Cordless Percy Screwed (GSB 120-LI)', category: 'Tools', unit: 'គ្រឿង', location_name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា', location_name_en: '7 Makara Branch'
+    location_id: '35', item_id: '101', quantity: 1, last_updated: '2026-10-02T09:00:00Z',
+    item_code: 'T-001', item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)', item_name_en: 'BOSCH Cordless Percy Screwed (GSB 120-LI)', category: 'Tools', unit: 'គ្រឿង', min_stock: 5, location_name_kh: 'ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', location_name_en: 'Central Working Group (Tech-HQ)'
   },
   {
-    location_id: '3', item_id: '120', quantity: 50, last_updated: new Date().toISOString(),
-    item_code: 'T-020', item_name_kh: 'គ្រាប់កឹប Network', item_name_en: 'RJ45 Connectors', category: 'Tools', unit: 'គ្រាប់', location_name_kh: 'សាខាពន្ធដារខណ្ឌចំការមន', location_name_en: 'Chamkarmon Branch'
+    location_id: '35', item_id: '104', quantity: 1, last_updated: '2026-10-02T09:00:00Z',
+    item_code: 'T-004', item_name_kh: 'ម៉ាស៊ីនផ្លុំធូលី Air Blower 400W', item_name_en: 'Air Blower 400W', category: 'Tools', unit: 'គ្រឿង', min_stock: 3, location_name_kh: 'ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', location_name_en: 'Central Working Group (Tech-HQ)'
   },
   {
-    location_id: '4', item_id: '205', quantity: 10, last_updated: new Date().toISOString(),
-    item_code: 'S-005', item_name_kh: 'ម៉ាសពេទ្យ', item_name_en: 'Medical Mask', category: 'Suppliers', unit: 'ប្រអប់', location_name_kh: 'សាខាពន្ធដារខណ្ឌដង្កោ', location_name_en: 'Dangkor Branch'
+    location_id: '35', item_id: '112', quantity: 1, last_updated: '2026-10-02T09:00:00Z',
+    item_code: 'T-012', item_name_kh: 'ដង្កាប់កឹបខ្សែ (Network)', item_name_en: 'Network Crimping Tool', category: 'Tools', unit: 'ដើម', min_stock: 5, location_name_kh: 'ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', location_name_en: 'Central Working Group (Tech-HQ)'
+  },
+  {
+    location_id: '35', item_id: '204', quantity: 20, last_updated: '2026-10-02T09:00:00Z',
+    item_code: 'S-004', item_name_kh: 'ស្រោមដៃក្រណាត់', item_name_en: 'Cloth Gloves', category: 'Suppliers', unit: 'គូ', min_stock: 50, location_name_kh: 'ក្រុមការងារថ្នាក់កណ្តាល (Tech-HQ)', location_name_en: 'Central Working Group (Tech-HQ)'
+  },
+
+  // 7 Makara Branch Stock (7MK)
+  {
+    location_id: '2', item_id: '101', quantity: 2, last_updated: '2026-10-01T10:00:00Z',
+    item_code: 'T-001', item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)', item_name_en: 'BOSCH Cordless Percy Screwed (GSB 120-LI)', category: 'Tools', unit: 'គ្រឿង', min_stock: 5, location_name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)', location_name_en: '7 Makara Branch (7MK)'
+  },
+  {
+    location_id: '2', item_id: '106', quantity: 2, last_updated: '2026-10-01T10:00:00Z',
+    item_code: 'T-006', item_name_kh: 'កន្ត្រៃកាត់ខ្សែ Network', item_name_en: 'Network Cable Scissors', category: 'Tools', unit: 'ដើម', min_stock: 5, location_name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)', location_name_en: '7 Makara Branch (7MK)'
+  },
+  {
+    location_id: '2', item_id: '119', quantity: 5, last_updated: '2026-10-01T10:00:00Z',
+    item_code: 'T-019', item_name_kh: 'ខ្សែ Network Link Basic Cat6 UTP', item_name_en: 'Network Link Basic Cat6 UTP', category: 'Tools', unit: 'ដុំ', min_stock: 5, location_name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)', location_name_en: '7 Makara Branch (7MK)'
+  },
+  {
+    location_id: '2', item_id: '120', quantity: 100, last_updated: '2026-10-01T10:00:00Z',
+    item_code: 'T-020', item_name_kh: 'គ្រាប់កឹប Network', item_name_en: 'RJ45 Connectors', category: 'Tools', unit: 'គ្រាប់', min_stock: 100, location_name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)', location_name_en: '7 Makara Branch (7MK)'
+  },
+  {
+    location_id: '2', item_id: '205', quantity: 15, last_updated: '2026-10-01T10:00:00Z',
+    item_code: 'S-005', item_name_kh: 'ម៉ាសពេទ្យ', item_name_en: 'Medical Mask', category: 'Suppliers', unit: 'ប្រអប់', min_stock: 50, location_name_kh: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)', location_name_en: '7 Makara Branch (7MK)'
+  },
+
+  // Chamkarmon Branch Stock (CKM)
+  {
+    location_id: '3', item_id: '103', quantity: 2, last_updated: '2026-10-01T11:00:00Z',
+    item_code: 'T-003', item_name_kh: 'កេះដាក់សម្ភារៈ', item_name_en: 'Toolbox', category: 'Tools', unit: 'កេះ', min_stock: 5, location_name_kh: 'សាខាពន្ធដារខណ្ឌចំការមន (CKM)', location_name_en: 'Chamkarmon Branch (CKM)'
+  },
+  {
+    location_id: '3', item_id: '120', quantity: 50, last_updated: '2026-10-01T11:00:00Z',
+    item_code: 'T-020', item_name_kh: 'គ្រាប់កឹប Network', item_name_en: 'RJ45 Connectors', category: 'Tools', unit: 'គ្រាប់', min_stock: 100, location_name_kh: 'សាខាពន្ធដារខណ្ឌចំការមន (CKM)', location_name_en: 'Chamkarmon Branch (CKM)'
+  },
+  {
+    location_id: '3', item_id: '203', quantity: 20, last_updated: '2026-10-01T11:00:00Z',
+    item_code: 'S-003', item_name_kh: 'តាកេ', item_name_en: 'Wall Plug', category: 'Suppliers', unit: 'កញ្ចប់', min_stock: 20, location_name_kh: 'សាខាពន្ធដារខណ្ឌចំការមន (CKM)', location_name_en: 'Chamkarmon Branch (CKM)'
+  },
+
+  // Dangkor Branch Stock (DKO)
+  {
+    location_id: '4', item_id: '205', quantity: 10, last_updated: '2026-10-01T11:30:00Z',
+    item_code: 'S-005', item_name_kh: 'ម៉ាសពេទ្យ', item_name_en: 'Medical Mask', category: 'Suppliers', unit: 'ប្រអប់', min_stock: 50, location_name_kh: 'សាខាពន្ធដារខណ្ឌដង្កោ (DKO)', location_name_en: 'Dangkor Branch (DKO)'
+  },
+  {
+    location_id: '4', item_id: '114', quantity: 2, last_updated: '2026-10-01T11:30:00Z',
+    item_code: 'T-014', item_name_kh: 'ប៊ិចភ្លើង', item_name_en: 'Test Pen', category: 'Tools', unit: 'ដើម', min_stock: 10, location_name_kh: 'សាខាពន្ធដារខណ្ឌដង្កោ (DKO)', location_name_en: 'Dangkor Branch (DKO)'
   }
 ];
 

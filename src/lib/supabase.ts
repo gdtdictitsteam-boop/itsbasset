@@ -342,6 +342,7 @@ export async function fetchFullInventoryFromSupabase() {
           item_name_en: it.name_en || it.name_kh || '',
           category: it.category || 'Tools',
           unit: it.unit || 'គ្រឿង',
+          min_stock: it.min_stock ?? 0,
           location_name_kh: loc?.name_kh || 'មិនស្គាល់ទីតាំង',
           location_name_en: loc?.name_en || 'Unknown Location',
           image_url: it.image_url || undefined,
@@ -364,6 +365,7 @@ export async function fetchFullInventoryFromSupabase() {
           item_name_en: it.name_en || it.name_kh || '',
           category: it.category || 'Tools',
           unit: it.unit || 'គ្រឿង',
+          min_stock: it.min_stock ?? 0,
           location_name_kh: defaultHqLoc.name_kh,
           location_name_en: defaultHqLoc.name_en,
           image_url: it.image_url || undefined,
@@ -375,5 +377,97 @@ export async function fetchFullInventoryFromSupabase() {
   } catch (err) {
     console.error('Exception fetching full inventory from Supabase:', err);
     return null;
+  }
+}
+
+/**
+ * Seed or sync standard clean initial inventory to Supabase
+ */
+export async function seedInitialInventoryToSupabase(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  if (!isSupabaseConfigured()) {
+    return {
+      success: false,
+      message: 'Supabase មិនទាន់ត្រូវបានកំណត់ (Configured) ក្នុងឯកសារ .env ឡើយ។',
+    };
+  }
+
+  try {
+    const { mockItems, standardItemQuantities } = await import('../mockData');
+
+    // 1. Fetch locations
+    const { data: locs, error: locErr } = await supabase.from('locations').select('*');
+    if (locErr || !locs || locs.length === 0) {
+      return {
+        success: false,
+        message: 'មិនអាចទាញយកទីតាំង (locations) ពី Supabase បានឡើយ។ សូមពិនិត្យ Table locations។',
+      };
+    }
+
+    const hqLoc = locs.find(l => l.type === 'HQ' || l.code?.includes('HQ')) || locs[0];
+
+    // 2. Upsert items
+    const itemsToUpsert = mockItems.map(item => ({
+      code: item.code,
+      name_kh: item.name_kh,
+      name_en: item.name_en,
+      category: item.category,
+      unit: item.unit,
+      min_stock: item.min_stock,
+    }));
+
+    const { data: upsertedItems, error: itemErr } = await supabase
+      .from('items')
+      .upsert(itemsToUpsert, { onConflict: 'code' })
+      .select('id, code');
+
+    if (itemErr) {
+      console.error('Error seeding items to Supabase:', itemErr);
+      return {
+        success: false,
+        message: `បរាជ័យក្នុងការបញ្ចូលទិន្នន័យ Items: ${itemErr.message}`,
+      };
+    }
+
+    // 3. Upsert inventory records for HQ
+    const allDbItems = upsertedItems && upsertedItems.length > 0
+      ? upsertedItems
+      : (await supabase.from('items').select('id, code')).data || [];
+
+    const inventoryRows: any[] = [];
+    allDbItems.forEach(it => {
+      const standardQty = standardItemQuantities[it.code] ?? 20;
+      inventoryRows.push({
+        location_id: hqLoc.id,
+        item_id: it.id,
+        quantity: standardQty,
+        last_updated: new Date().toISOString(),
+      });
+    });
+
+    const { error: invErr } = await supabase
+      .from('inventory')
+      .upsert(inventoryRows, { onConflict: 'location_id,item_id' });
+
+    if (invErr) {
+      console.error('Error seeding inventory to Supabase:', invErr);
+      return {
+        success: false,
+        message: `បរាជ័យក្នុងការបញ្ចូលទិន្នន័យ Inventory: ${invErr.message}`,
+      };
+    }
+
+    return {
+      success: true,
+      message: `បានរៀបចំ និងបញ្ចូលទិន្នន័យស្តុកដំបូងទៅ Supabase ជោគជ័យចំនួន ${inventoryRows.length} មុខសម្ភារ!`,
+    };
+  } catch (err: any) {
+    console.error('Exception seeding inventory to Supabase:', err);
+    return {
+      success: false,
+      message: err?.message || 'មានបញ្ហាក្នុងការតភ្ជាប់ទៅកាន់ Supabase',
+    };
   }
 }

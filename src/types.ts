@@ -33,6 +33,7 @@ export interface InventoryItem {
   location_name_kh: string;
   location_name_en: string;
   image_url?: string;
+  min_stock?: number;
 }
 
 export interface Transaction {

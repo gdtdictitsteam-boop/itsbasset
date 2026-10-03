@@ -351,3 +351,91 @@ INSERT INTO public.locations (name_kh, name_en, type, code) VALUES
 ('សាខាពន្ធដារខេត្តក្រចេះ', 'Kratie Branch', 'BRANCH', 'KTI'),
 ('សាខាពន្ធដារខេត្តប៉ៃលិន', 'Pailin Branch', 'BRANCH', 'PLI')
 ON CONFLICT (code) DO NOTHING;
+
+-- Seed Data for Items
+INSERT INTO public.items (code, name_kh, name_en, category, unit, min_stock) VALUES
+('T-001', 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)', 'BOSCH Cordless Percy Screwed (GSB 120-LI)', 'Tools', 'គ្រឿង', 5),
+('T-002', 'ស្វានបុកម៉ាក BOSCH Rotary Hammer (GBH 2-26 DRE)', 'BOSCH Rotary Hammer (GBH 2-26 DRE)', 'Tools', 'គ្រឿង', 2),
+('T-003', 'កេះដាក់សម្ភារៈ', 'Toolbox', 'Tools', 'កេះ', 5),
+('T-004', 'ម៉ាស៊ីនផ្លុំធូលី Air Blower 400W', 'Air Blower 400W', 'Tools', 'គ្រឿង', 3),
+('T-005', 'ឧបករណ៍វាស់សីតុណ្ហភាពក្នុងបន្ទប់ (Thermometer)', 'Thermometer', 'Tools', 'គ្រឿង', 2),
+('T-006', 'កន្ត្រៃកាត់ខ្សែ Network', 'Network Cable Scissors', 'Tools', 'ដើម', 5),
+('T-007', 'ញញួរ ដែក', 'Iron Hammer', 'Tools', 'ដើម', 5),
+('T-008', 'ញញួរ ជ័រ', 'Rubber Hammer', 'Tools', 'ដើម', 5),
+('T-009', 'សោតាន់ HEY Key SET', 'HEY Key SET', 'Tools', 'ឈុត', 2),
+('T-010', 'ដង្កាប់ (មុខក្រពើ . សំប៉ែត . កាត់)', 'Pliers (Crocodile, Flat, Cutter)', 'Tools', 'ដើម', 5),
+('T-011', 'សោរមាត់ចិញ្ជៀន ឈុត', 'Ring Spanner Set', 'Tools', 'ឈុត', 2),
+('T-012', 'ដង្កាប់កឹបខ្សែ (Network)', 'Network Crimping Tool', 'Tools', 'ដើម', 5),
+('T-013', 'កន្ត្រៃកាត់ទូទៅ (តូច)', 'General Scissors (Small)', 'Tools', 'ដើម', 10),
+('T-014', 'ប៊ិចភ្លើង', 'Test Pen', 'Tools', 'ដើម', 10),
+('T-015', 'ទុយោ ខៀវ លេខ20 (រត់ខ្សែ Network)', 'Blue Pipe No.20', 'Tools', 'ម៉ែត្រ', 50),
+('T-016', 'ជណ្តើរអក្ស A កាំធំ កំពស់ 2.3m', 'A-Ladder 2.3m', 'Tools', 'គ្រឿង', 2),
+('T-017', 'ខ្សែនាំ', 'Lead Wire', 'Tools', 'ដុំ', 5),
+('T-018', 'វ៉ែនតា ថ្លា', 'Clear Glasses', 'Tools', 'វ៉ែនតា', 10),
+('T-019', 'ខ្សែ Network Link Basic Cat6 UTP', 'Network Link Basic Cat6 UTP', 'Tools', 'ដុំ', 5),
+('T-020', 'គ្រាប់កឹប Network', 'RJ45 Connectors', 'Tools', 'គ្រាប់', 100),
+('S-001', 'ស្គតរុំមុខពីរ', 'Double Sided Tape', 'Suppliers', 'ដុំ', 20),
+('S-002', 'ស្គតស្អិតខ្មៅ', 'Black Sticky Tape', 'Suppliers', 'ដុំ', 20),
+('S-003', 'តាកេ', 'Wall Plug', 'Suppliers', 'កញ្ចប់', 20),
+('S-004', 'ស្រោមដៃក្រណាត់', 'Cloth Gloves', 'Suppliers', 'គូ', 50),
+('S-005', 'ម៉ាសពេទ្យ', 'Medical Mask', 'Suppliers', 'ប្រអប់', 50),
+('S-006', 'ខ្សែរិត 300mm', 'Cable Tie 300mm', 'Suppliers', 'កញ្ចប់', 20),
+('S-007', 'ស្គត់ក្រដាស Label', 'Paper Label Tape', 'Suppliers', 'ដុំ', 15),
+('S-008', 'ប្រអប់ខ្សែ លេខ២', 'Cable Trunking No.2', 'Suppliers', 'ដើម', 50),
+('S-009', 'ប្រអប់ខ្សែ លេខ៤', 'Cable Trunking No.4', 'Suppliers', 'ដើម', 50),
+('S-010', 'ប្រអប់ខ្សែ លេខ៦', 'Cable Trunking No.6', 'Suppliers', 'ដើម', 30),
+('S-011', 'ប្រអប់ខ្សែខ្នងអណ្តើក លេខ៤', 'Turtle Back Cable Trunking No.4', 'Suppliers', 'ដើម', 20),
+('S-012', 'វិសអ៉ីណុកក្បាលស្នើ', 'Stainless Steel Screws', 'Suppliers', 'កញ្ចប់', 20)
+ON CONFLICT (code) DO UPDATE 
+SET name_kh = EXCLUDED.name_kh,
+    name_en = EXCLUDED.name_en,
+    category = EXCLUDED.category,
+    unit = EXCLUDED.unit,
+    min_stock = EXCLUDED.min_stock;
+
+-- Seed Initial Inventory for HQ-ITSB
+INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+SELECT 
+    l.id as location_id,
+    i.id as item_id,
+    CASE i.code
+        WHEN 'T-001' THEN 15
+        WHEN 'T-002' THEN 8
+        WHEN 'T-003' THEN 14
+        WHEN 'T-004' THEN 10
+        WHEN 'T-005' THEN 6
+        WHEN 'T-006' THEN 25
+        WHEN 'T-007' THEN 16
+        WHEN 'T-008' THEN 12
+        WHEN 'T-009' THEN 8
+        WHEN 'T-010' THEN 28
+        WHEN 'T-011' THEN 10
+        WHEN 'T-012' THEN 20
+        WHEN 'T-013' THEN 35
+        WHEN 'T-014' THEN 45
+        WHEN 'T-015' THEN 350
+        WHEN 'T-016' THEN 5
+        WHEN 'T-017' THEN 18
+        WHEN 'T-018' THEN 40
+        WHEN 'T-019' THEN 50
+        WHEN 'T-020' THEN 800
+        WHEN 'S-001' THEN 65
+        WHEN 'S-002' THEN 85
+        WHEN 'S-003' THEN 120
+        WHEN 'S-004' THEN 180
+        WHEN 'S-005' THEN 150
+        WHEN 'S-006' THEN 95
+        WHEN 'S-007' THEN 60
+        WHEN 'S-008' THEN 160
+        WHEN 'S-009' THEN 130
+        WHEN 'S-010' THEN 90
+        WHEN 'S-011' THEN 70
+        WHEN 'S-012' THEN 110
+        ELSE 20
+    END as quantity,
+    NOW() as last_updated
+FROM public.locations l
+CROSS JOIN public.items i
+WHERE l.code = 'HQ-ITSB'
+ON CONFLICT (location_id, item_id) DO UPDATE 
+SET quantity = EXCLUDED.quantity, last_updated = NOW();
