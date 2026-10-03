@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useInventoryContext } from '../contexts/InventoryContext';
+import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
@@ -22,7 +22,7 @@ import {
 export function HandoverView() {
   const { t, language } = useLanguage();
   const { userRole, isCentralAdmin, userDisplayName } = useAuth();
-  const { refreshInventory } = useInventoryContext();
+  const { inventory, items: contextItems, locations: contextLocations, refreshInventory } = useInventoryContext();
   
   const [loading, setLoading] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -30,8 +30,16 @@ export function HandoverView() {
   const [uploadedDocUrl, setUploadedDocUrl] = useState<string | null>(null);
 
   // Data States
-  const [locations, setLocations] = useState(isSupabaseConfigured() ? [] : mockLocations);
-  const [items, setItems] = useState(isSupabaseConfigured() ? [] : mockItems);
+  const [locations, setLocations] = useState(isSupabaseConfigured() ? [] : (contextLocations.length > 0 ? contextLocations : mockLocations));
+  const [items, setItems] = useState(isSupabaseConfigured() ? [] : (contextItems.length > 0 ? contextItems : mockItems));
+
+  // Keep local demo states updated if context changes
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      if (contextItems.length > 0) setItems(contextItems);
+      if (contextLocations.length > 0) setLocations(contextLocations);
+    }
+  }, [contextItems, contextLocations]);
 
   // Fetch real data from Supabase if configured
   useEffect(() => {
@@ -93,8 +101,22 @@ export function HandoverView() {
           setAvailableQty(0);
         }
       } else {
-        const inv = mockInventory.find(i => i.item_id === selectedItemId && i.location_id === fromLocationId);
-        setAvailableQty(inv ? inv.quantity : 0);
+        const fromLoc = locations.find(l => String(l.id) === String(fromLocationId) || String(l.code) === String(fromLocationId));
+        const isFromHq = isHqLocationOrRow(fromLoc, locations);
+
+        const currentItem = items.find(i => String(i.id) === String(selectedItemId) || String(i.code) === String(selectedItemId));
+
+        const inv = inventory.find(i => {
+          const matchItem = String(i.item_id) === String(selectedItemId) || 
+                            (currentItem && String(i.item_code) === String(currentItem.code));
+          if (!matchItem) return false;
+
+          if (String(i.location_id) === String(fromLocationId) || String(i.location_id) === String(fromLoc?.code)) return true;
+          if (isFromHq && isHqLocationOrRow(i, locations)) return true;
+          return false;
+        });
+
+        setAvailableQty(inv ? (inv.quantity || 0) : 0);
       }
     }
     checkStock();
@@ -251,11 +273,19 @@ export function HandoverView() {
         }
       } else {
         // Fallback for Local Demo State updates
-        const sourceIndex = mockInventory.findIndex(
-          inv => inv.item_id === selectedItemId && inv.location_id === fromLocationId
-        );
+        const fromLoc = locations.find(l => String(l.id) === String(fromLocationId) || String(l.code) === String(fromLocationId));
+        const isFromHq = isHqLocationOrRow(fromLoc, locations);
 
-        if (sourceIndex < 0 || mockInventory[sourceIndex].quantity < Number(quantity)) {
+        const sourceIndex = mockInventory.findIndex(inv => {
+          const matchItem = String(inv.item_id) === String(selectedItemId) || 
+                            (selectedItem && String(inv.item_code) === String(selectedItem.code));
+          if (!matchItem) return false;
+          if (String(inv.location_id) === String(fromLocationId) || String(inv.location_id) === String(fromLoc?.code)) return true;
+          if (isFromHq && isHqLocationOrRow(inv, locations)) return true;
+          return false;
+        });
+
+        if (sourceIndex < 0 || (mockInventory[sourceIndex].quantity || 0) < Number(quantity)) {
           throw new Error('បរិមាណស្តុកនៅទីតាំងដើមមិនគ្រប់គ្រាន់សម្រាប់ផ្ទេរទេ!');
         }
 
@@ -265,19 +295,20 @@ export function HandoverView() {
 
         // Add target stock
         const targetIndex = mockInventory.findIndex(
-          inv => inv.item_id === selectedItemId && inv.location_id === toBranchId
+          inv => (String(inv.item_id) === String(selectedItemId) || (selectedItem && String(inv.item_code) === String(selectedItem.code))) && 
+                 String(inv.location_id) === String(toBranchId)
         );
 
         if (targetIndex >= 0) {
           mockInventory[targetIndex].quantity += Number(quantity);
           mockInventory[targetIndex].last_updated = new Date().toISOString();
         } else {
-          const itemObj = mockItems.find(i => i.id === selectedItemId);
-          const locObj = mockLocations.find(l => l.id === toBranchId);
+          const itemObj = items.find(i => String(i.id) === String(selectedItemId) || String(i.code) === String(selectedItem?.code));
+          const locObj = locations.find(l => String(l.id) === String(toBranchId) || String(l.code) === String(toBranchId));
           if (itemObj) {
             mockInventory.push({
               location_id: toBranchId,
-              item_id: selectedItemId,
+              item_id: itemObj.id,
               quantity: Number(quantity),
               last_updated: new Date().toISOString(),
               item_code: itemObj.code,
@@ -292,8 +323,7 @@ export function HandoverView() {
         }
 
         // Add Transaction record
-        const fromLoc = mockLocations.find(l => l.id === fromLocationId);
-        const toLoc = mockLocations.find(l => l.id === toBranchId);
+        const toLoc = locations.find(l => String(l.id) === String(toBranchId) || String(l.code) === String(toBranchId));
         mockTransactions.unshift({
           id: `tx-${Date.now()}`,
           date: new Date().toISOString(),
@@ -307,6 +337,9 @@ export function HandoverView() {
           recorded_by: officerName || userDisplayName,
           remark: finalRemark
         });
+
+        // Sync with InventoryContext
+        await refreshInventory();
       }
 
       setSubmitSuccess(true);

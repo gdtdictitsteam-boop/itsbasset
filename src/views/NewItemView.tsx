@@ -6,7 +6,7 @@ import { insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured } 
 import { useInventoryContext } from '../contexts/InventoryContext';
 
 export function NewItemView() {
-  const { refreshInventory } = useInventoryContext();
+  const { refreshInventory, addNewItemToContext } = useInventoryContext();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [uploadingImageText, setUploadingImageText] = useState<string | null>(null);
@@ -190,11 +190,10 @@ export function NewItemView() {
       image_url: finalImageUrl,
     });
 
-    // 3. Add to local memory array so UI updates immediately
+    // 3. Add to context and local storage immediately
     const newItemId = res.item?.id || Math.random().toString(36).substring(7);
-    const targetLoc = mockLocations.find(l => l.id === locationId) || mockLocations[0];
 
-    mockItems.push({
+    addNewItemToContext({
       id: newItemId,
       code: materialCode,
       name_kh: materialName,
@@ -203,22 +202,7 @@ export function NewItemView() {
       unit: selectedUnit,
       min_stock: minStock,
       image_url: finalImageUrl || imagePreview || undefined,
-    });
-
-    mockInventory.push({
-      location_id: locationId,
-      item_id: newItemId,
-      quantity: initialStock,
-      last_updated: new Date().toISOString(),
-      item_code: materialCode,
-      item_name_kh: materialName,
-      item_name_en: brand || materialName,
-      category: categoryName,
-      unit: selectedUnit,
-      location_name_kh: targetLoc.name_kh,
-      location_name_en: targetLoc.name_en,
-      image_url: finalImageUrl || imagePreview || undefined,
-    });
+    }, initialStock, locationId);
 
     try {
       await refreshInventory();

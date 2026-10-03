@@ -9,7 +9,7 @@ import {
 } from '../lib/supabase';
 import { useLocationContext } from './LocationContext';
 
-interface StockInParams {
+export interface StockInParams {
   locationId: string;
   itemId: string;
   quantity: number;
@@ -17,7 +17,7 @@ interface StockInParams {
   purpose: string;
 }
 
-interface StockOutParams {
+export interface StockOutParams {
   locationId: string;
   itemId: string;
   quantity: number;
@@ -25,7 +25,7 @@ interface StockOutParams {
   purpose?: string;
 }
 
-interface InventoryContextType {
+export interface InventoryContextType {
   inventory: InventoryItem[];
   items: Item[];
   locations: Location[];
@@ -34,9 +34,102 @@ interface InventoryContextType {
   recordStockIn: (params: StockInParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
   recordStockOut: (params: StockOutParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
   reseedStandardStock: () => Promise<{ success: boolean; message: string }>;
+  addNewItemToContext: (item: Item, initialStock?: number, locationId?: string) => void;
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
+
+// Storage keys for persistent local fallback
+const ITEMS_STORAGE_KEY = 'gdt_inventory_items_v4';
+const INVENTORY_STORAGE_KEY = 'gdt_inventory_stock_v4';
+const TX_STORAGE_KEY = 'gdt_inventory_tx_v4';
+
+const saveToStorage = (itemsList: Item[], invList: InventoryItem[], txList?: any[]) => {
+  try {
+    localStorage.setItem(ITEMS_STORAGE_KEY, JSON.stringify(itemsList));
+    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(invList));
+    if (txList) {
+      localStorage.setItem(TX_STORAGE_KEY, JSON.stringify(txList.slice(0, 50)));
+    }
+  } catch (err) {
+    console.warn('Failed to save to localStorage:', err);
+  }
+};
+
+const loadFromStorage = () => {
+  try {
+    const rawItems = localStorage.getItem(ITEMS_STORAGE_KEY);
+    const rawInv = localStorage.getItem(INVENTORY_STORAGE_KEY);
+    const rawTx = localStorage.getItem(TX_STORAGE_KEY);
+
+    if (rawItems) {
+      const parsedItems: Item[] = JSON.parse(rawItems);
+      const itemMap = new Map<string, Item>();
+      mockItems.forEach(i => itemMap.set(i.code, i));
+      parsedItems.forEach(i => itemMap.set(i.code, i));
+      const merged = Array.from(itemMap.values());
+      mockItems.length = 0;
+      mockItems.push(...merged);
+    }
+
+    if (rawInv) {
+      const parsedInv: InventoryItem[] = JSON.parse(rawInv);
+      if (Array.isArray(parsedInv) && parsedInv.length > 0) {
+        mockInventory.length = 0;
+        mockInventory.push(...parsedInv);
+      }
+    }
+
+    if (rawTx) {
+      const parsedTx = JSON.parse(rawTx);
+      if (Array.isArray(parsedTx) && parsedTx.length > 0) {
+        const txIds = new Set(mockTransactions.map(t => t.id));
+        parsedTx.forEach((t: any) => {
+          if (!txIds.has(t.id)) {
+            mockTransactions.push(t);
+            txIds.add(t.id);
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Could not read from localStorage:', e);
+  }
+};
+
+// Global unified helper to test if a location or inventory row is HQ
+export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): boolean => {
+  if (!rowOrLoc) return false;
+  const locId = String(rowOrLoc.location_id || rowOrLoc.id || '').trim();
+  const locCode = String(rowOrLoc.location_code || rowOrLoc.code || '').trim();
+  const locType = String(rowOrLoc.type || '').trim().toUpperCase();
+  const locNameKh = String(rowOrLoc.location_name_kh || rowOrLoc.name_kh || '').trim();
+
+  // 1. Direct IDs or Codes
+  if (locId === '1' || locId === 'HQ-ITSB' || locCode === 'HQ-ITSB') return true;
+  if (locId === '35' || locId === 'Tech-HQ' || locCode === 'Tech-HQ') return true;
+  if (locType === 'HQ') return true;
+
+  // 2. Lookup in locations list if available
+  if (locationsList && locationsList.length > 0) {
+    const found = locationsList.find(l => 
+      String(l.id) === locId || 
+      String(l.code) === locId || 
+      String(l.code) === locCode
+    );
+    if (found) {
+      if (found.type === 'HQ' || found.code === 'HQ-ITSB' || found.code === 'Tech-HQ') return true;
+      if (found.name_kh && (found.name_kh.includes('HQ') || found.name_kh.includes('ថ្នាក់កណ្តាល'))) return true;
+    }
+  }
+
+  // 3. Name heuristics (covers ITSB-HQ, Tech-HQ, and central team)
+  if (locNameKh && (locNameKh.includes('HQ') || locNameKh.includes('ថ្នាក់កណ្តាល') || locNameKh.includes('កណ្តាល'))) {
+    return true;
+  }
+
+  return false;
+};
 
 // Helper to test if a string is a valid UUID
 const isValidUuid = (val?: string): boolean => {
@@ -47,6 +140,10 @@ const isValidUuid = (val?: string): boolean => {
 export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const isConfigured = isSupabaseConfigured();
   const { setLocationsList } = useLocationContext();
+
+  // Load any previously persisted local state
+  loadFromStorage();
+
   const [items, setItems] = useState<Item[]>(() => [...mockItems]);
   const [inventory, setInventory] = useState<InventoryItem[]>(() => [...mockInventory]);
   const [locations, setLocations] = useState<Location[]>(() => [...mockLocations]);
@@ -54,6 +151,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   const refreshInventory = useCallback(async () => {
     if (!isConfigured) {
+      loadFromStorage();
       setInventory([...mockInventory]);
       setItems([...mockItems]);
       setLocations([...mockLocations]);
@@ -78,7 +176,10 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           min_stock: i.min_stock ?? 5,
           image_url: i.image_url || undefined,
         }));
-        setItems(Array.from(itemMap.values()));
+        const mergedItems = Array.from(itemMap.values());
+        setItems(mergedItems);
+        mockItems.length = 0;
+        mockItems.push(...mergedItems);
       } else {
         setItems([...mockItems]);
       }
@@ -98,6 +199,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       const liveInventory = await fetchFullInventoryFromSupabase();
       if (liveInventory && liveInventory.length > 0) {
         setInventory(liveInventory);
+        mockInventory.length = 0;
+        mockInventory.push(...liveInventory);
       } else {
         setInventory([...mockInventory]);
       }
@@ -116,13 +219,81 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     refreshInventory();
   }, [refreshInventory]);
 
+  // Add new item seamlessly into context and storage
+  const addNewItemToContext = (newItem: Item, initialStock: number = 0, targetLocationId: string = '1') => {
+    const existingItemIdx = mockItems.findIndex(i => i.code === newItem.code || i.id === newItem.id);
+    if (existingItemIdx >= 0) {
+      mockItems[existingItemIdx] = { ...mockItems[existingItemIdx], ...newItem };
+    } else {
+      mockItems.push(newItem);
+    }
+
+    const targetLoc = locations.find(l => String(l.id) === String(targetLocationId) || String(l.code) === String(targetLocationId))
+      || mockLocations.find(l => String(l.id) === String(targetLocationId) || String(l.code) === String(targetLocationId))
+      || mockLocations[0];
+
+    const isTargetHq = isHqLocationOrRow(targetLoc, locations);
+
+    const existingInvIdx = mockInventory.findIndex(inv => 
+      (String(inv.item_code) === String(newItem.code) || String(inv.item_id) === String(newItem.id)) &&
+      (String(inv.location_id) === String(targetLoc.id) || (isTargetHq && isHqLocationOrRow(inv, locations)))
+    );
+
+    if (existingInvIdx >= 0) {
+      if (initialStock > 0) {
+        mockInventory[existingInvIdx].quantity = (mockInventory[existingInvIdx].quantity || 0) + initialStock;
+        mockInventory[existingInvIdx].last_updated = new Date().toISOString();
+      }
+    } else {
+      mockInventory.push({
+        location_id: targetLoc.id,
+        item_id: newItem.id,
+        quantity: initialStock,
+        last_updated: new Date().toISOString(),
+        item_code: newItem.code,
+        item_name_kh: newItem.name_kh,
+        item_name_en: newItem.name_en,
+        category: newItem.category,
+        unit: newItem.unit,
+        min_stock: newItem.min_stock,
+        location_name_kh: targetLoc.name_kh,
+        location_name_en: targetLoc.name_en,
+        image_url: newItem.image_url,
+      });
+    }
+
+    if (initialStock > 0) {
+      mockTransactions.unshift({
+        id: `tx-new-${Date.now()}`,
+        date: new Date().toISOString(),
+        type: 'STOCK_IN',
+        item_id: newItem.id,
+        item_code: newItem.code,
+        item_name_kh: newItem.name_kh,
+        item_name_en: newItem.name_en,
+        from_location: 'New SKU Entry',
+        to_location: targetLoc.name_kh,
+        to_location_id: targetLoc.id,
+        quantity: initialStock,
+        unit: newItem.unit,
+        recorded_by: 'Admin-GDT',
+        remark: 'បញ្ចូលសម្ភារថ្មីដំបូង',
+        status: 'RECEIVED'
+      });
+    }
+
+    saveToStorage(mockItems, mockInventory, mockTransactions);
+    setItems([...mockItems]);
+    setInventory([...mockInventory]);
+  };
+
   // Record Stock-In (Increases stock at target location)
   const recordStockIn = async (params: StockInParams): Promise<{ success: boolean; message: string; newQuantity?: number }> => {
-    const targetItem = items.find(i => i.id === params.itemId || i.code === params.itemId) 
-      || mockItems.find(i => i.id === params.itemId || i.code === params.itemId);
+    const targetItem = items.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId)) 
+      || mockItems.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId));
 
-    const targetLocation = locations.find(l => l.id === params.locationId || l.code === params.locationId) 
-      || mockLocations.find(l => l.id === params.locationId || l.code === params.locationId)
+    const targetLocation = locations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId)) 
+      || mockLocations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
       || locations[0]
       || mockLocations[0];
 
@@ -136,24 +307,21 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       return { success: false, message: 'ចំនួនបញ្ចូលត្រូវតែធំជាង ០!' };
     }
 
-    const isTargetHq = targetLocation.type === 'HQ' || 
-                       targetLocation.code === 'HQ-ITSB' || 
-                       targetLocation.id === '1' ||
-                       (targetLocation.name_kh && targetLocation.name_kh.includes('HQ'));
+    const isTargetHq = isHqLocationOrRow(targetLocation, locations);
 
     // 1. Update in-memory mock data with flexible matching
     const existingIndex = mockInventory.findIndex(inv => {
-      const matchItem = inv.item_code === targetItem.code || inv.item_id === targetItem.id;
+      const matchItem = String(inv.item_code) === String(targetItem.code) || 
+                        String(inv.item_id) === String(targetItem.id);
       if (!matchItem) return false;
 
       // Exact location ID or Code match
-      if (inv.location_id === targetLocation.id || inv.location_id === targetLocation.code) return true;
+      if (String(inv.location_id) === String(targetLocation.id) || 
+          String(inv.location_id) === String(targetLocation.code)) return true;
 
       // HQ match
-      if (isTargetHq) {
-        return inv.location_id === '1' || 
-               inv.location_id === 'HQ-ITSB' || 
-               (inv.location_name_kh && inv.location_name_kh.includes('HQ'));
+      if (isTargetHq && isHqLocationOrRow(inv, locations)) {
+        return true;
       }
 
       // Branch match by code or name
@@ -171,7 +339,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       mockInventory[existingIndex].last_updated = new Date().toISOString();
       calculatedNewQty = mockInventory[existingIndex].quantity;
     } else {
-      mockInventory.push({
+      const newInvRow: InventoryItem = {
         location_id: targetLocation.id,
         item_id: targetItem.id,
         quantity: params.quantity,
@@ -185,7 +353,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         location_name_kh: targetLocation.name_kh,
         location_name_en: targetLocation.name_en,
         image_url: targetItem.image_url,
-      });
+      };
+      mockInventory.push(newInvRow);
       calculatedNewQty = params.quantity;
     }
 
@@ -208,13 +377,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       status: 'RECEIVED'
     });
 
-    // 3. Immediately sync React state so UI updates instantaneously
+    // 3. Immediately persist to localStorage and sync React state
+    saveToStorage(mockItems, mockInventory, mockTransactions);
     setInventory([...mockInventory]);
 
     // 4. If Supabase is configured, write to database reliably
     if (isConfigured) {
       try {
-        // Resolve real Supabase item UUID
         let dbItemId = targetItem.id;
         if (!isValidUuid(dbItemId)) {
           const { data: itemRows } = await supabase
@@ -227,7 +396,6 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // Resolve real Supabase location UUID
         let dbLocId = targetLocation.id;
         if (!isValidUuid(dbLocId)) {
           const { data: locRows } = await supabase
@@ -241,7 +409,6 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (isValidUuid(dbItemId) && isValidUuid(dbLocId)) {
-          // Query current quantity in Supabase
           const { data: invRows } = await supabase
             .from('inventory')
             .select('quantity')
@@ -252,7 +419,6 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           const currentQty = invRows ? (invRows.quantity || 0) : 0;
           const newQty = currentQty + params.quantity;
 
-          // Upsert inventory row
           await supabase.from('inventory').upsert([
             {
               location_id: dbLocId,
@@ -262,7 +428,6 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
             }
           ], { onConflict: 'location_id,item_id' });
 
-          // Insert transaction record
           await supabase.from('transactions').insert([
             {
               type: 'STOCK_IN',
@@ -278,10 +443,12 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
             }
           ]);
 
-          // Re-fetch live inventory from Supabase
           const liveInv = await fetchFullInventoryFromSupabase();
           if (liveInv && liveInv.length > 0) {
             setInventory(liveInv);
+            mockInventory.length = 0;
+            mockInventory.push(...liveInv);
+            saveToStorage(mockItems, mockInventory, mockTransactions);
           }
         }
       } catch (dbErr: any) {
@@ -298,11 +465,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   // Record Stock-Out (Decreases stock at source location)
   const recordStockOut = async (params: StockOutParams): Promise<{ success: boolean; message: string; newQuantity?: number }> => {
-    const targetItem = items.find(i => i.id === params.itemId || i.code === params.itemId)
-      || mockItems.find(i => i.id === params.itemId || i.code === params.itemId);
+    const targetItem = items.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId))
+      || mockItems.find(i => String(i.id) === String(params.itemId) || String(i.code) === String(params.itemId));
 
-    const targetLocation = locations.find(l => l.id === params.locationId || l.code === params.locationId)
-      || mockLocations.find(l => l.id === params.locationId || l.code === params.locationId)
+    const targetLocation = locations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
+      || mockLocations.find(l => String(l.id) === String(params.locationId) || String(l.code) === String(params.locationId))
       || locations[0]
       || mockLocations[0];
 
@@ -313,22 +480,19 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       return { success: false, message: 'ចំនួនដកចេញត្រូវតែធំជាង ០!' };
     }
 
-    const isTargetHq = targetLocation.type === 'HQ' || 
-                       targetLocation.code === 'HQ-ITSB' || 
-                       targetLocation.id === '1' ||
-                       (targetLocation.name_kh && targetLocation.name_kh.includes('HQ'));
+    const isTargetHq = isHqLocationOrRow(targetLocation, locations);
 
     // 1. Check in-memory stock with flexible matching
     const existingIndex = mockInventory.findIndex(inv => {
-      const matchItem = inv.item_code === targetItem.code || inv.item_id === targetItem.id;
+      const matchItem = String(inv.item_code) === String(targetItem.code) || 
+                        String(inv.item_id) === String(targetItem.id);
       if (!matchItem) return false;
 
-      if (inv.location_id === targetLocation.id || inv.location_id === targetLocation.code) return true;
+      if (String(inv.location_id) === String(targetLocation.id) || 
+          String(inv.location_id) === String(targetLocation.code)) return true;
 
-      if (isTargetHq) {
-        return inv.location_id === '1' || 
-               inv.location_id === 'HQ-ITSB' || 
-               (inv.location_name_kh && inv.location_name_kh.includes('HQ'));
+      if (isTargetHq && isHqLocationOrRow(inv, locations)) {
+        return true;
       }
 
       if (targetLocation.code && inv.location_name_kh && inv.location_name_kh.includes(targetLocation.code)) return true;
@@ -346,12 +510,10 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    // Deduct in-memory
     mockInventory[existingIndex].quantity -= params.quantity;
     mockInventory[existingIndex].last_updated = new Date().toISOString();
     const remainingQty = mockInventory[existingIndex].quantity;
 
-    // Record Transaction in mockTransactions
     mockTransactions.unshift({
       id: `tx-out-${Date.now()}`,
       date: new Date().toISOString(),
@@ -370,10 +532,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       status: 'RECEIVED'
     });
 
-    // Update React state immediately
+    saveToStorage(mockItems, mockInventory, mockTransactions);
     setInventory([...mockInventory]);
 
-    // 2. If Supabase is configured, deduct from database
     if (isConfigured) {
       try {
         let dbItemId = targetItem.id;
@@ -440,6 +601,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           const liveInv = await fetchFullInventoryFromSupabase();
           if (liveInv && liveInv.length > 0) {
             setInventory(liveInv);
+            mockInventory.length = 0;
+            mockInventory.push(...liveInv);
+            saveToStorage(mockItems, mockInventory, mockTransactions);
           }
         }
       } catch (dbErr: any) {
@@ -463,7 +627,6 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       }
       return res;
     } else {
-      // Local reseed
       mockInventory.length = 0;
       mockItems.forEach(item => {
         mockInventory.push({
@@ -481,6 +644,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           location_name_en: 'ITSB-HQ Technical Inventory'
         });
       });
+      saveToStorage(mockItems, mockInventory, mockTransactions);
       setInventory([...mockInventory]);
       return { 
         success: true, 
@@ -499,6 +663,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       recordStockIn,
       recordStockOut,
       reseedStandardStock,
+      addNewItemToContext,
     }}>
       {children}
     </InventoryContext.Provider>

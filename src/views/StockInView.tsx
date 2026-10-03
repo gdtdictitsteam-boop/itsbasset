@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useInventoryContext } from '../contexts/InventoryContext';
+import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   PlusSquare, Check, X, AlertTriangle, ArrowRight, Package, 
@@ -48,21 +48,22 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   // Calculate current stock at selected location and across all locations
   const currentLocStock = React.useMemo(() => {
     if (!selectedItem || !selectedLocation) return 0;
-    const isTargetHq = selectedLocation.type === 'HQ' || selectedLocation.code === 'HQ-ITSB' || selectedLocation.id === '1';
+    const isTargetHq = isHqLocationOrRow(selectedLocation, locations);
 
     const matchingRows = inventory.filter(inv => {
-      const matchItem = inv.item_code === selectedItem.code || inv.item_id === selectedItem.id;
+      const matchItem = String(inv.item_code) === String(selectedItem.code) || 
+                        String(inv.item_id) === String(selectedItem.id);
       if (!matchItem) return false;
 
-      if (inv.location_id === selectedLocation.id || inv.location_id === selectedLocation.code) return true;
-      if (isTargetHq && (inv.location_id === '1' || inv.location_id === 'HQ-ITSB' || (inv.location_name_kh && inv.location_name_kh.includes('HQ')))) return true;
+      if (String(inv.location_id) === String(selectedLocation.id) || String(inv.location_id) === String(selectedLocation.code)) return true;
+      if (isTargetHq && isHqLocationOrRow(inv, locations)) return true;
       if (selectedLocation.code && inv.location_name_kh && inv.location_name_kh.includes(selectedLocation.code)) return true;
       if (selectedLocation.name_kh && inv.location_name_kh && inv.location_name_kh.includes(selectedLocation.name_kh)) return true;
       return false;
     });
 
     return matchingRows.reduce((sum, r) => sum + (r.quantity || 0), 0);
-  }, [selectedItem, selectedLocation, inventory]);
+  }, [selectedItem, selectedLocation, inventory, locations]);
 
   const currentTotalStock = React.useMemo(() => {
     if (!selectedItem) return 0;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
-import { useInventoryContext } from '../contexts/InventoryContext';
+import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { 
   Wrench, Package as PackageIcon, RefreshCw, Database, 
   AlertTriangle, CheckCircle2, Boxes, ShieldAlert, Sparkles, X,
@@ -32,26 +32,21 @@ export function InventoryView() {
   };
 
   // Helper to check if inventory row belongs to HQ
-  const isHqRow = (inv: any) => {
-    if (inv.location_id === '1' || inv.location_id === 'HQ-ITSB') return true;
-    const loc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
-    if (loc) return loc.type === 'HQ' || loc.code === 'HQ-ITSB';
-    return Boolean(inv.location_name_kh && (inv.location_name_kh.includes('HQ') || inv.location_name_kh.includes('ថ្នាក់កណ្តាល')));
-  };
+  const isHqRow = (inv: any) => isHqLocationOrRow(inv, locations);
 
   // Helper to check if inventory row matches current location filter
   const matchesLocationFilter = (inv: any) => {
     if (selectedLocationId === 'ALL' || selectedLocation.code === 'ALL') return true;
-    if (inv.location_id === selectedLocationId || inv.location_id === selectedLocation.code) return true;
+    if (String(inv.location_id) === String(selectedLocationId) || String(inv.location_id) === String(selectedLocation.code)) return true;
 
-    const rowLoc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
+    const rowLoc = locations.find(l => String(l.id) === String(inv.location_id) || String(l.code) === String(inv.location_id));
     if (rowLoc) {
-      if (rowLoc.code === selectedLocation.code) return true;
-      if (rowLoc.id === selectedLocation.id) return true;
+      if (String(rowLoc.code) === String(selectedLocation.code)) return true;
+      if (String(rowLoc.id) === String(selectedLocation.id)) return true;
     }
 
-    const isSelHq = selectedLocation.type === 'HQ' || selectedLocation.code === 'HQ-ITSB' || selectedLocation.id === '1';
-    if (isSelHq && (inv.location_id === '1' || inv.location_id === 'HQ-ITSB' || (inv.location_name_kh && inv.location_name_kh.includes('HQ')))) {
+    const isSelHq = isHqLocationOrRow(selectedLocation, locations);
+    if (isSelHq && isHqLocationOrRow(inv, locations)) {
       return true;
     }
 
@@ -62,26 +57,36 @@ export function InventoryView() {
     return false;
   };
 
-  // 1. Consolidated mode: One row per item (Summed across matching locations)
-  const consolidatedItems = items.map((item, idx) => {
-    // Filter matching inventory for this item
-    const matchingInv = inventory.filter(inv => {
-      const matchItem = inv.item_code === item.code || inv.item_id === item.id;
-      if (!matchItem) return false;
-      return matchesLocationFilter(inv);
-    });
+  const isSpecificBranch = selectedLocationId !== 'ALL' && 
+    !isHqLocationOrRow(selectedLocation, locations) && 
+    selectedLocation.code !== 'ALL';
 
+  // 1. Consolidated mode: One row per item (Accurately calculates HQ Stock, Branch Stock, and Total Stock)
+  const consolidatedItems = items.map((item, idx) => {
+    // Find all inventory rows for this item
+    const itemRows = inventory.filter(inv => 
+      String(inv.item_code) === String(item.code) || String(inv.item_id) === String(item.id)
+    );
+
+    // HQ stock ALWAYS calculates total stock of this item at HQ locations
     let hqQty = 0;
-    let branchQty = 0;
-    matchingInv.forEach(inv => {
-      if (isHqRow(inv)) {
+    itemRows.forEach(inv => {
+      if (isHqLocationOrRow(inv, locations)) {
         hqQty += (inv.quantity || 0);
-      } else {
-        branchQty += (inv.quantity || 0);
       }
     });
 
-    const totalQty = hqQty + branchQty;
+    // Branch stock: if specific branch selected, show that branch's stock; otherwise sum across branches
+    let branchQty = 0;
+    itemRows.forEach(inv => {
+      if (!isHqLocationOrRow(inv, locations)) {
+        if (!isSpecificBranch || matchesLocationFilter(inv)) {
+          branchQty += (inv.quantity || 0);
+        }
+      }
+    });
+
+    const totalQty = isSpecificBranch ? (hqQty + branchQty) : (hqQty + branchQty);
     const minStock = item.min_stock ?? 5;
     const status = totalQty === 0 ? 'អស់ស្តុក' : (totalQty <= minStock ? 'ជិតអស់ស្តុក' : 'មានស្តុក');
 

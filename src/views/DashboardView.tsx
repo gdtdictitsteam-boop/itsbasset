@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
-import { useInventoryContext } from '../contexts/InventoryContext';
+import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { 
   Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon, Building2,
   Boxes, TrendingUp, RefreshCw, Sparkles
@@ -16,26 +16,21 @@ export function DashboardView() {
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
 
   // Helper to check if inventory row belongs to HQ
-  const isHqRow = (inv: any) => {
-    if (inv.location_id === '1' || inv.location_id === 'HQ-ITSB') return true;
-    const loc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
-    if (loc) return loc.type === 'HQ' || loc.code === 'HQ-ITSB';
-    return Boolean(inv.location_name_kh && (inv.location_name_kh.includes('HQ') || inv.location_name_kh.includes('ថ្នាក់កណ្តាល')));
-  };
+  const isHqRow = (inv: any) => isHqLocationOrRow(inv, locations);
 
   // Helper to check if inventory row matches current location filter
   const matchesLocationFilter = (inv: any) => {
     if (selectedLocationId === 'ALL' || selectedLocation.code === 'ALL') return true;
-    if (inv.location_id === selectedLocationId || inv.location_id === selectedLocation.code) return true;
+    if (String(inv.location_id) === String(selectedLocationId) || String(inv.location_id) === String(selectedLocation.code)) return true;
 
-    const rowLoc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
+    const rowLoc = locations.find(l => String(l.id) === String(inv.location_id) || String(l.code) === String(inv.location_id));
     if (rowLoc) {
-      if (rowLoc.code === selectedLocation.code) return true;
-      if (rowLoc.id === selectedLocation.id) return true;
+      if (String(rowLoc.code) === String(selectedLocation.code)) return true;
+      if (String(rowLoc.id) === String(selectedLocation.id)) return true;
     }
 
-    const isSelHq = selectedLocation.type === 'HQ' || selectedLocation.code === 'HQ-ITSB' || selectedLocation.id === '1';
-    if (isSelHq && (inv.location_id === '1' || inv.location_id === 'HQ-ITSB' || (inv.location_name_kh && inv.location_name_kh.includes('HQ')))) {
+    const isSelHq = isHqLocationOrRow(selectedLocation, locations);
+    if (isSelHq && isHqLocationOrRow(inv, locations)) {
       return true;
     }
 
@@ -46,13 +41,14 @@ export function DashboardView() {
     return false;
   };
 
-  // Filter inventory based on selected location
-  const locationFilteredInventory = inventory.filter(inv => matchesLocationFilter(inv));
+  const isSpecificBranch = selectedLocationId !== 'ALL' && 
+    !isHqLocationOrRow(selectedLocation, locations) && 
+    selectedLocation.code !== 'ALL';
 
   // Calculate live aggregated inventory per item (reliable code and ID matching)
   const aggregatedInventory = items.map((item, index) => {
-    const itemInventory = locationFilteredInventory.filter(
-      inv => (inv.item_id === item.id || inv.item_code === item.code)
+    const itemInventory = inventory.filter(
+      inv => (String(inv.item_id) === String(item.id) || String(inv.item_code) === String(item.code))
     );
     
     let hqStock = 0;
@@ -60,13 +56,15 @@ export function DashboardView() {
     const branchesWithStock: { code: string; quantity: number }[] = [];
 
     itemInventory.forEach(inv => {
-      const loc = locations.find(l => l.id === inv.location_id || l.code === inv.location_id);
-      const isHq = isHqRow(inv);
+      const loc = locations.find(l => String(l.id) === String(inv.location_id) || String(l.code) === String(inv.location_id));
+      const isHq = isHqLocationOrRow(inv, locations);
 
       if (isHq) {
         hqStock += (inv.quantity || 0);
       } else {
-        branchStock += (inv.quantity || 0);
+        if (!isSpecificBranch || matchesLocationFilter(inv)) {
+          branchStock += (inv.quantity || 0);
+        }
       }
 
       if ((inv.quantity || 0) > 0) {
@@ -109,9 +107,13 @@ export function DashboardView() {
 
   // Accurate overall stock flow metrics
   const totalItemCount = items.length;
-  const totalStockUnits = aggregatedInventory.reduce((acc, curr) => acc + curr.totalStock, 0);
-  const totalHqUnits = aggregatedInventory.reduce((acc, curr) => acc + curr.hqStock, 0);
-  const totalBranchUnits = aggregatedInventory.reduce((acc, curr) => acc + curr.branchStock, 0);
+  const totalHqUnits = inventory
+    .filter(inv => isHqLocationOrRow(inv, locations))
+    .reduce((acc, curr) => acc + (curr.quantity || 0), 0);
+  const totalBranchUnits = inventory
+    .filter(inv => !isHqLocationOrRow(inv, locations) && (!isSpecificBranch || matchesLocationFilter(inv)))
+    .reduce((acc, curr) => acc + (curr.quantity || 0), 0);
+  const totalStockUnits = totalHqUnits + totalBranchUnits;
   const lowStockCount = aggregatedInventory.filter(item => item.totalStock > 0 && item.totalStock <= item.minStock).length;
   const outOfStockCount = aggregatedInventory.filter(item => item.totalStock === 0).length;
 
