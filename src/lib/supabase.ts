@@ -233,7 +233,7 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
         await supabase.from('transactions').insert([
           {
             type: 'STOCK_IN',
-            to_location: targetLocationId,
+            to_location_id: targetLocationId,
             item_id: createdItemId,
             quantity: initial_stock,
             remark: params.remark || 'បញ្ចូលសម្ភារថ្មីដំបូង',

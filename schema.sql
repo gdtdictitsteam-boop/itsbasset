@@ -207,8 +207,83 @@ USING (bucket_id = 'item_images');
 
 
 -- =========================================================================
--- STEP 4: RPC FUNCTIONS (2-STEP HANDOVER)
+-- STEP 4: RPC FUNCTIONS (STOCK-IN & 2-STEP HANDOVER)
 -- =========================================================================
+
+-- Function 0: handle_stock_in (Add stock to target location & record transaction)
+CREATE OR REPLACE FUNCTION public.handle_stock_in(
+    p_location_id UUID,
+    p_item_id UUID,
+    p_quantity INT,
+    p_recorded_by VARCHAR DEFAULT 'Admin-GDT',
+    p_remark TEXT DEFAULT 'បញ្ចូលស្តុកថ្មី'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_item RECORD;
+    v_tx_id UUID;
+    v_new_qty INT;
+BEGIN
+    IF p_quantity <= 0 THEN
+        RAISE EXCEPTION 'Quantity must be greater than zero.';
+    END IF;
+
+    SELECT code, name_kh, unit INTO v_item
+    FROM public.items
+    WHERE id = p_item_id;
+
+    IF v_item.code IS NULL THEN
+        RAISE EXCEPTION 'Item not found with ID: %', p_item_id;
+    END IF;
+
+    -- 1. Insert or update inventory for the specified location
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+    VALUES (p_location_id, p_item_id, p_quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = public.inventory.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    RETURNING quantity INTO v_new_qty;
+
+    -- 2. Insert transaction record with explicit to_location_id
+    INSERT INTO public.transactions (
+        type,
+        to_location_id,
+        item_id,
+        item_code,
+        item_name_kh,
+        quantity,
+        unit,
+        recorded_by,
+        remark,
+        status,
+        date
+    ) VALUES (
+        'STOCK_IN',
+        p_location_id,
+        p_item_id,
+        v_item.code,
+        v_item.name_kh,
+        p_quantity,
+        v_item.unit,
+        p_recorded_by,
+        p_remark,
+        'RECEIVED',
+        NOW()
+    )
+    RETURNING id INTO v_tx_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'transaction_id', v_tx_id,
+        'new_quantity', v_new_qty,
+        'message', 'Stock-In completed successfully'
+    );
+END;
+$$;
 
 -- Function 1: handle_branch_handover (Deduct from source, Status PENDING)
 CREATE OR REPLACE FUNCTION public.handle_branch_handover(

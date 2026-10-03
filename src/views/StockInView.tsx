@@ -32,18 +32,40 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   const [selectedLocId, setSelectedLocId] = useState('');
   const [inputQuantity, setInputQuantity] = useState<number>(1);
 
-  // Set default location to HQ
+  // Available locations excluding 'ALL' filter
+  const validLocations = React.useMemo(() => {
+    return locations.filter(l => l.code !== 'ALL' && l.id !== 'ALL');
+  }, [locations]);
+
+  // Set default location to HQ whenever locations load or change
   useEffect(() => {
-    if (!selectedLocId && locations.length > 0) {
-      const hqLoc = locations.find(l => l.type === 'HQ' || l.code === 'HQ-ITSB' || l.id === '1') || locations[0];
-      if (hqLoc && hqLoc.code !== 'ALL') {
-        setSelectedLocId(hqLoc.id);
+    if (validLocations.length > 0) {
+      const isCurrentValid = validLocations.some(l => l.id === selectedLocId);
+      if (!isCurrentValid) {
+        const hqLoc = validLocations.find(l => l.type === 'HQ' || l.code === 'HQ-ITSB' || l.id === '1') || validLocations[0];
+        if (hqLoc) {
+          setSelectedLocId(hqLoc.id);
+        }
       }
     }
-  }, [locations, selectedLocId]);
+  }, [validLocations, selectedLocId]);
 
-  const selectedItem = items.find(i => i.id === selectedItemId || i.code === selectedItemId);
-  const selectedLocation = locations.find(l => l.id === selectedLocId || l.code === selectedLocId);
+  // Set default item if none selected
+  useEffect(() => {
+    if (items.length > 0 && !selectedItemId) {
+      setSelectedItemId(items[0].id);
+    }
+  }, [items, selectedItemId]);
+
+  const selectedItem = React.useMemo(() => {
+    return items.find(i => i.id === selectedItemId || i.code === selectedItemId) || null;
+  }, [items, selectedItemId]);
+
+  const selectedLocation = React.useMemo(() => {
+    return validLocations.find(l => l.id === selectedLocId) || 
+           validLocations.find(l => l.code === selectedLocId) || 
+           null;
+  }, [validLocations, selectedLocId]);
 
   // Calculate current stock at selected location and across all locations
   const currentLocStock = React.useMemo(() => {
@@ -78,14 +100,32 @@ export function StockInView({ onNavigate }: StockInViewProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Validate Target Location State Binding
+    if (!selectedLocId || selectedLocId === 'ALL') {
+      setNotice({ type: 'error', message: 'សូមជ្រើសរើសទីតាំងបញ្ចូល (TARGET LOCATION) ឱ្យបានត្រឹមត្រូវ!' });
+      return;
+    }
+
+    const targetLocation = validLocations.find(l => l.id === selectedLocId) || selectedLocation;
+    if (!targetLocation) {
+      setNotice({ type: 'error', message: 'រកមិនឃើញទីតាំងគោលដៅដែលបានជ្រើសរើសឡើយ! សូមជ្រើសរើសម្តងទៀត។' });
+      return;
+    }
+
+    // 2. Validate Selected Item
     if (!selectedItemId) {
       setNotice({ type: 'error', message: 'សូមជ្រើសរើសសម្ភារៈដែលត្រូវបញ្ចូលស្តុក!' });
       return;
     }
-    if (!selectedLocId) {
-      setNotice({ type: 'error', message: 'សូមជ្រើសរើសទីតាំងដែលត្រូវបញ្ចូលស្តុក!' });
+
+    const targetItem = items.find(i => i.id === selectedItemId || i.code === selectedItemId) || selectedItem;
+    if (!targetItem) {
+      setNotice({ type: 'error', message: 'រកមិនឃើញសម្ភារៈដែលបានជ្រើសរើសឡើយ!' });
       return;
     }
+
+    // 3. Validate Quantity
     if (inputQuantity <= 0) {
       setNotice({ type: 'error', message: 'ចំនួនបញ្ចូលត្រូវតែធំជាង ០!' });
       return;
@@ -95,34 +135,40 @@ export function StockInView({ onNavigate }: StockInViewProps) {
     setNotice(null);
 
     const form = e.target as HTMLFormElement;
-    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement).value;
-    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
+    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement)?.value;
+    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement)?.value;
 
-    const res = await recordStockIn({
-      locationId: selectedLocId,
-      itemId: selectedItemId,
-      quantity: inputQuantity,
-      officerName: officerName || user?.fullName || 'Admin-GDT',
-      purpose: purpose || 'បញ្ចូលស្តុកថ្មី'
-    });
-
-    setLoading(false);
-
-    if (res.success) {
-      setNotice({ 
-        type: 'success', 
-        message: res.message,
-        itemCode: selectedItem?.code,
-        itemName: selectedItem?.name_kh,
-        addedQty: inputQuantity,
-        newTotalQty: res.newQuantity ?? projectedLocStock,
-        unit: selectedItem?.unit || 'គ្រឿង',
-        locationName: selectedLocation?.name_kh || 'ស្តុកកណ្តាល HQ'
+    try {
+      // 4. Payload Submission: strictly bind to_location_id to targetLocation.id (UUID)
+      const res = await recordStockIn({
+        locationId: targetLocation.id, // Explicit non-null location.id (UUID)
+        itemId: targetItem.id,         // Explicit non-null item.id (UUID)
+        quantity: inputQuantity,
+        officerName: officerName || user?.fullName || 'Admin-GDT',
+        purpose: purpose || 'បញ្ចូលស្តុកថ្មី'
       });
-      // Keep selected item & location so user can review or add again, but reset quantity to 1
-      setInputQuantity(1);
-    } else {
-      setNotice({ type: 'error', message: res.message });
+
+      if (res.success) {
+        setNotice({ 
+          type: 'success', 
+          message: res.message,
+          itemCode: targetItem.code,
+          itemName: targetItem.name_kh,
+          addedQty: inputQuantity,
+          newTotalQty: res.newQuantity ?? projectedLocStock,
+          unit: targetItem.unit || 'គ្រឿង',
+          locationName: targetLocation.name_kh
+        });
+        // Keep selected item & location so user can review or add again, but reset quantity to 1
+        setInputQuantity(1);
+      } else {
+        setNotice({ type: 'error', message: res.message });
+      }
+    } catch (err: any) {
+      console.error('Stock-In submission error:', err);
+      setNotice({ type: 'error', message: err?.message || 'មានបញ្ហាបច្ចេកទេសក្នុងការបញ្ចូលស្តុក' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -221,20 +267,26 @@ export function StockInView({ onNavigate }: StockInViewProps) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">
-                ទីតាំងបញ្ចូល (Target Location) <span className="text-rose-500">*</span>
+              <label htmlFor="locationId" className="block text-xs font-bold text-slate-600 mb-1.5 uppercase flex items-center justify-between">
+                <span>ទីតាំងបញ្ចូល (TARGET LOCATION) <span className="text-rose-500">*</span></span>
+                {selectedLocation && (
+                  <span className="text-[10px] text-emerald-800 font-mono font-bold bg-emerald-100/70 px-2 py-0.5 rounded">
+                    [{selectedLocation.code}] {selectedLocation.id.length > 10 ? `${selectedLocation.id.slice(0, 8)}...` : selectedLocation.id}
+                  </span>
+                )}
               </label>
               <select 
+                id="locationId"
                 name="locationId" 
                 value={selectedLocId}
                 onChange={(e) => setSelectedLocId(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required
               >
-                <option value="">-- ជ្រើសរើសទីតាំង --</option>
-                {locations.filter(l => l.code !== 'ALL').map(loc => (
+                <option value="">-- {language === 'kh' ? 'ជ្រើសរើសទីតាំងទទួលស្តុក' : 'Select Target Location'} --</option>
+                {validLocations.map(loc => (
                   <option key={loc.id} value={loc.id}>
-                    [{loc.code}] {language === 'kh' ? loc.name_kh : loc.name_en} {loc.type === 'HQ' ? '(ស្តុកកណ្តាល)' : ''}
+                    [{loc.code}] {language === 'kh' ? loc.name_kh : loc.name_en} {loc.type === 'HQ' ? '(ស្តុកកណ្តាល HQ)' : ''}
                   </option>
                 ))}
               </select>

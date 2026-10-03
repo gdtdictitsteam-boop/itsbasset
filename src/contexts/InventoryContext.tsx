@@ -422,31 +422,95 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     // 4. If Supabase is configured, write to database reliably
     if (isConfigured) {
       try {
-        let dbItemId = targetItem.id;
+        // 4a. Resolve dbItemId (UUID)
+        let dbItemId = isValidUuid(params.itemId) ? params.itemId : (isValidUuid(targetItem.id) ? targetItem.id : '');
         if (!isValidUuid(dbItemId)) {
           const { data: itemRows } = await supabase
             .from('items')
             .select('id')
             .eq('code', targetItem.code)
             .maybeSingle();
-          if (itemRows?.id) {
+          if (itemRows?.id && isValidUuid(itemRows.id)) {
             dbItemId = itemRows.id;
           }
         }
 
-        let dbLocId = targetLocation.id;
+        // 4b. Resolve dbLocId (UUID)
+        let dbLocId = isValidUuid(params.locationId) ? params.locationId : (isValidUuid(targetLocation.id) ? targetLocation.id : '');
         if (!isValidUuid(dbLocId)) {
-          const { data: locRows } = await supabase
-            .from('locations')
-            .select('id')
-            .eq('code', targetLocation.code)
-            .maybeSingle();
-          if (locRows?.id) {
-            dbLocId = locRows.id;
+          // Lookup by location code
+          if (targetLocation.code) {
+            const { data: locRows } = await supabase
+              .from('locations')
+              .select('id')
+              .eq('code', targetLocation.code)
+              .maybeSingle();
+            if (locRows?.id && isValidUuid(locRows.id)) {
+              dbLocId = locRows.id;
+            }
+          }
+          // Fallback lookup by location Khmer name
+          if (!isValidUuid(dbLocId) && targetLocation.name_kh) {
+            const { data: locByName } = await supabase
+              .from('locations')
+              .select('id')
+              .eq('name_kh', targetLocation.name_kh)
+              .maybeSingle();
+            if (locByName?.id && isValidUuid(locByName.id)) {
+              dbLocId = locByName.id;
+            }
           }
         }
 
-        if (isValidUuid(dbItemId) && isValidUuid(dbLocId)) {
+        if (!isValidUuid(dbLocId)) {
+          console.error('CRITICAL: Cannot perform Stock-In to Supabase. to_location_id is not a valid UUID:', {
+            paramsLocationId: params.locationId,
+            targetLocation,
+            dbLocId
+          });
+          return {
+            success: false,
+            message: `បរាជ័យ៖ មិនអាចរកឃើញ Location UUID ត្រឹមត្រូវសម្រាប់ទីតាំង "${targetLocation.name_kh}" ក្នុង Supabase Database ឡើយ។`
+          };
+        }
+
+        if (!isValidUuid(dbItemId)) {
+          console.error('CRITICAL: Cannot perform Stock-In to Supabase. item_id is not a valid UUID:', {
+            paramsItemId: params.itemId,
+            targetItem,
+            dbItemId
+          });
+          return {
+            success: false,
+            message: `បរាជ័យ៖ មិនអាចរកឃើញ Item UUID ត្រឹមត្រូវសម្រាប់សម្ភារៈ "${targetItem.name_kh}" ក្នុង Supabase Database ឡើយ។`
+          };
+        }
+
+        // 4c. Try RPC handle_stock_in first if it exists
+        let rpcHandled = false;
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('handle_stock_in', {
+            p_location_id: dbLocId,
+            p_item_id: dbItemId,
+            p_quantity: params.quantity,
+            p_recorded_by: params.officerName || 'Admin-GDT',
+            p_remark: params.purpose || 'បញ្ចូលស្តុកថ្មី'
+          });
+
+          if (!rpcErr && rpcRes && rpcRes.success) {
+            rpcHandled = true;
+            if (rpcRes.new_quantity !== undefined) {
+              calculatedNewQty = rpcRes.new_quantity;
+            }
+          } else if (rpcErr && rpcErr.code !== 'PGRST202' && rpcErr.code !== '42883') {
+            console.warn('RPC handle_stock_in notice, using direct upsert:', rpcErr.message);
+          }
+        } catch (rpcEx) {
+          rpcHandled = false;
+        }
+
+        // 4d. Fallback to direct atomic Supabase operations if RPC was not used
+        if (!rpcHandled) {
           const { data: invRows } = await supabase
             .from('inventory')
             .select('quantity')
@@ -454,10 +518,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
             .eq('item_id', dbItemId)
             .maybeSingle();
 
-          const currentQty = invRows ? (invRows.quantity || 0) : 0;
+          const currentQty = invRows ? (Number(invRows.quantity) || 0) : 0;
           const newQty = currentQty + params.quantity;
 
-          await supabase.from('inventory').upsert([
+          // Update/Insert inventory table with new quantity
+          const { error: invErr } = await supabase.from('inventory').upsert([
             {
               location_id: dbLocId,
               item_id: dbItemId,
@@ -466,10 +531,16 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
             }
           ], { onConflict: 'location_id,item_id' });
 
-          await supabase.from('transactions').insert([
+          if (invErr) {
+            console.error('Supabase inventory upsert error:', invErr);
+            throw new Error(`បរាជ័យក្នុងការ Update តារាង inventory: ${invErr.message}`);
+          }
+
+          // Insert transaction with strictly non-null to_location_id
+          const { error: txErr } = await supabase.from('transactions').insert([
             {
               type: 'STOCK_IN',
-              to_location_id: dbLocId,
+              to_location_id: dbLocId, // GUARANTEED VALID UUID
               item_id: dbItemId,
               item_code: targetItem.code,
               item_name_kh: targetItem.name_kh,
@@ -477,17 +548,26 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
               unit: targetItem.unit,
               recorded_by: params.officerName || 'Admin-GDT',
               remark: params.purpose || 'បញ្ចូលស្តុកថ្មី',
-              status: 'RECEIVED'
+              status: 'RECEIVED',
+              date: new Date().toISOString()
             }
           ]);
 
-          const liveInv = await fetchFullInventoryFromSupabase();
-          if (liveInv && liveInv.length > 0) {
-            setInventory(liveInv);
-            mockInventory.length = 0;
-            mockInventory.push(...liveInv);
-            saveToStorage(mockItems, mockInventory, mockTransactions);
+          if (txErr) {
+            console.error('Supabase transactions insert error:', txErr);
+            throw new Error(`បរាជ័យក្នុងការ Insert ចូលតារាង transactions: ${txErr.message}`);
           }
+
+          calculatedNewQty = newQty;
+        }
+
+        // 4e. Refresh live inventory so all views update instantaneously
+        const liveInv = await fetchFullInventoryFromSupabase();
+        if (liveInv && liveInv.length > 0) {
+          setInventory(liveInv);
+          mockInventory.length = 0;
+          mockInventory.push(...liveInv);
+          saveToStorage(mockItems, mockInventory, mockTransactions);
         }
       } catch (dbErr: any) {
         console.warn('Supabase DB Stock-In Error (using local state fallback):', dbErr);
