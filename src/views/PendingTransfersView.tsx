@@ -241,7 +241,7 @@ export function PendingTransfersView() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900">បញ្ជីទំនិញកំពុងផ្ទេរ (Pending Transfers)</h2>
+              <h2 className="text-xl font-bold text-slate-900">បញ្ជីសម្ភារកំពុងផ្ទេរ (Pending Transfers)</h2>
               <span className="bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full text-xs font-bold border border-amber-300">
                 {pendingTransfers.length} ប្រតិបត្តិការ
               </span>
@@ -313,12 +313,12 @@ export function PendingTransfersView() {
       {loading ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 text-xs font-semibold">
           <RefreshCw size={24} className="animate-spin mx-auto text-emerald-800 mb-2" />
-          កំពុងទាញយកទិន្នន័យទំនិញកំពុងផ្ទេរ...
+          កំពុងទាញយកទិន្នន័យសម្ភារកំពុងផ្ទេរ...
         </div>
       ) : filteredTransfers.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 space-y-2">
           <CheckCircle2 size={36} className="mx-auto text-emerald-600" />
-          <h3 className="font-bold text-slate-800 text-sm">គ្មានទំនិញកំពុងផ្ទេរទេ (No Pending Transfers)</h3>
+          <h3 className="font-bold text-slate-800 text-sm">គ្មានសម្ភារកំពុងផ្ទេរទេ (No Pending Transfers)</h3>
           <p className="text-xs text-slate-400">ប្រតិបត្តិការផ្ទេរស្តុកទាំងអស់ត្រូវបានយល់ព្រមទទួល និងបូកបញ្ចូលស្តុកសាខារួចរាល់។</p>
         </div>
       ) : (

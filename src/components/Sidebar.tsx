@@ -61,7 +61,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
     {
       title: language === 'kh' ? 'ព័ត៌មានប្រតិបត្តិការសាខា' : 'Branch Operations',
       items: [
-        { id: 'pendingTransfers', icon: Clock, label: language === 'kh' ? 'ទំនិញកំពុងផ្ទេរ' : 'Pending Transfers', restrictedForBranchUser: false },
+        { id: 'pendingTransfers', icon: Clock, label: language === 'kh' ? 'សម្ភារកំពុងផ្ទេរ' : 'Pending Transfers', restrictedForBranchUser: false },
         { id: 'stockOut', icon: MinusCircle, label: t.stockOut, restrictedForBranchUser: false },
         { id: 'adjustment', icon: SlidersHorizontal, label: t.adjustment, restrictedForBranchUser: false },
       ]

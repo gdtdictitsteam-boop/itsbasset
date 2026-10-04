@@ -769,7 +769,7 @@ export function HandoverView() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                   required
                 >
-                  <option value="">-- ជ្រើសរើសមុខទំនិញ / សម្ភារៈបច្ចេកទេស --</option>
+                  <option value="">-- ជ្រើសរើសមុខសម្ភារ / សម្ភារៈបច្ចេកទេស --</option>
                   {items.map(item => (
                     <option key={item.id} value={item.id}>
                       [{item.code}] {language === 'kh' ? item.name_kh : item.name_en} ({item.unit})

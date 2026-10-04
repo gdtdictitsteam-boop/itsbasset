@@ -54,7 +54,7 @@ export const translations = {
     recentTransactions: 'ប្រតិបត្តិការថ្មីៗ',
     code: 'កូដ',
     itemName: 'ឈ្មោះសម្ភារៈ',
-    category: 'ប្រភេទទំនិញ',
+    category: 'ប្រភេទសម្ភារ',
     quantity: 'ចំនួន',
     unit: 'ឯកតា',
     action: 'សកម្មភាព',

@@ -404,7 +404,7 @@ BEGIN
 END;
 $$;
 
--- 3. Step 2 RPC: Branch User ចុចទទួលទំនិញ (បូកស្តុកចូលសាខា, ប្តូរ status = 'RECEIVED')
+-- 3. Step 2 RPC: Branch User ចុចទទួលសម្ភារ (បូកស្តុកចូលសាខា, ប្តូរ status = 'RECEIVED')
 CREATE OR REPLACE FUNCTION acknowledge_handover(
     p_transaction_id UUID,
     p_received_by VARCHAR DEFAULT ''
