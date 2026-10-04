@@ -1,14 +1,16 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Settings, User, LogOut } from 'lucide-react';
+import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
+import { Settings, User, LogOut, ShieldCheck, Building2 } from 'lucide-react';
 
 export function Header() {
   const { language, t } = useLanguage();
-  const { user, userRole, userDisplayName, signOut } = useAuth();
+  const { user, userRole, userDisplayName, isCentralAdmin, isBranchUser, setIsSettingsOpen, signOut } = useAuth();
+  const { selectedLocation } = useLocationContext();
 
   return (
-    <header className="bg-[#A3D8C2] text-[#03291E] flex items-center justify-between px-6 py-3 shadow-sm border-b-4 border-[#6EC8A0] shrink-0">
+    <header className="bg-[#A3D8C2] text-[#03291E] flex items-center justify-between px-6 py-3 shadow-sm border-b-4 border-[#6EC8A0] shrink-0 font-siemreap">
       <div className="flex items-center space-x-4">
         <div className="bg-[#03291E] p-1 rounded-md shadow-xs">
           <div className="w-10 h-10 bg-[#A3D8C2] rounded flex items-center justify-center font-bold text-lg text-[#03291E]">
@@ -26,26 +28,50 @@ export function Header() {
         {/* Real User Role & Identity Badge */}
         <div className="flex items-center space-x-2.5 bg-[#03291E]/10 px-3 py-1.5 rounded-xl border border-[#03291E]/20 shadow-2xs">
           <div className="w-8 h-8 rounded-full bg-[#03291E] text-[#A3D8C2] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-            <User size={18} />
+            {isCentralAdmin ? <ShieldCheck size={18} /> : <Building2 size={18} />}
           </div>
           <div className="flex flex-col text-left pr-1">
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-bold text-[#03291E]/70 uppercase leading-none">{userRole}</span>
+              <span className={`text-[9px] font-bold uppercase leading-none px-1.5 py-0.5 rounded ${
+                isCentralAdmin ? 'bg-emerald-900/20 text-emerald-950 font-black' : 'bg-amber-900/20 text-amber-950 font-black'
+              }`}>
+                {userRole}
+              </span>
+              {isBranchUser && (
+                <span className="text-[9px] font-bold text-[#03291E]/80 truncate max-w-[120px]">
+                  ({selectedLocation?.code || 'Branch'})
+                </span>
+              )}
             </div>
-            <span className="text-xs font-bold text-[#03291E] leading-tight max-w-[140px] truncate">
+            <span className="text-xs font-bold text-[#03291E] leading-tight max-w-[150px] truncate" title={userDisplayName}>
               {userDisplayName || user?.email || t.userRole}
             </span>
           </div>
         </div>
 
-        <button className="p-2 hover:bg-[#03291E]/10 rounded-full transition-colors text-[#03291E]" title="Settings">
-          <Settings size={20} />
-        </button>
+        {/* Setting Button (⚙️) - Opens User Management Modal for CentralAdmin */}
+        {isCentralAdmin ? (
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 hover:bg-[#03291E]/15 rounded-full transition-all text-[#03291E] relative group hover:scale-105 active:scale-95 cursor-pointer"
+            title="ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (User Management & RBAC)"
+          >
+            <Settings size={20} className="group-hover:rotate-45 transition-transform duration-300" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-700 rounded-full ring-2 ring-[#A3D8C2]" />
+          </button>
+        ) : (
+          <div
+            className="p-2 text-[#03291E]/30 cursor-not-allowed rounded-full relative"
+            title="ការកំណត់ (សម្រាប់តែ CentralAdmin ប៉ុណ្ណោះ)"
+          >
+            <Settings size={20} />
+          </div>
+        )}
 
         {/* Logout Button */}
         <button
           onClick={signOut}
-          className="flex items-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs"
+          className="flex items-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
           title="Logout (ចាកចេញ)"
         >
           <LogOut size={15} />

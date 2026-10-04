@@ -49,3 +49,13 @@ export interface Transaction {
   recorded_by: string;
   created_at: string;
 }
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  role: 'CentralAdmin' | 'BranchUser';
+  location_id: string | null;
+  created_at?: string;
+  updated_at?: string;
+}

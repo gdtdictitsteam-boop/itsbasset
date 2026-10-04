@@ -464,61 +464,135 @@ $$;
 `;
 
   const rlsCode = `-- =========================================================================
--- STEP 2: SUPABASE ROW LEVEL SECURITY (RLS) POLICIES FOR GDT INVENTORY SYSTEM
+-- STEP 2: SUPABASE ROLE-BASED ACCESS CONTROL (RBAC) & ROW LEVEL SECURITY (RLS)
+-- ប្រព័ន្ធគ្រប់គ្រងសិទ្ធិមន្ត្រី និងសុវត្ថិភាពទិន្នន័យតាមសាខា (GDT Inventory)
 -- =========================================================================
 
+-- 1. តារាង user_profiles (ចងភ្ជាប់ auth.users ទៅនឹង locations តាមរយៈ location_id)
 CREATE TABLE IF NOT EXISTS public.user_profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email VARCHAR(255) NOT NULL,
     full_name VARCHAR(255),
-    role VARCHAR(50) NOT NULL DEFAULT 'BranchUser',
-    location_id UUID REFERENCES public.locations(id) ON DELETE SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    role VARCHAR(50) NOT NULL DEFAULT 'BranchUser', -- 'CentralAdmin' ឬ 'BranchUser'
+    location_id UUID REFERENCES public.locations(id) ON DELETE SET NULL, -- សាខាប្រចាំការ
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- បង្កើត Index ដើម្បីបង្កើនល្បឿន Query តាម Role និង Location
+CREATE INDEX IF NOT EXISTS idx_user_profiles_role ON public.user_profiles(role);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_location ON public.user_profiles(location_id);
+
+-- 2. បើកដំណើរការ RLS លើគ្រប់ Tables
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "CentralAdmin full access on user_profiles"
-ON public.user_profiles FOR ALL
-USING (
-    auth.jwt() ->> 'role' = 'CentralAdmin' 
-    OR auth.jwt() ->> 'role' = 'Admin-GDT'
-    OR EXISTS (
-        SELECT 1 FROM public.user_profiles 
-        WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
-    )
-);
-
-CREATE POLICY "Users view own profile"
-ON public.user_profiles FOR SELECT
-USING (auth.uid() = id);
-
 ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
 
--- Permissive policies for application access
-DROP POLICY IF EXISTS "Allow all access on inventory" ON public.inventory;
-CREATE POLICY "Allow all access on inventory" ON public.inventory FOR ALL USING (true) WITH CHECK (true);
+-- 3. Functions ជំនួយសម្រាប់ពិនិត្យសិទ្ធិមន្ត្រីក្នុង PostgreSQL
+CREATE OR REPLACE FUNCTION public.is_central_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+  ) OR (auth.jwt() ->> 'role') IN ('CentralAdmin', 'Admin-GDT');
+$$;
 
-DROP POLICY IF EXISTS "Allow all access on transactions" ON public.transactions;
-CREATE POLICY "Allow all access on transactions" ON public.transactions FOR ALL USING (true) WITH CHECK (true);
+CREATE OR REPLACE FUNCTION public.get_user_location_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+  SELECT location_id FROM public.user_profiles
+  WHERE id = auth.uid();
+$$;
 
-CREATE POLICY "CentralAdmin full access to inventory"
+-- 4. គោលការណ៍ RLS លើ USER_PROFILES
+DROP POLICY IF EXISTS "CentralAdmin full access on user_profiles" ON public.user_profiles;
+CREATE POLICY "CentralAdmin full access on user_profiles"
+ON public.user_profiles FOR ALL
+TO authenticated
+USING (public.is_central_admin())
+WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "Users can read own profile" ON public.user_profiles;
+CREATE POLICY "Users can read own profile"
+ON public.user_profiles FOR SELECT
+TO authenticated
+USING (id = auth.uid());
+
+-- 5. គោលការណ៍ RLS លើ INVENTORY (ចាក់សោ BranchUser ហាមមើល ឬកែស្តុកសាខាផ្សេង)
+DROP POLICY IF EXISTS "CentralAdmin full access on inventory" ON public.inventory;
+CREATE POLICY "CentralAdmin full access on inventory"
 ON public.inventory FOR ALL
+TO authenticated
+USING (public.is_central_admin())
+WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "BranchUser can only view own branch inventory" ON public.inventory;
+CREATE POLICY "BranchUser can only view own branch inventory"
+ON public.inventory FOR SELECT
+TO authenticated
 USING (
-    auth.jwt() ->> 'role' = 'CentralAdmin' OR auth.jwt() ->> 'role' = 'Admin-GDT'
-    OR EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT'))
+    public.is_central_admin() 
+    OR location_id = public.get_user_location_id()
 );
 
-CREATE POLICY "BranchUser view assigned location inventory only"
-ON public.inventory FOR SELECT
+DROP POLICY IF EXISTS "BranchUser can only update own branch inventory" ON public.inventory;
+CREATE POLICY "BranchUser can only update own branch inventory"
+ON public.inventory FOR UPDATE
+TO authenticated
 USING (
-    location_id IN (
-        SELECT location_id FROM public.user_profiles
-        WHERE id = auth.uid() AND role = 'BranchUser'
-    )
-    OR location_id = (auth.jwt() ->> 'location_id')::uuid
+    public.is_central_admin() 
+    OR location_id = public.get_user_location_id()
+)
+WITH CHECK (
+    public.is_central_admin() 
+    OR location_id = public.get_user_location_id()
 );
+
+-- 6. គោលការណ៍ RLS លើ TRANSACTIONS (ប្រវត្តិប្រតិបត្តិការ)
+DROP POLICY IF EXISTS "CentralAdmin full access on transactions" ON public.transactions;
+CREATE POLICY "CentralAdmin full access on transactions"
+ON public.transactions FOR ALL
+TO authenticated
+USING (public.is_central_admin())
+WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "BranchUser can only view own branch transactions" ON public.transactions;
+CREATE POLICY "BranchUser can only view own branch transactions"
+ON public.transactions FOR SELECT
+TO authenticated
+USING (
+    public.is_central_admin()
+    OR from_location_id = public.get_user_location_id()
+    OR to_location_id = public.get_user_location_id()
+);
+
+DROP POLICY IF EXISTS "BranchUser can only record own branch transactions" ON public.transactions;
+CREATE POLICY "BranchUser can only record own branch transactions"
+ON public.transactions FOR INSERT
+TO authenticated
+WITH CHECK (
+    public.is_central_admin()
+    OR (
+        type IN ('STOCK_OUT', 'ADJUSTMENT') 
+        AND (from_location_id = public.get_user_location_id() OR to_location_id = public.get_user_location_id())
+    )
+);
+
+-- 7. គោលការណ៍ Read សម្រាប់ LOCATIONS និង ITEMS
+DROP POLICY IF EXISTS "Allow read locations" ON public.locations;
+CREATE POLICY "Allow read locations" ON public.locations FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow read items" ON public.items;
+CREATE POLICY "Allow read items" ON public.items FOR SELECT TO authenticated USING (true);
 `;
 
   const storageCode = `-- =========================================================================

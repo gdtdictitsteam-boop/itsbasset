@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 
 
 -- =========================================================================
--- STEP 2: ROW LEVEL SECURITY (RLS) POLICIES
+-- STEP 2: ROW LEVEL SECURITY (RLS) POLICIES & RBAC BRANCH ISOLATION
 -- =========================================================================
 
 -- Enable RLS
@@ -79,22 +79,89 @@ ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- Allow universal full access on operational tables to ensure frontend works seamlessly
-DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-CREATE POLICY "Allow all access on items" ON public.items FOR ALL USING (true) WITH CHECK (true);
+-- Helper functions for checking RBAC in database
+CREATE OR REPLACE FUNCTION public.is_central_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+  ) OR (auth.jwt() ->> 'role') IN ('CentralAdmin', 'Admin-GDT');
+$$;
 
-DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
-CREATE POLICY "Allow all access on locations" ON public.locations FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow all access on inventory" ON public.inventory;
-CREATE POLICY "Allow all access on inventory" ON public.inventory FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow all access on transactions" ON public.transactions;
-CREATE POLICY "Allow all access on transactions" ON public.transactions FOR ALL USING (true) WITH CHECK (true);
+CREATE OR REPLACE FUNCTION public.get_user_location_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+  SELECT location_id FROM public.user_profiles
+  WHERE id = auth.uid();
+$$;
 
 -- User Profiles Policies
-DROP POLICY IF EXISTS "Allow all access on user_profiles" ON public.user_profiles;
-CREATE POLICY "Allow all access on user_profiles" ON public.user_profiles FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "CentralAdmin full access on user_profiles" ON public.user_profiles;
+CREATE POLICY "CentralAdmin full access on user_profiles"
+ON public.user_profiles FOR ALL TO authenticated
+USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "Users view own profile" ON public.user_profiles;
+CREATE POLICY "Users view own profile"
+ON public.user_profiles FOR SELECT TO authenticated
+USING (auth.uid() = id);
+
+-- Inventory Policies (BranchUser locked to assigned branch)
+DROP POLICY IF EXISTS "CentralAdmin full access on inventory" ON public.inventory;
+CREATE POLICY "CentralAdmin full access on inventory"
+ON public.inventory FOR ALL TO authenticated
+USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "BranchUser view assigned location inventory only" ON public.inventory;
+CREATE POLICY "BranchUser view assigned location inventory only"
+ON public.inventory FOR SELECT TO authenticated
+USING (public.is_central_admin() OR location_id = public.get_user_location_id());
+
+DROP POLICY IF EXISTS "BranchUser update assigned location inventory only" ON public.inventory;
+CREATE POLICY "BranchUser update assigned location inventory only"
+ON public.inventory FOR UPDATE TO authenticated
+USING (public.is_central_admin() OR location_id = public.get_user_location_id())
+WITH CHECK (public.is_central_admin() OR location_id = public.get_user_location_id());
+
+-- Transactions Policies (BranchUser sees & records only own branch transactions)
+DROP POLICY IF EXISTS "CentralAdmin full access on transactions" ON public.transactions;
+CREATE POLICY "CentralAdmin full access on transactions"
+ON public.transactions FOR ALL TO authenticated
+USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "BranchUser view own branch transactions" ON public.transactions;
+CREATE POLICY "BranchUser view own branch transactions"
+ON public.transactions FOR SELECT TO authenticated
+USING (
+    public.is_central_admin()
+    OR from_location_id = public.get_user_location_id()
+    OR to_location_id = public.get_user_location_id()
+);
+
+DROP POLICY IF EXISTS "BranchUser insert own branch transactions" ON public.transactions;
+CREATE POLICY "BranchUser insert own branch transactions"
+ON public.transactions FOR INSERT TO authenticated
+WITH CHECK (
+    public.is_central_admin()
+    OR (
+        type IN ('STOCK_OUT', 'ADJUSTMENT') 
+        AND (from_location_id = public.get_user_location_id() OR to_location_id = public.get_user_location_id())
+    )
+);
+
+-- Public read on catalog items and locations
+DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
+CREATE POLICY "Allow all access on items" ON public.items FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
+CREATE POLICY "Allow all access on locations" ON public.locations FOR SELECT TO authenticated USING (true);
 
 
 -- =========================================================================
