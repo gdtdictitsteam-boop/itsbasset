@@ -4,7 +4,7 @@ import { useLocationContext } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { 
   Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon, Building2,
-  Boxes, TrendingUp, RefreshCw, Sparkles
+  Boxes, TrendingUp, RefreshCw
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ItemAvatar } from '../components/ItemAvatar';
@@ -12,7 +12,7 @@ import { ItemAvatar } from '../components/ItemAvatar';
 export function DashboardView() {
   const { t, language } = useLanguage();
   const { selectedLocationId, selectedLocation } = useLocationContext();
-  const { inventory, items, locations, isLoading, refreshInventory, reseedStandardStock } = useInventoryContext();
+  const { inventory, items, locations, isLoading, refreshInventory } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
 
   // Helper to check if inventory row belongs to HQ

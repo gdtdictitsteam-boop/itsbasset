@@ -4,7 +4,7 @@ import { useLocationContext } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { 
   Wrench, Package as PackageIcon, RefreshCw, Database, 
-  AlertTriangle, CheckCircle2, Boxes, ShieldAlert, Sparkles, X,
+  AlertTriangle, Boxes, ShieldAlert,
   Layers, MapPin, Building2
 } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
@@ -12,24 +12,10 @@ import { ItemAvatar } from '../components/ItemAvatar';
 export function InventoryView() {
   const { t, language } = useLanguage();
   const { selectedLocationId, selectedLocation } = useLocationContext();
-  const { inventory, items, locations, isLoading, refreshInventory, reseedStandardStock } = useInventoryContext();
+  const { inventory, items, locations, isLoading, refreshInventory } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'byLocation' | 'consolidated'>('consolidated');
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
-
-  const handleSeedStock = async () => {
-    setIsSeeding(true);
-    setNotice(null);
-    const res = await reseedStandardStock();
-    setIsSeeding(false);
-    if (res.success) {
-      setNotice({ type: 'success', message: res.message });
-    } else {
-      setNotice({ type: 'error', message: res.message });
-    }
-  };
 
   // Helper to check if inventory row belongs to HQ
   const isHqRow = (inv: any) => isHqLocationOrRow(inv, locations);
@@ -148,17 +134,6 @@ export function InventoryView() {
         </div>
 
         <div className="flex items-center flex-wrap gap-2.5 self-start sm:self-auto">
-          {/* Re-seed / Reorganize Stock Button */}
-          <button
-            onClick={handleSeedStock}
-            disabled={isSeeding || isLoading}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200 shadow-2xs transition-colors disabled:opacity-50"
-            title="រៀបចំ និងកំណត់ចំនួនស្តុកឡើងវិញឱ្យបានត្រឹមត្រូវ"
-          >
-            <Sparkles size={14} className={isSeeding ? 'animate-spin text-teal-600' : 'text-teal-700'} />
-            <span>{isSeeding ? 'កំពុងរៀបចំ...' : 'រៀបចំចំនួនស្តុកឡើងវិញ'}</span>
-          </button>
-
           {/* Refresh Button */}
           <button
             onClick={refreshInventory}
@@ -171,25 +146,6 @@ export function InventoryView() {
           </button>
         </div>
       </div>
-
-      {/* Notice Banner */}
-      {notice && (
-        <div className={`p-4 rounded-xl border flex items-start justify-between gap-3 text-xs animate-in fade-in slide-in-from-top-2 duration-200 ${
-          notice.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-            : notice.type === 'error'
-            ? 'bg-rose-50 border-rose-200 text-rose-900'
-            : 'bg-blue-50 border-blue-200 text-blue-900'
-        }`}>
-          <div className="flex items-center gap-2 font-medium">
-            {notice.type === 'success' ? <CheckCircle2 size={16} className="text-emerald-600 shrink-0" /> : <AlertTriangle size={16} className="text-rose-600 shrink-0" />}
-            <span>{notice.message}</span>
-          </div>
-          <button onClick={() => setNotice(null)} className="text-slate-400 hover:text-slate-700 p-0.5">
-            <X size={15} />
-          </button>
-        </div>
-      )}
 
       {/* Quick Summary Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
