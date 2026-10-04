@@ -183,18 +183,65 @@ export function AuditTrailView() {
     fetchTransactions();
   }, [selectedLocationId, isCentralAdmin, isBranchUser]);
 
+  // Helper to extract document URL from all possible columns and embedded remark URL
+  const extractDocUrl = (tx: any): string | null => {
+    if (tx.document_url && typeof tx.document_url === 'string' && tx.document_url.trim()) {
+      return tx.document_url.trim();
+    }
+    if (tx.attachment_url && typeof tx.attachment_url === 'string' && tx.attachment_url.trim()) {
+      return tx.attachment_url.trim();
+    }
+    if (tx.doc_url && typeof tx.doc_url === 'string' && tx.doc_url.trim()) {
+      return tx.doc_url.trim();
+    }
+    if (tx.file_url && typeof tx.file_url === 'string' && tx.file_url.trim()) {
+      return tx.file_url.trim();
+    }
+    // Extract URL from remark if present (e.g. "... | ឯកសារយោង: https://..." or "https://...")
+    if (tx.remark && typeof tx.remark === 'string') {
+      const urlMatch = tx.remark.match(/https?:\/\/[^\s"'<>]+/);
+      if (urlMatch) {
+        return urlMatch[0];
+      }
+    }
+    return null;
+  };
+
+  // Helper to resolve location display name from location ID or name
+  const resolveLocationName = (locName?: string, locId?: string): string => {
+    if (locName && locName.trim() && locName !== '-') return locName.trim();
+    if (locId) {
+      const match = locations.find(l => l.id === locId || l.code === locId);
+      if (match) return match.name_kh;
+    }
+    return '-';
+  };
+
+  // Helper to clean remark text by removing the raw URL and "ឯកសារយោង:" prefix
+  const getCleanRemark = (remark?: string): string => {
+    if (!remark) return '';
+    const cleaned = remark
+      .replace(/\|\s*ឯកសារយោង:\s*https?:\/\/[^\s"'<>]+/gi, '')
+      .replace(/ឯកសារយោង:\s*https?:\/\/[^\s"'<>]+/gi, '')
+      .replace(/https?:\/\/[^\s"'<>]+/gi, '')
+      .trim();
+    return cleaned;
+  };
+
   // Filtering Logic
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
-      // 1. Text Search (Item Name, Code, Remark, Officer)
+      // 1. Text Search (Item Name, Code, Remark, Officer, Locations)
       const query = searchQuery.toLowerCase();
+      const fromLoc = resolveLocationName(tx.from_location, tx.from_location_id).toLowerCase();
+      const toLoc = resolveLocationName(tx.to_location, tx.to_location_id).toLowerCase();
       const matchesQuery = !searchQuery || 
         tx.item_name_kh?.toLowerCase().includes(query) ||
         tx.item_code?.toLowerCase().includes(query) ||
         tx.recorded_by?.toLowerCase().includes(query) ||
         tx.remark?.toLowerCase().includes(query) ||
-        tx.from_location?.toLowerCase().includes(query) ||
-        tx.to_location?.toLowerCase().includes(query);
+        fromLoc.includes(query) ||
+        toLoc.includes(query);
 
       // 2. Transaction Type
       const matchesType = selectedType === 'ALL' || tx.type === selectedType;
@@ -203,8 +250,8 @@ export function AuditTrailView() {
       const matchesLocation = selectedLocation === 'ALL' || 
         tx.from_location_id === selectedLocation ||
         tx.to_location_id === selectedLocation ||
-        tx.from_location?.includes(selectedLocation) ||
-        tx.to_location?.includes(selectedLocation);
+        fromLoc.includes(selectedLocation) ||
+        toLoc.includes(selectedLocation);
 
       // 4. Date Range Filter
       let matchesDate = true;
@@ -223,7 +270,7 @@ export function AuditTrailView() {
 
       return matchesQuery && matchesType && matchesLocation && matchesDate;
     });
-  }, [transactions, searchQuery, selectedType, selectedLocation, startDate, endDate]);
+  }, [transactions, searchQuery, selectedType, selectedLocation, startDate, endDate, locations]);
 
   // Export to Excel (CSV with UTF-8 BOM for Khmer support)
   const exportToExcel = () => {
@@ -251,12 +298,15 @@ export function AuditTrailView() {
 
     filteredTransactions.forEach(tx => {
       const dateStr = new Date(tx.date || tx.created_at).toLocaleString('km-KH');
-      const docUrl = tx.document_url || tx.attachment_url || '';
+      const docUrl = extractDocUrl(tx) || '';
+      const fromLoc = resolveLocationName(tx.from_location, tx.from_location_id);
+      const toLoc = resolveLocationName(tx.to_location, tx.to_location_id);
+      const cleanRemark = getCleanRemark(tx.remark) || tx.remark || '';
       const row = [
         `"${dateStr}"`,
         `"${tx.type}"`,
-        `"${tx.from_location || '-'}"`,
-        `"${tx.to_location || '-'}"`,
+        `"${fromLoc}"`,
+        `"${toLoc}"`,
         `"${tx.item_code || '-'}"`,
         `"${(tx.item_name_kh || '').replace(/"/g, '""')}"`,
         tx.quantity,
@@ -264,7 +314,7 @@ export function AuditTrailView() {
         `"${tx.status || 'RECEIVED'}"`,
         `"${(tx.recorded_by || '').replace(/"/g, '""')}"`,
         `"${docUrl ? docUrl.replace(/"/g, '""') : '-'}"`,
-        `"${(tx.remark || '').replace(/"/g, '""')}"`
+        `"${cleanRemark.replace(/"/g, '""')}"`
       ];
       csvRows.push(row.join(','));
     });
@@ -301,14 +351,16 @@ export function AuditTrailView() {
     if (!printWindow) return;
 
     const rowsHtml = filteredTransactions.map((tx, idx) => {
-      const docUrl = tx.document_url || tx.attachment_url;
+      const docUrl = extractDocUrl(tx);
+      const fromLoc = resolveLocationName(tx.from_location, tx.from_location_id);
+      const toLoc = resolveLocationName(tx.to_location, tx.to_location_id);
       return `
       <tr style="border-bottom: 1px solid #E2E8F0; font-size: 11px;">
         <td style="padding: 8px; text-align: center;">${idx + 1}</td>
         <td style="padding: 8px;">${new Date(tx.date || tx.created_at).toLocaleString('km-KH')}</td>
         <td style="padding: 8px; font-weight: bold; color: #03291E;">${tx.type}</td>
-        <td style="padding: 8px;">${tx.from_location || '-'}</td>
-        <td style="padding: 8px;">${tx.to_location || '-'}</td>
+        <td style="padding: 8px;">${fromLoc}</td>
+        <td style="padding: 8px;">${toLoc}</td>
         <td style="padding: 8px; font-family: monospace;">${tx.item_code}</td>
         <td style="padding: 8px; font-weight: bold;">${tx.item_name_kh}</td>
         <td style="padding: 8px; text-align: right; font-weight: bold;">${tx.quantity}</td>
@@ -563,7 +615,10 @@ export function AuditTrailView() {
                   const isStockIn = tx.type === 'STOCK_IN';
                   const isStockOut = tx.type === 'STOCK_OUT';
                   const isPending = tx.status === 'PENDING';
-                  const docUrl = tx.document_url || tx.attachment_url;
+                  const docUrl = extractDocUrl(tx);
+                  const fromLoc = resolveLocationName(tx.from_location, tx.from_location_id);
+                  const toLoc = resolveLocationName(tx.to_location, tx.to_location_id);
+                  const cleanRemark = getCleanRemark(tx.remark);
 
                   return (
                     <tr key={tx.id || idx} className="hover:bg-slate-50/80 transition-colors">
@@ -588,22 +643,22 @@ export function AuditTrailView() {
                           <span>{tx.type}</span>
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-700 max-w-[160px] truncate" title={tx.from_location}>
-                        {tx.from_location || '-'}
+                      <td className="py-3.5 px-4 text-slate-700 max-w-[160px] truncate" title={fromLoc}>
+                        {fromLoc}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-700 max-w-[160px] truncate" title={tx.to_location}>
-                        {tx.to_location || '-'}
+                      <td className="py-3.5 px-4 text-slate-700 max-w-[160px] truncate" title={toLoc}>
+                        {toLoc}
                       </td>
                       <td className="py-3.5 px-4 space-y-0.5">
                         <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] text-slate-700 font-bold mr-1.5">
                           {tx.item_code}
                         </span>
                         <span className="font-bold text-slate-900">{tx.item_name_kh}</span>
-                        {tx.remark && (
-                          <div className="text-[11px] text-slate-500 font-normal truncate max-w-[240px]">
-                            {tx.remark}
+                        {cleanRemark ? (
+                          <div className="text-[11px] text-slate-500 font-normal truncate max-w-[240px]" title={cleanRemark}>
+                            {cleanRemark}
                           </div>
-                        )}
+                        ) : null}
                       </td>
                       <td className="py-3.5 px-4 text-right font-black font-mono text-sm text-slate-900 whitespace-nowrap">
                         {tx.quantity} <span className="text-xs font-normal text-slate-500">{tx.unit}</span>
@@ -628,7 +683,7 @@ export function AuditTrailView() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 hover:border-emerald-400 transition-colors shadow-2xs group"
-                            title="ចុចដើម្បីបើកមើលឯកសារយោង (ផ្ទាំងថ្មី)"
+                            title={`ចុចដើម្បីបើកមើលឯកសារយោង (ផ្ទាំងថ្មី):\n${docUrl}`}
                           >
                             <Eye size={13} className="text-emerald-700 group-hover:scale-110 transition-transform" />
                             <span>មើលឯកសារ</span>
