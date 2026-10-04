@@ -3,7 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { 
-  Wrench, Package as PackageIcon, RefreshCw, Database, 
+  Wrench, Package as PackageIcon, RefreshCw, 
   AlertTriangle, Boxes, ShieldAlert,
   Layers, MapPin, Building2
 } from 'lucide-react';

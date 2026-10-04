@@ -24,7 +24,10 @@ import {
   MinusCircle, 
   SlidersHorizontal,
   Download,
-  Clock
+  Clock,
+  Eye,
+  Paperclip,
+  ExternalLink
 } from 'lucide-react';
 
 export function AuditTrailView() {
@@ -87,6 +90,7 @@ export function AuditTrailView() {
           unit: 'គ្រឿង',
           recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
           status: 'RECEIVED',
+          document_url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80',
           remark: 'ផ្ទេរសម្ភារៈបច្ចេកទេសជូនសាខា ៧មករា'
         },
         {
@@ -102,6 +106,7 @@ export function AuditTrailView() {
           unit: 'គ្រឿង',
           recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
           status: 'RECEIVED',
+          document_url: 'https://raw.githubusercontent.com/mozilla/pdf.js/master/examples/learning/helloworld.pdf',
           remark: 'ទិញចូលស្តុកកណ្តាលប្រចាំត្រីមាស'
         },
         {
@@ -118,6 +123,7 @@ export function AuditTrailView() {
           unit: 'គ្រឿង',
           recorded_by: 'មន្ត្រីសាខា ៧មករា',
           status: 'RECEIVED',
+          document_url: null,
           remark: 'ដកប្រើប្រាស់សម្រាប់ការងារជួសជុល Network'
         },
         {
@@ -134,6 +140,7 @@ export function AuditTrailView() {
           unit: 'ប្រអប់',
           recorded_by: 'មន្ត្រីសាខា ដង្កោ',
           status: 'RECEIVED',
+          document_url: null,
           remark: 'កែតម្រូវស្តុកដោយសារខូចខាតអំឡុងពេលដឹកជញ្ជូន'
         },
         {
@@ -150,6 +157,7 @@ export function AuditTrailView() {
           unit: 'ខ្សែ',
           recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
           status: 'PENDING',
+          document_url: null,
           remark: 'ផ្ទេរខ្សែកាបបណ្តាញសម្រាប់ដំឡើងម៉ាស៊ីនបោះពុម្ព'
         }
       ];
@@ -235,6 +243,7 @@ export function AuditTrailView() {
       'ខ្នាត (Unit)',
       'ស្ថានភាព (Status)',
       'មន្ត្រីកត់ត្រា (Recorded By)',
+      'ឯកសារយោង (Reference)',
       'កំណត់សម្គាល់ (Remark)'
     ];
 
@@ -242,6 +251,7 @@ export function AuditTrailView() {
 
     filteredTransactions.forEach(tx => {
       const dateStr = new Date(tx.date || tx.created_at).toLocaleString('km-KH');
+      const docUrl = tx.document_url || tx.attachment_url || '';
       const row = [
         `"${dateStr}"`,
         `"${tx.type}"`,
@@ -253,6 +263,7 @@ export function AuditTrailView() {
         `"${tx.unit || '-'}"`,
         `"${tx.status || 'RECEIVED'}"`,
         `"${(tx.recorded_by || '').replace(/"/g, '""')}"`,
+        `"${docUrl ? docUrl.replace(/"/g, '""') : '-'}"`,
         `"${(tx.remark || '').replace(/"/g, '""')}"`
       ];
       csvRows.push(row.join(','));
@@ -289,7 +300,9 @@ export function AuditTrailView() {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const rowsHtml = filteredTransactions.map((tx, idx) => `
+    const rowsHtml = filteredTransactions.map((tx, idx) => {
+      const docUrl = tx.document_url || tx.attachment_url;
+      return `
       <tr style="border-bottom: 1px solid #E2E8F0; font-size: 11px;">
         <td style="padding: 8px; text-align: center;">${idx + 1}</td>
         <td style="padding: 8px;">${new Date(tx.date || tx.created_at).toLocaleString('km-KH')}</td>
@@ -302,8 +315,10 @@ export function AuditTrailView() {
         <td style="padding: 8px;">${tx.unit}</td>
         <td style="padding: 8px; text-align: center;">${tx.status || 'RECEIVED'}</td>
         <td style="padding: 8px;">${tx.recorded_by || '-'}</td>
+        <td style="padding: 8px; text-align: center;">${docUrl ? `<a href="${docUrl}" target="_blank" style="color: #047857; font-weight: bold; text-decoration: underline;">មើលឯកសារ</a>` : '-'}</td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -336,6 +351,7 @@ export function AuditTrailView() {
                 <th>ខ្នាត</th>
                 <th>ស្ថានភាព</th>
                 <th>មន្ត្រីកត់ត្រា</th>
+                <th>ឯកសារយោង</th>
               </tr>
             </thead>
             <tbody>
@@ -538,6 +554,7 @@ export function AuditTrailView() {
                   <th className="py-3 px-4 text-right">ចំនួន</th>
                   <th className="py-3 px-4 text-center">ស្ថានភាព</th>
                   <th className="py-3 px-4">មន្ត្រីកត់ត្រា</th>
+                  <th className="py-3 px-4 text-center">ឯកសារយោង (Reference)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-800">
@@ -546,6 +563,7 @@ export function AuditTrailView() {
                   const isStockIn = tx.type === 'STOCK_IN';
                   const isStockOut = tx.type === 'STOCK_OUT';
                   const isPending = tx.status === 'PENDING';
+                  const docUrl = tx.document_url || tx.attachment_url;
 
                   return (
                     <tr key={tx.id || idx} className="hover:bg-slate-50/80 transition-colors">
@@ -602,6 +620,23 @@ export function AuditTrailView() {
                       </td>
                       <td className="py-3.5 px-4 text-slate-600 font-semibold text-[11px] whitespace-nowrap">
                         {tx.recorded_by || 'System'}
+                      </td>
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        {docUrl ? (
+                          <a
+                            href={docUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 hover:border-emerald-400 transition-colors shadow-2xs group"
+                            title="ចុចដើម្បីបើកមើលឯកសារយោង (ផ្ទាំងថ្មី)"
+                          >
+                            <Eye size={13} className="text-emerald-700 group-hover:scale-110 transition-transform" />
+                            <span>មើលឯកសារ</span>
+                            <ExternalLink size={10} className="text-emerald-600" />
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 font-bold text-sm">-</span>
+                        )}
                       </td>
                     </tr>
                   );
