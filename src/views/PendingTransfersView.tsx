@@ -7,7 +7,6 @@ import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mo
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
   Clock, 
-  Sparkles, 
   CheckCircle2, 
   AlertTriangle, 
   FileText, 
@@ -31,11 +30,6 @@ export function PendingTransfersView() {
   const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // AI Verification State
-  const [verifyingTxId, setVerifyingTxId] = useState<string | null>(null);
-  const [aiResults, setAiResults] = useState<{ [txId: string]: any }>({});
-  const [aiError, setAiError] = useState<{ [txId: string]: string }>({});
 
   // Action / Acceptance State
   const [acceptingTxId, setAcceptingTxId] = useState<string | null>(null);
@@ -130,50 +124,6 @@ export function PendingTransfersView() {
     return match ? match[0] : null;
   };
 
-  // Call Gemini AI OCR Verification endpoint
-  const handleVerifyWithAI = async (tx: any) => {
-    setVerifyingTxId(tx.id);
-    setAiError(prev => ({ ...prev, [tx.id]: '' }));
-
-    const docUrl = extractDocUrl(tx.remark);
-
-    try {
-      const response = await fetch('/api/verify-handover-doc', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          documentUrl: docUrl || 'https://supabase.gdt.gov.kh/storage/v1/object/public/handover_docs/demo_handover.pdf',
-          expectedItemName: tx.item_name_kh,
-          expectedQuantity: tx.quantity
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-      setAiResults(prev => ({ ...prev, [tx.id]: data }));
-    } catch (err: any) {
-      console.error('AI Verification error:', err);
-      // Fallback response display
-      setAiResults(prev => ({
-        ...prev,
-        [tx.id]: {
-          is_match: true,
-          extracted_item_name: tx.item_name_kh,
-          extracted_quantity: tx.quantity,
-          confidence_score: 95,
-          explanation_kh: `✅ ផ្ទៀងផ្ទាត់ជោគជ័យដោយ Gemini AI OCR! លិខិតប្រគល់ទទួលត្រឹមត្រូវ៖ ឈ្មោះសម្ភារៈ "${tx.item_name_kh}" និងចំនួន ${tx.quantity} ${tx.unit} ត្រូវគ្នាបេះបិទជាមួយប្រព័ន្ធ។`
-        }
-      }));
-    } finally {
-      setVerifyingTxId(null);
-    }
-  };
-
   // Handle Accept / Acknowledge Transfer
   const handleAcceptTransfer = async (tx: any) => {
     setActionError(null);
@@ -247,7 +197,7 @@ export function PendingTransfersView() {
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              ជំហានទី៤៖ ការផ្ទៀងផ្ទាត់ឯកសារដោយ Gemini AI OCR និងការយល់ព្រមទទួលស្តុកចូលសាខា (2-Step Handover Acknowledgment)
+              ជំហានទី៤៖ ការត្រួតពិនិត្យឯកសារយោង និងការយល់ព្រមទទួលស្តុកចូលសាខា (2-Step Handover Acknowledgment)
             </p>
           </div>
         </div>
@@ -325,8 +275,6 @@ export function PendingTransfersView() {
         <div className="space-y-4">
           {filteredTransfers.map((tx) => {
             const docUrl = extractDocUrl(tx.remark);
-            const aiResult = aiResults[tx.id];
-            const isVerifying = verifyingTxId === tx.id;
             const isAccepting = acceptingTxId === tx.id;
 
             return (
@@ -398,42 +346,6 @@ export function PendingTransfersView() {
                   </div>
                 </div>
 
-                {/* AI Verification Results Box */}
-                {aiResult && (
-                  <div className={`p-4 rounded-xl border text-xs space-y-2 animate-in fade-in duration-300 ${
-                    aiResult.is_match 
-                      ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950' 
-                      : 'bg-rose-50/90 border-rose-300 text-rose-950'
-                  }`}>
-                    <div className="flex items-center justify-between font-bold border-b pb-2 border-emerald-200/80">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Sparkles size={18} className={aiResult.is_match ? 'text-emerald-700' : 'text-rose-700'} />
-                        <span>លទ្ធផលនៃការផ្ទៀងផ្ទាត់ដោយ Gemini AI OCR</span>
-                      </div>
-                      <div className={`px-2.5 py-0.5 rounded-full font-mono text-xs font-extrabold ${
-                        aiResult.is_match ? 'bg-emerald-200 text-emerald-900' : 'bg-rose-200 text-rose-900'
-                      }`}>
-                        {aiResult.is_match ? '✅ MATCH (ត្រឹមត្រូវ)' : '⚠️ MISMATCH (មិនត្រឹមត្រូវ)'}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold">
-                      <div>
-                        <span className="text-slate-500">ឈ្មោះសម្ភារៈដែល AI អានឃើញ:</span>
-                        <div className="font-bold text-slate-900">{aiResult.extracted_item_name}</div>
-                      </div>
-                      <div>
-                        <span className="text-slate-500">ចំនួនដែល AI អានឃើញ:</span>
-                        <div className="font-bold text-slate-900 font-mono">{aiResult.extracted_quantity} {tx.unit}</div>
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 bg-white/80 rounded-lg border border-slate-200/80 font-medium text-slate-800">
-                      {aiResult.explanation_kh}
-                    </div>
-                  </div>
-                )}
-
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
                   <div className="text-[11px] text-slate-500 font-medium">
@@ -441,16 +353,6 @@ export function PendingTransfersView() {
                   </div>
 
                   <div className="flex items-center gap-3 w-full sm:w-auto">
-                    {/* Verify with AI Button */}
-                    <button
-                      onClick={() => handleVerifyWithAI(tx)}
-                      disabled={isVerifying}
-                      className="flex-1 sm:flex-none px-4 py-2 bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-900 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-2xs disabled:opacity-50"
-                    >
-                      <Sparkles size={15} className="text-purple-700 shrink-0" />
-                      <span>{isVerifying ? 'Gemini AI កំពុងអានឯកសារ...' : 'ផ្ទៀងផ្ទាត់ដោយ AI (Verify with AI)'}</span>
-                    </button>
-
                     {/* Accept Stock Button */}
                     <button
                       onClick={() => handleAcceptTransfer(tx)}

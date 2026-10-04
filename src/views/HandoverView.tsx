@@ -23,7 +23,6 @@ import {
   CheckCircle2,
   Clock,
   Printer,
-  Sparkles,
   ClipboardList,
   Send,
   SendHorizontal,
@@ -103,8 +102,6 @@ export function HandoverView() {
   const [transferFilter, setTransferFilter] = useState<'ALL' | 'PENDING' | 'RECEIVED'>('ALL');
   const [transferSearch, setTransferSearch] = useState('');
   const [acceptingTxId, setAcceptingTxId] = useState<string | null>(null);
-  const [verifyingTxId, setVerifyingTxId] = useState<string | null>(null);
-  const [aiResults, setAiResults] = useState<{ [txId: string]: any }>({});
 
   // Voucher Print Modal State
   const [voucherData, setVoucherData] = useState<any | null>(null);
@@ -485,43 +482,6 @@ export function HandoverView() {
       setSubmitError('បរាជ័យក្នុងការទទួលស្គាល់សម្ភារៈ: ' + (e.message || ''));
     } finally {
       setAcceptingTxId(null);
-    }
-  };
-
-  // AI Verification for attached documents
-  const handleVerifyWithAI = async (tx: any) => {
-    setVerifyingTxId(tx.id);
-    try {
-      const docUrlMatch = tx.remark?.match(/https?:\/\/[^\s]+/);
-      const docUrl = docUrlMatch ? docUrlMatch[0] : (tx.document_url || 'https://supabase.gdt.gov.kh/storage/v1/object/public/handover_docs/demo_handover.pdf');
-
-      const response = await fetch('/api/verify-handover-doc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          documentUrl: docUrl,
-          expectedItemName: tx.item_name_kh,
-          expectedQuantity: tx.quantity
-        })
-      });
-
-      if (!response.ok) throw new Error('API request failed');
-      const data = await response.json();
-      setAiResults(prev => ({ ...prev, [tx.id]: data }));
-    } catch (e) {
-      // Graceful high-accuracy fallback response
-      setAiResults(prev => ({
-        ...prev,
-        [tx.id]: {
-          is_match: true,
-          extracted_item_name: tx.item_name_kh,
-          extracted_quantity: tx.quantity,
-          confidence_score: 98,
-          explanation_kh: `✅ ផ្ទៀងផ្ទាត់ជោគជ័យដោយ Gemini AI OCR! លិខិតប្រគល់ទទួលត្រឹមត្រូវ៖ ឈ្មោះសម្ភារៈ "${tx.item_name_kh}" និងចំនួន ${tx.quantity} ${tx.unit} ត្រូវគ្នាបេះបិទជាមួយប្រព័ន្ធ។`
-        }
-      }));
-    } finally {
-      setVerifyingTxId(null);
     }
   };
 
@@ -1345,7 +1305,6 @@ export function HandoverView() {
               filteredTransfers.map((tx) => {
                 const isPending = tx.status === 'PENDING' || !tx.status;
                 const docUrl = tx.remark?.match(/https?:\/\/[^\s]+/)?.[0] || tx.document_url;
-                const aiResult = aiResults[tx.id];
 
                 return (
                   <div 
@@ -1431,18 +1390,6 @@ export function HandoverView() {
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                          {/* AI Verification Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyWithAI(tx)}
-                            disabled={verifyingTxId === tx.id}
-                            className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-900 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
-                            title="ផ្ទៀងផ្ទាត់ឯកសារដោយ Gemini AI OCR"
-                          >
-                            <Sparkles size={13} className="text-purple-700" />
-                            <span>{verifyingTxId === tx.id ? 'AI កំពុងអាន...' : 'ផ្ទៀងផ្ទាត់ AI'}</span>
-                          </button>
-
                           {/* Accept Button for Pending */}
                           {isPending && (
                             <button
@@ -1466,21 +1413,6 @@ export function HandoverView() {
                       </div>
 
                     </div>
-
-                    {/* AI Verification Output Banner */}
-                    {aiResult && (
-                      <div className="mt-3 p-3 bg-purple-50/90 border border-purple-200 rounded-xl text-xs text-purple-950 flex items-start gap-2.5 animate-in fade-in duration-200">
-                        <Sparkles size={16} className="text-purple-700 mt-0.5 shrink-0" />
-                        <div className="flex-1">
-                          <div className="font-bold">{aiResult.explanation_kh}</div>
-                          <div className="text-[11px] text-purple-800 mt-1 flex items-center gap-4">
-                            <span>សម្ភារៈក្នុងឯកសារ: <strong>{aiResult.extracted_item_name}</strong></span>
-                            <span>ចំនួន: <strong>{aiResult.extracted_quantity}</strong></span>
-                            <span>កម្រិតជឿជាក់: <strong>{aiResult.confidence_score}%</strong></span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                   </div>
                 );

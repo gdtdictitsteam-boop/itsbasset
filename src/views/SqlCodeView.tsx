@@ -324,7 +324,7 @@ $$;
 `;
 
   const step4Code = `-- =========================================================================
--- STEP 4: 2-STEP HANDOVER & ACKNOWLEDGEMENT WITH AI OCR VERIFICATION
+-- STEP 4: 2-STEP HANDOVER & ACKNOWLEDGEMENT (ផ្ទេរ និងទទួលសម្ភារៈ)
 -- =========================================================================
 
 -- 1. បន្ថែម Column status ក្នុង Table transactions (PENDING -> RECEIVED)
