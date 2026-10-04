@@ -52,6 +52,7 @@ interface LocationContextType {
   setSelectedLocationId: (id: string) => void;
   selectedLocation: Location;
   locations: Location[];
+  allLocationsList: Location[];
   setLocationsList: (locs: Location[]) => void;
   isLocationLocked: boolean;
   assignedBranchLocation: Location | null;
@@ -121,6 +122,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       setSelectedLocationId, 
       selectedLocation, 
       locations,
+      allLocationsList: locationsList,
       setLocationsList,
       isLocationLocked: isBranchUser,
       assignedBranchLocation

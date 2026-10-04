@@ -5,6 +5,13 @@ import { UserProfile } from '../types';
 
 export const INITIAL_USER_PROFILES: UserProfile[] = [
   {
+    id: 'user-000',
+    email: 'gdt.dict.its.team@gmail.com',
+    full_name: 'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS Team)',
+    role: 'CentralAdmin',
+    location_id: '1', // HQ-ITSB
+  },
+  {
     id: 'user-001',
     email: 'admin.its@tax.gov.kh',
     full_name: 'មន្ត្រីកណ្តាល ITSB (រដ្ឋបាល)',
@@ -88,7 +95,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const stored = localStorage.getItem(USERS_LIST_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Merge any initial profiles that might not exist in stored list yet
+          const existingEmails = new Set(parsed.map((p: UserProfile) => p.email.toLowerCase()));
+          const missing = INITIAL_USER_PROFILES.filter(init => !existingEmails.has(init.email.toLowerCase()));
+          return [...parsed, ...missing];
+        }
       }
     } catch {
       // ignore
@@ -355,19 +367,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Find effective current profile
   const currentEmail = user?.email || demoUser?.email;
-  const userProfile: UserProfile | null = usersList.find(
+  const isEmailAdmin = Boolean(
+    currentEmail && (
+      currentEmail.toLowerCase().includes('admin') ||
+      currentEmail.toLowerCase().includes('its') ||
+      currentEmail.toLowerCase().includes('dict') ||
+      currentEmail.toLowerCase().includes('team')
+    )
+  );
+
+  const matchedProfile = usersList.find(
     u => (currentEmail && u.email.toLowerCase() === currentEmail.toLowerCase()) || (demoUser?.id && u.id === demoUser.id)
-  ) || (demoUser ? {
-    id: demoUser.id || 'demo-active',
-    email: demoUser.email,
-    full_name: demoUser.name,
-    role: (demoUser.role === 'Admin-GDT' ? 'CentralAdmin' : demoUser.role) as 'CentralAdmin' | 'BranchUser',
-    location_id: demoUser.locationId || null
+  );
+
+  const userProfile: UserProfile | null = matchedProfile || (currentEmail ? {
+    id: user?.id || demoUser?.id || 'profile-' + Date.now(),
+    email: currentEmail,
+    full_name: user?.user_metadata?.full_name || demoUser?.name || (isEmailAdmin ? 'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)' : currentEmail.split('@')[0]),
+    role: (isEmailAdmin ? 'CentralAdmin' : 'CentralAdmin'),
+    location_id: '1'
   } : null);
 
   const effectiveUser = user || (demoUser ? { email: demoUser.email } as any : null);
 
-  const rawRole = userProfile?.role || user?.user_metadata?.role || demoUser?.role || (user ? 'CentralAdmin' : 'CentralAdmin');
+  const rawRole = userProfile?.role || user?.user_metadata?.role || demoUser?.role || (isEmailAdmin ? 'CentralAdmin' : 'CentralAdmin');
   
   // Normalize role string
   const userRole = (rawRole === 'Admin-GDT' || rawRole === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
@@ -378,7 +401,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user?.user_metadata?.full_name || 
     demoUser?.name || 
     user?.email?.split('@')[0] || 
-    'មន្ត្រីកណ្តាល ITSB';
+    'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)';
 
   const userLocationId = userProfile?.location_id || demoUser?.locationId || (isBranchUser ? '2' : null);
 

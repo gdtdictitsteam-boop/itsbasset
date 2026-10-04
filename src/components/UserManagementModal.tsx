@@ -1,11 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { UserProfile } from '../types';
 import { 
   Settings, 
   X, 
-  UserCheck, 
   ShieldCheck, 
   Building2, 
   Edit3, 
@@ -29,10 +28,12 @@ export function UserManagementModal() {
     createUserProfile, 
     switchActiveUser, 
     userProfile,
-    isCentralAdmin
+    isCentralAdmin,
+    isBranchUser
   } = useAuth();
 
-  const { locations } = useLocationContext();
+  const { locations, allLocationsList } = useLocationContext();
+  const availableBranches = allLocationsList && allLocationsList.length > 0 ? allLocationsList : locations;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | 'CentralAdmin' | 'BranchUser'>('ALL');
@@ -47,6 +48,17 @@ export function UserManagementModal() {
   const [formEmail, setFormEmail] = useState('');
   const [formRole, setFormRole] = useState<'CentralAdmin' | 'BranchUser'>('BranchUser');
   const [formLocationId, setFormLocationId] = useState<string>('2'); // Default 7MK
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSettingsOpen) {
+        setIsSettingsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSettingsOpen, setIsSettingsOpen]);
 
   if (!isSettingsOpen) return null;
 
@@ -144,13 +156,16 @@ export function UserManagementModal() {
   const getLocationLabel = (locId: string | null) => {
     if (!locId) return 'មិនទាន់ចាត់តាំង';
     if (locId === '1' || locId === 'HQ-ITSB') return '[HQ-ITSB] ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB (ស្តុកកណ្តាល)';
-    const found = locations.find(l => l.id === locId || l.code === locId);
+    const found = availableBranches.find(l => l.id === locId || l.code === locId);
     if (found) return formatLocationOption(found, 'kh');
     return locId;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs font-siemreap animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs font-siemreap animate-in fade-in duration-200"
+      onClick={() => setIsSettingsOpen(false)}
+    >
       <div 
         className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -166,8 +181,12 @@ export function UserManagementModal() {
                 <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
                   ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (User Management & RBAC)
                 </h3>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  CentralAdmin Only
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  isCentralAdmin 
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                }`}>
+                  {isCentralAdmin ? 'CentralAdmin (សិទ្ធិពេញលេញ)' : 'BranchUser (មន្ត្រីសាខា)'}
                 </span>
               </div>
               <p className="text-xs text-[#A3D8C2]/80 mt-0.5">
@@ -178,8 +197,8 @@ export function UserManagementModal() {
 
           <button
             onClick={() => setIsSettingsOpen(false)}
-            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-full transition-colors"
-            title="Close"
+            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+            title="បិទ (Close)"
           >
             <X size={20} />
           </button>
@@ -203,6 +222,32 @@ export function UserManagementModal() {
             </span>
           </div>
         </div>
+
+        {/* BranchUser Notice and Switch to CentralAdmin */}
+        {isBranchUser && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between text-xs text-amber-900 shrink-0">
+            <div className="flex items-center gap-2">
+              <Building2 size={15} className="text-amber-700 shrink-0" />
+              <span>
+                អ្នកកំពុងប្រើគណនីមន្ត្រីសាខា <strong>{userProfile?.full_name || 'BranchUser'}</strong> (ចាក់សោតាមសាខា)
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                const adminAccount = usersList.find(u => u.role === 'CentralAdmin');
+                if (adminAccount) {
+                  switchActiveUser(adminAccount.id);
+                  setSuccessMessage(`បានប្តូរទៅប្រើគណនី CentralAdmin "${adminAccount.full_name}"!`);
+                  setTimeout(() => setSuccessMessage(null), 3500);
+                }
+              }}
+              className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <ArrowRightLeft size={13} />
+              <span>ប្តូរទៅជា CentralAdmin</span>
+            </button>
+          </div>
+        )}
 
         {/* Success / Error Messages */}
         {successMessage && (
@@ -235,7 +280,7 @@ export function UserManagementModal() {
                 </div>
                 <button 
                   onClick={handleCancelForm}
-                  className="text-xs text-slate-500 hover:text-slate-800 font-semibold"
+                  className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
                 >
                   បោះបង់ (Cancel)
                 </button>
@@ -290,7 +335,7 @@ export function UserManagementModal() {
                           setFormLocationId('1');
                         }
                       }}
-                      className="w-full text-xs font-bold px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
+                      className="w-full text-xs font-bold px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none cursor-pointer"
                     >
                       <option value="CentralAdmin">CentralAdmin (រដ្ឋបាលស្តុកកណ្តាល - សិទ្ធិពេញលេញ)</option>
                       <option value="BranchUser">BranchUser (មន្ត្រីប្រចាំសាខា - ចាក់សោតាមសាខា)</option>
@@ -312,12 +357,12 @@ export function UserManagementModal() {
                       <select
                         value={formLocationId}
                         onChange={(e) => setFormLocationId(e.target.value)}
-                        className="w-full text-xs font-semibold pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none truncate"
+                        className="w-full text-xs font-semibold pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none truncate cursor-pointer"
                       >
                         {formRole === 'CentralAdmin' && (
                           <option value="1">[HQ-ITSB] ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB (ស្តុកកណ្តាល)</option>
                         )}
-                        {locations
+                        {availableBranches
                           .filter(l => l.id !== 'ALL')
                           .map((loc) => (
                             <option key={loc.id} value={loc.id}>
@@ -337,14 +382,14 @@ export function UserManagementModal() {
                   <button
                     type="button"
                     onClick={handleCancelForm}
-                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                   >
                     បោះបង់
                   </button>
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="flex items-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+                    className="flex items-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
                   >
                     <Save size={15} />
                     <span>{isSaving ? 'កំពុងរក្សាទុក...' : 'រក្សាទុកទិន្នន័យ (Save)'}</span>
@@ -371,7 +416,7 @@ export function UserManagementModal() {
               <select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value as any)}
-                className="text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                className="text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none cursor-pointer"
               >
                 <option value="ALL">គ្រប់តួនាទីទាំងអស់ ({usersList.length})</option>
                 <option value="CentralAdmin">CentralAdmin ({usersList.filter(u => u.role === 'CentralAdmin').length})</option>
@@ -382,7 +427,7 @@ export function UserManagementModal() {
             {!editingUser && !isCreatingNew && (
               <button
                 onClick={handleStartCreate}
-                className="flex items-center justify-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0"
+                className="flex items-center justify-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
               >
                 <Plus size={15} />
                 <span>បន្ថែមមន្ត្រីថ្មី (Add Officer)</span>
@@ -412,7 +457,7 @@ export function UserManagementModal() {
                   </tr>
                 ) : (
                   filteredUsers.map((officer, idx) => {
-                    const isCurrentActive = userProfile?.id === officer.id || userProfile?.email === officer.email;
+                    const isCurrentActive = userProfile?.id === officer.id || userProfile?.email?.toLowerCase() === officer.email?.toLowerCase();
                     return (
                       <tr 
                         key={officer.id} 
@@ -465,7 +510,7 @@ export function UserManagementModal() {
                             {/* Edit Button */}
                             <button
                               onClick={() => handleStartEdit(officer)}
-                              className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                               title="កែប្រែមន្ត្រី (Edit)"
                             >
                               <Edit3 size={15} />
@@ -478,7 +523,7 @@ export function UserManagementModal() {
                                 setSuccessMessage(`បានប្តូរទៅប្រើគណនី "${officer.full_name}" (${officer.role})!`);
                                 setTimeout(() => setSuccessMessage(null), 3500);
                               }}
-                              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
+                              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
                                 isCurrentActive 
                                   ? 'text-emerald-700 bg-emerald-100/60' 
                                   : 'text-slate-500 hover:text-blue-700 hover:bg-blue-50'
@@ -507,7 +552,7 @@ export function UserManagementModal() {
           </div>
           <button
             onClick={() => setIsSettingsOpen(false)}
-            className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-colors"
+            className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-colors cursor-pointer"
           >
             បិទផ្ទាំង (Close)
           </button>

@@ -49,24 +49,18 @@ export function Header() {
           </div>
         </div>
 
-        {/* Setting Button (⚙️) - Opens User Management Modal for CentralAdmin */}
-        {isCentralAdmin ? (
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-2 hover:bg-[#03291E]/15 rounded-full transition-all text-[#03291E] relative group hover:scale-105 active:scale-95 cursor-pointer"
-            title="ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (User Management & RBAC)"
-          >
-            <Settings size={20} className="group-hover:rotate-45 transition-transform duration-300" />
+        {/* Setting Button (⚙️) - Opens User Management Modal */}
+        <button
+          type="button"
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-2 hover:bg-[#03291E]/15 rounded-full transition-all text-[#03291E] relative group hover:scale-105 active:scale-95 cursor-pointer"
+          title="ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (Settings & RBAC)"
+        >
+          <Settings size={20} className="group-hover:rotate-45 transition-transform duration-300" />
+          {isCentralAdmin && (
             <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-700 rounded-full ring-2 ring-[#A3D8C2]" />
-          </button>
-        ) : (
-          <div
-            className="p-2 text-[#03291E]/30 cursor-not-allowed rounded-full relative"
-            title="ការកំណត់ (សម្រាប់តែ CentralAdmin ប៉ុណ្ណោះ)"
-          >
-            <Settings size={20} />
-          </div>
-        )}
+          )}
+        </button>
 
         {/* Logout Button */}
         <button
