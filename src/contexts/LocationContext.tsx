@@ -18,22 +18,32 @@ export const ALL_LOCATIONS_OPTION: Location = {
  * Example for HQ: "[HQ-ITSB] ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB (ស្តុកកណ្តាល)"
  * Example for Branch: "[7MK] សាខាពន្ធដារខណ្ឌ៧មករា"
  */
-export function formatLocationOption(loc: Location, language: 'kh' | 'en' = 'kh'): string {
+export function formatLocationOption(loc: Location | null | undefined, language: 'kh' | 'en' = 'kh'): string {
   if (!loc) return '';
   if (loc.id === 'ALL' || loc.code === 'ALL') {
     return language === 'kh' ? '[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)' : '[ALL] All Combined Locations';
   }
 
-  const code = loc.code || loc.id;
+  const code = String(loc.code || loc.id || '').trim();
   const isHq = loc.type === 'HQ' || code === 'HQ-ITSB';
   let name = language === 'kh' ? (loc.name_kh || '') : (loc.name_en || loc.name_kh || '');
-  
-  // Clean duplicate code in parenthesis or brackets if present
-  let cleanName = name.replace(new RegExp(`\\s*\\(${code}\\)\\s*$`, 'i'), '').trim();
-  cleanName = cleanName.replace(new RegExp(`^\\[${code}\\]\\s*`, 'i'), '').trim();
+  if (!name) name = code || 'Unknown';
+
+  // Safe string cleaning without unescaped regex risk
+  let cleanName = name;
+  if (code) {
+    cleanName = cleanName
+      .replace(`(${code})`, '')
+      .replace(`[${code}]`, '')
+      .replace(code, '')
+      .trim();
+    // remove leading/trailing punctuation if left behind
+    cleanName = cleanName.replace(/^[-:–\s]+|[-:–\s]+$/g, '').trim();
+  }
+  if (!cleanName) cleanName = name;
 
   const hqTag = isHq ? (language === 'kh' ? ' (ស្តុកកណ្តាល)' : ' (HQ Central)') : '';
-  return `[${code}] ${cleanName}${hqTag}`;
+  return code ? `[${code}] ${cleanName}${hqTag}` : cleanName;
 }
 
 /**
