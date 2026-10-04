@@ -5,7 +5,12 @@ import {
   supabase, 
   isSupabaseConfigured, 
   fetchFullInventoryFromSupabase,
-  seedInitialInventoryToSupabase 
+  seedInitialInventoryToSupabase,
+  supabaseRecordStockIn,
+  supabaseRecordStockOut,
+  supabaseHandleHandover,
+  supabaseAcknowledgeHandover,
+  supabaseRecordAdjustment
 } from '../lib/supabase';
 import { useLocationContext } from './LocationContext';
 
@@ -36,6 +41,15 @@ export interface HandoverParams {
   isRequisition?: boolean;
 }
 
+export interface AdjustmentParams {
+  locationId: string;
+  itemId: string;
+  actualQuantity: number;
+  officerName?: string;
+  reason?: string;
+  remark?: string;
+}
+
 export interface InventoryContextType {
   inventory: InventoryItem[];
   items: Item[];
@@ -45,6 +59,8 @@ export interface InventoryContextType {
   recordStockIn: (params: StockInParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
   recordStockOut: (params: StockOutParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
   recordHandover: (params: HandoverParams) => Promise<{ success: boolean; message: string; newQuantity?: number }>;
+  acknowledgeHandover: (transactionId: string, receivedBy?: string) => Promise<{ success: boolean; message: string; newBranchQuantity?: number }>;
+  recordAdjustment: (params: AdjustmentParams) => Promise<{ success: boolean; message: string; previousQuantity?: number; newQuantity?: number; delta?: number }>;
   reseedStandardStock: () => Promise<{ success: boolean; message: string }>;
   addNewItemToContext: (item: Item, initialStock?: number, locationId?: string) => void;
 }
@@ -486,94 +502,22 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     // 4. If Supabase is configured, write to database reliably
     if (isConfigured) {
       try {
-        let dbItemId = targetItem.id;
-        if (!isValidUuid(dbItemId)) {
-          const { data: itemRows } = await supabase
-            .from('items')
-            .select('id')
-            .or(`code.eq.${targetItem.code},code.ilike.${targetItem.code}`)
-            .maybeSingle();
-          if (itemRows?.id) {
-            dbItemId = itemRows.id;
-          } else {
-            const { data: newItemDb } = await supabase
-              .from('items')
-              .insert([{
-                code: targetItem.code,
-                name_kh: targetItem.name_kh,
-                name_en: targetItem.name_en || targetItem.name_kh,
-                category: targetItem.category || 'Tools',
-                unit: targetItem.unit || 'គ្រឿង',
-                min_stock: targetItem.min_stock ?? 5,
-                image_url: targetItem.image_url
-              }])
-              .select('id')
-              .maybeSingle();
-            if (newItemDb?.id) dbItemId = newItemDb.id;
-          }
-        }
+        await supabaseRecordStockIn({
+          locationId: targetLocation.id,
+          locationCode: targetLocation.code,
+          itemId: targetItem.id,
+          itemCode: targetItem.code,
+          quantity: params.quantity,
+          recordedBy: params.officerName || 'Admin-GDT',
+          remark: params.purpose || 'បញ្ចូលស្តុកថ្មី'
+        });
 
-        let dbLocId = targetLocation.id;
-        if (!isValidUuid(dbLocId)) {
-          let locQuery = supabase.from('locations').select('id');
-          if (isTargetHq) {
-            locQuery = locQuery.or('code.eq.HQ-ITSB,code.eq.ITSB-HQ,type.eq.HQ,code.ilike.%HQ%');
-          } else {
-            locQuery = locQuery.or(`code.eq.${targetLocation.code},code.ilike.${targetLocation.code}`);
-          }
-          const { data: locRows } = await locQuery.limit(1).maybeSingle();
-          if (locRows?.id) {
-            dbLocId = locRows.id;
-          } else if (isTargetHq) {
-            const { data: anyHq } = await supabase.from('locations').select('id').eq('type', 'HQ').limit(1).maybeSingle();
-            if (anyHq?.id) dbLocId = anyHq.id;
-          }
-        }
-
-        if (isValidUuid(dbItemId) && isValidUuid(dbLocId)) {
-          const { data: invRows } = await supabase
-            .from('inventory')
-            .select('quantity')
-            .eq('location_id', dbLocId)
-            .eq('item_id', dbItemId)
-            .maybeSingle();
-
-          const currentQty = invRows ? (invRows.quantity || 0) : 0;
-          const newQty = currentQty + params.quantity;
-
-          const { error: upsertErr } = await supabase.from('inventory').upsert([
-            {
-              location_id: dbLocId,
-              item_id: dbItemId,
-              quantity: newQty,
-              last_updated: new Date().toISOString(),
-            }
-          ], { onConflict: 'location_id,item_id' });
-
-          await supabase.from('transactions').insert([
-            {
-              type: 'STOCK_IN',
-              to_location_id: dbLocId,
-              item_id: dbItemId,
-              item_code: targetItem.code,
-              item_name_kh: targetItem.name_kh,
-              quantity: params.quantity,
-              unit: targetItem.unit,
-              recorded_by: params.officerName || 'Admin-GDT',
-              remark: params.purpose || 'បញ្ចូលស្តុកថ្មី',
-              status: 'RECEIVED'
-            }
-          ]);
-
-          if (!upsertErr) {
-            const liveInv = await fetchFullInventoryFromSupabase();
-            if (liveInv && liveInv.length > 0) {
-              setInventory(liveInv);
-              mockInventory.length = 0;
-              mockInventory.push(...liveInv);
-              saveToStorage(mockItems, mockInventory, mockTransactions);
-            }
-          }
+        const liveInv = await fetchFullInventoryFromSupabase();
+        if (liveInv && liveInv.length > 0) {
+          setInventory(liveInv);
+          mockInventory.length = 0;
+          mockInventory.push(...liveInv);
+          saveToStorage(mockItems, mockInventory, mockTransactions);
         }
       } catch (dbErr: any) {
         console.warn('Supabase DB Stock-In Error (using local state fallback):', dbErr);
@@ -676,74 +620,22 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
     if (isConfigured) {
       try {
-        let dbItemId = targetItem.id;
-        if (!isValidUuid(dbItemId)) {
-          const { data: itemRows } = await supabase
-            .from('items')
-            .select('id')
-            .eq('code', targetItem.code)
-            .maybeSingle();
-          if (itemRows?.id) dbItemId = itemRows.id;
-        }
+        await supabaseRecordStockOut({
+          locationId: targetLocation.id,
+          locationCode: targetLocation.code,
+          itemId: targetItem.id,
+          itemCode: targetItem.code,
+          quantity: params.quantity,
+          recordedBy: params.officerName || 'Admin-GDT',
+          remark: params.purpose || 'ដកចេញពីស្តុក'
+        });
 
-        let dbLocId = targetLocation.id;
-        if (!isValidUuid(dbLocId)) {
-          const { data: locRows } = await supabase
-            .from('locations')
-            .select('id')
-            .eq('code', targetLocation.code)
-            .maybeSingle();
-          if (locRows?.id) dbLocId = locRows.id;
-        }
-
-        if (isValidUuid(dbItemId) && isValidUuid(dbLocId)) {
-          const { data: invRows } = await supabase
-            .from('inventory')
-            .select('quantity')
-            .eq('location_id', dbLocId)
-            .eq('item_id', dbItemId)
-            .maybeSingle();
-
-          const currentQty = invRows ? (invRows.quantity || 0) : 0;
-          if (currentQty < params.quantity) {
-            return { 
-              success: false, 
-              message: `បរិមាណស្តុកក្នុង Supabase មិនគ្រប់គ្រាន់! (មាន: ${currentQty}, ស្នើសុំ: ${params.quantity})` 
-            };
-          }
-
-          const newQty = currentQty - params.quantity;
-          await supabase.from('inventory').upsert([
-            {
-              location_id: dbLocId,
-              item_id: dbItemId,
-              quantity: newQty,
-              last_updated: new Date().toISOString(),
-            }
-          ], { onConflict: 'location_id,item_id' });
-
-          await supabase.from('transactions').insert([
-            {
-              type: 'STOCK_OUT',
-              from_location_id: dbLocId,
-              item_id: dbItemId,
-              item_code: targetItem.code,
-              item_name_kh: targetItem.name_kh,
-              quantity: params.quantity,
-              unit: targetItem.unit,
-              recorded_by: params.officerName || 'Admin-GDT',
-              remark: params.purpose || 'ដកចេញពីស្តុក',
-              status: 'RECEIVED'
-            }
-          ]);
-
-          const liveInv = await fetchFullInventoryFromSupabase();
-          if (liveInv && liveInv.length > 0) {
-            setInventory(liveInv);
-            mockInventory.length = 0;
-            mockInventory.push(...liveInv);
-            saveToStorage(mockItems, mockInventory, mockTransactions);
-          }
+        const liveInv = await fetchFullInventoryFromSupabase();
+        if (liveInv && liveInv.length > 0) {
+          setInventory(liveInv);
+          mockInventory.length = 0;
+          mockInventory.push(...liveInv);
+          saveToStorage(mockItems, mockInventory, mockTransactions);
         }
       } catch (dbErr: any) {
         console.warn('Supabase DB Stock-Out Error:', dbErr);
@@ -873,77 +765,24 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     // 4. Supabase DB Persistence
     if (isConfigured) {
       try {
-        let dbItemId = targetItem.id;
-        if (!isValidUuid(dbItemId)) {
-          const { data: itemRows } = await supabase.from('items').select('id').eq('code', targetItem.code).maybeSingle();
-          if (itemRows?.id) dbItemId = itemRows.id;
-        }
+        await supabaseHandleHandover({
+          fromLocationId: fromLocation.id,
+          toLocationId: toLocation.id,
+          fromLocationCode: fromLocation.code,
+          toLocationCode: toLocation.code,
+          itemId: targetItem.id,
+          itemCode: targetItem.code,
+          quantity: params.quantity,
+          recordedBy: params.officerName || 'Admin-GDT',
+          remark: finalRemark
+        });
 
-        let dbFromLocId = fromLocation.id;
-        if (!isValidUuid(dbFromLocId)) {
-          const { data: locRows } = await supabase.from('locations').select('id').eq('code', fromLocation.code).maybeSingle();
-          if (locRows?.id) dbFromLocId = locRows.id;
-        }
-
-        let dbToLocId = toLocation.id;
-        if (!isValidUuid(dbToLocId)) {
-          const { data: locRows } = await supabase.from('locations').select('id').eq('code', toLocation.code).maybeSingle();
-          if (locRows?.id) dbToLocId = locRows.id;
-        }
-
-        if (isValidUuid(dbItemId) && isValidUuid(dbFromLocId) && isValidUuid(dbToLocId)) {
-          // Attempt RPC atomic transaction first
-          const { error: rpcErr } = await supabase.rpc('handle_branch_handover', {
-            p_from_location: dbFromLocId,
-            p_to_location: dbToLocId,
-            p_item_id: dbItemId,
-            p_quantity: params.quantity,
-            p_recorded_by: params.officerName || 'Admin-GDT',
-            p_remark: finalRemark
-          });
-
-          if (rpcErr) {
-            console.warn('RPC handle_branch_handover error, fallback to direct query:', rpcErr);
-            // Fallback: Decrement source inventory directly
-            const { data: curSource } = await supabase
-              .from('inventory')
-              .select('quantity')
-              .eq('location_id', dbFromLocId)
-              .eq('item_id', dbItemId)
-              .maybeSingle();
-
-            if (curSource && curSource.quantity >= params.quantity) {
-              await supabase
-                .from('inventory')
-                .update({ quantity: curSource.quantity - params.quantity, last_updated: new Date().toISOString() })
-                .eq('location_id', dbFromLocId)
-                .eq('item_id', dbItemId);
-            }
-
-            await supabase.from('transactions').insert([
-              {
-                type: 'HANDOVER',
-                from_location_id: dbFromLocId,
-                to_location_id: dbToLocId,
-                item_id: dbItemId,
-                item_code: targetItem.code,
-                item_name_kh: targetItem.name_kh,
-                quantity: params.quantity,
-                unit: targetItem.unit,
-                recorded_by: params.officerName || 'Admin-GDT',
-                remark: finalRemark,
-                status: 'PENDING'
-              }
-            ]);
-          }
-
-          const liveInv = await fetchFullInventoryFromSupabase();
-          if (liveInv && liveInv.length > 0) {
-            setInventory(liveInv);
-            mockInventory.length = 0;
-            mockInventory.push(...liveInv);
-            saveToStorage(mockItems, mockInventory, mockTransactions);
-          }
+        const liveInv = await fetchFullInventoryFromSupabase();
+        if (liveInv && liveInv.length > 0) {
+          setInventory(liveInv);
+          mockInventory.length = 0;
+          mockInventory.push(...liveInv);
+          saveToStorage(mockItems, mockInventory, mockTransactions);
         }
       } catch (dbErr: any) {
         console.warn('Supabase Handover Sync Error:', dbErr);
@@ -955,6 +794,239 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       success: true,
       newQuantity: remainingSource,
       message: `បានដាក់ស្នើ/ផ្ទេរសម្ភារៈ "${targetItem.name_kh}" ចំនួន ${params.quantity} ${targetItem.unit} ទៅកាន់ "${toLocation.name_kh}" ជោគជ័យ!`
+    };
+  };
+
+  // Acknowledge Handover (Branch accepts received stock, updates status to RECEIVED and increments branch balance)
+  const acknowledgeHandover = async (transactionId: string, receivedBy?: string): Promise<{ success: boolean; message: string; newBranchQuantity?: number }> => {
+    const txIndex = mockTransactions.findIndex(t => t.id === transactionId);
+    let targetTx = txIndex >= 0 ? mockTransactions[txIndex] : null;
+
+    if (!targetTx && isConfigured) {
+      const { data: dbTx } = await supabase.from('transactions').select('*').eq('id', transactionId).maybeSingle();
+      if (dbTx) targetTx = dbTx;
+    }
+
+    if (!targetTx) {
+      return { success: false, message: 'រកមិនឃើញទិន្នន័យប្រតិបត្តិការផ្ទេរនេះឡើយ!' };
+    }
+
+    if (targetTx.status === 'RECEIVED') {
+      return { success: false, message: 'ប្រតិបត្តិការនេះត្រូវបានទទួលស្គាល់រួចរាល់ហើយ!' };
+    }
+
+    // 1. Update mock transaction
+    if (txIndex >= 0) {
+      mockTransactions[txIndex].status = 'RECEIVED';
+      mockTransactions[txIndex].recorded_by = receivedBy || mockTransactions[txIndex].recorded_by;
+      mockTransactions[txIndex].date = new Date().toISOString();
+    }
+
+    // 2. Increment destination branch stock
+    const destLocId = targetTx.to_location_id;
+    const destLoc = locations.find(l => String(l.id) === String(destLocId) || String(l.code) === String(destLocId))
+      || mockLocations.find(l => String(l.id) === String(destLocId) || String(l.code) === String(destLocId));
+
+    const itemObj = items.find(i => String(i.id) === String(targetTx.item_id) || String(i.code) === String(targetTx.item_code))
+      || mockItems.find(i => String(i.id) === String(targetTx.item_id) || String(i.code) === String(targetTx.item_code));
+
+    const destInvIndex = mockInventory.findIndex(inv => 
+      (String(inv.item_id) === String(targetTx.item_id) || (itemObj && String(inv.item_code) === String(itemObj.code))) &&
+      (String(inv.location_id) === String(destLocId) || (destLoc && String(inv.location_id) === String(destLoc.code)))
+    );
+
+    let newDestQty = targetTx.quantity;
+    if (destInvIndex >= 0) {
+      mockInventory[destInvIndex].quantity = (mockInventory[destInvIndex].quantity || 0) + targetTx.quantity;
+      mockInventory[destInvIndex].last_updated = new Date().toISOString();
+      newDestQty = mockInventory[destInvIndex].quantity;
+    } else if (itemObj && destLoc) {
+      mockInventory.push({
+        location_id: destLoc.id,
+        item_id: itemObj.id,
+        quantity: targetTx.quantity,
+        last_updated: new Date().toISOString(),
+        item_code: itemObj.code,
+        item_name_kh: itemObj.name_kh,
+        item_name_en: itemObj.name_en,
+        category: itemObj.category,
+        unit: itemObj.unit,
+        min_stock: itemObj.min_stock,
+        location_name_kh: destLoc.name_kh,
+        location_name_en: destLoc.name_en,
+        location_code: destLoc.code,
+        type: destLoc.type
+      });
+    }
+
+    saveToStorage(mockItems, mockInventory, mockTransactions);
+    setInventory([...mockInventory]);
+
+    // 3. Supabase synchronization
+    if (isConfigured) {
+      try {
+        await supabaseAcknowledgeHandover({
+          transactionId,
+          receivedBy: receivedBy || 'BranchUser'
+        });
+        const liveInv = await fetchFullInventoryFromSupabase();
+        if (liveInv && liveInv.length > 0) {
+          setInventory(liveInv);
+          mockInventory.length = 0;
+          mockInventory.push(...liveInv);
+          saveToStorage(mockItems, mockInventory, mockTransactions);
+        }
+      } catch (err) {
+        console.warn('Supabase acknowledge handover sync notice:', err);
+      }
+    }
+
+    return {
+      success: true,
+      newBranchQuantity: newDestQty,
+      message: `បានទទួលស្គាល់ការផ្ទេរសម្ភារៈ "${targetTx.item_name_kh}" ចំនួន ${targetTx.quantity} ${targetTx.unit} ចូលស្តុកសាខាជោគជ័យ!`
+    };
+  };
+
+  // Record Adjustment (Reconciles Actual Physical Count with System Balance)
+  const recordAdjustment = async (params: AdjustmentParams): Promise<{
+    success: boolean;
+    message: string;
+    previousQuantity?: number;
+    newQuantity?: number;
+    delta?: number;
+  }> => {
+    const targetItem = items.find(i => String(i.id) === String(params.itemId) || String(i.code)?.toUpperCase() === String(params.itemId)?.toUpperCase())
+      || mockItems.find(i => String(i.id) === String(params.itemId) || String(i.code)?.toUpperCase() === String(params.itemId)?.toUpperCase());
+
+    let targetLocation = locations.find(l => 
+      l.id !== 'ALL' && l.code !== 'ALL' && 
+      (String(l.id) === String(params.locationId) || String(l.code)?.toUpperCase() === String(params.locationId)?.toUpperCase())
+    );
+    if (!targetLocation && params.locationId !== 'ALL') {
+      targetLocation = mockLocations.find(l => 
+        l.id !== 'ALL' && l.code !== 'ALL' &&
+        (String(l.id) === String(params.locationId) || String(l.code)?.toUpperCase() === String(params.locationId)?.toUpperCase())
+      );
+    }
+    if (!targetLocation) {
+      targetLocation = locations.find(l => isHqLocationOrRow(l, locations)) || mockLocations[0];
+    }
+
+    if (!targetItem) {
+      return { success: false, message: 'រកមិនឃើញសម្ភារៈដែលបានជ្រើសរើសឡើយ!' };
+    }
+    if (!targetLocation) {
+      return { success: false, message: 'រកមិនឃើញទីតាំងដែលត្រូវកែតម្រូវឡើយ!' };
+    }
+    if (params.actualQuantity < 0) {
+      return { success: false, message: 'ចំនួនស្តុកជាក់ស្តែងមិនអាចជាលេខអវិជ្ជមានបានទេ!' };
+    }
+
+    const isTargetHq = isHqLocationOrRow(targetLocation, locations);
+
+    // 1. Find existing inventory row
+    const existingIndex = mockInventory.findIndex(inv => {
+      const matchItem = String(inv.item_code)?.trim().toUpperCase() === String(targetItem.code)?.trim().toUpperCase() || 
+                        String(inv.item_id) === String(targetItem.id);
+      if (!matchItem) return false;
+
+      if (String(inv.location_id) === String(targetLocation.id) || 
+          String(inv.location_id) === String(targetLocation.code)) return true;
+
+      if (isTargetHq && isHqLocationOrRow(inv, locations)) return true;
+
+      if (targetLocation.code && inv.location_name_kh && inv.location_name_kh.includes(targetLocation.code)) return true;
+      if (targetLocation.name_kh && inv.location_name_kh && 
+          (inv.location_name_kh.includes(targetLocation.name_kh) || targetLocation.name_kh.includes(inv.location_name_kh))) return true;
+
+      return false;
+    });
+
+    const previousQty = existingIndex >= 0 ? (mockInventory[existingIndex].quantity || 0) : 0;
+    const delta = params.actualQuantity - previousQty;
+
+    // 2. Set new actual physical quantity
+    if (existingIndex >= 0) {
+      mockInventory[existingIndex].quantity = params.actualQuantity;
+      mockInventory[existingIndex].last_updated = new Date().toISOString();
+    } else {
+      mockInventory.push({
+        location_id: targetLocation.id,
+        item_id: targetItem.id,
+        quantity: params.actualQuantity,
+        last_updated: new Date().toISOString(),
+        item_code: targetItem.code,
+        item_name_kh: targetItem.name_kh,
+        item_name_en: targetItem.name_en,
+        category: targetItem.category,
+        unit: targetItem.unit,
+        min_stock: targetItem.min_stock,
+        location_name_kh: targetLocation.name_kh,
+        location_name_en: targetLocation.name_en,
+        location_code: targetLocation.code || (isTargetHq ? 'HQ-ITSB' : ''),
+        type: isTargetHq ? 'HQ' : targetLocation.type,
+        image_url: targetItem.image_url,
+      });
+    }
+
+    // 3. Record transaction in mockTransactions
+    const sign = delta >= 0 ? '+' : '';
+    const finalRemark = `${params.reason || 'កែតម្រូវស្តុកជាក់ស្តែង'} [ប្រព័ន្ធ: ${previousQty} -> ជាក់ស្តែង: ${params.actualQuantity} | ផលសង: ${sign}${delta} ${targetItem.unit}]${params.remark ? ' - ' + params.remark : ''}`;
+
+    mockTransactions.unshift({
+      id: `tx-adj-${Date.now()}`,
+      date: new Date().toISOString(),
+      type: 'ADJUSTMENT',
+      item_id: targetItem.id,
+      item_code: targetItem.code,
+      item_name_kh: targetItem.name_kh,
+      item_name_en: targetItem.name_en,
+      from_location: targetLocation.name_kh,
+      from_location_id: targetLocation.id,
+      to_location: targetLocation.name_kh,
+      to_location_id: targetLocation.id,
+      quantity: delta,
+      unit: targetItem.unit,
+      recorded_by: params.officerName || 'Admin-GDT',
+      remark: finalRemark,
+      status: 'RECEIVED'
+    });
+
+    saveToStorage(mockItems, mockInventory, mockTransactions);
+    setInventory([...mockInventory]);
+
+    // 4. Supabase DB Persistence
+    if (isConfigured) {
+      try {
+        await supabaseRecordAdjustment({
+          locationId: targetLocation.id,
+          locationCode: targetLocation.code,
+          itemId: targetItem.id,
+          itemCode: targetItem.code,
+          actualQuantity: params.actualQuantity,
+          recordedBy: params.officerName || 'Admin-GDT',
+          remark: finalRemark
+        });
+
+        const liveInv = await fetchFullInventoryFromSupabase();
+        if (liveInv && liveInv.length > 0) {
+          setInventory(liveInv);
+          mockInventory.length = 0;
+          mockInventory.push(...liveInv);
+          saveToStorage(mockItems, mockInventory, mockTransactions);
+        }
+      } catch (err) {
+        console.warn('Supabase adjustment sync notice:', err);
+      }
+    }
+
+    return {
+      success: true,
+      previousQuantity: previousQty,
+      newQuantity: params.actualQuantity,
+      delta,
+      message: `កែតម្រូវស្តុក "${targetItem.name_kh}" នៅ "${targetLocation.name_kh}" ជោគជ័យ! (ចំនួនមុន: ${previousQty}, ជាក់ស្តែងថ្មី: ${params.actualQuantity}, ផលសង: ${sign}${delta} ${targetItem.unit})`
     };
   };
 
@@ -1005,6 +1077,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       recordStockIn,
       recordStockOut,
       recordHandover,
+      acknowledgeHandover,
+      recordAdjustment,
       reseedStandardStock,
       addNewItemToContext,
     }}>

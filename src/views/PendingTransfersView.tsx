@@ -26,7 +26,7 @@ export function PendingTransfersView() {
   const { t, language } = useLanguage();
   const { userRole, isCentralAdmin, isBranchUser, userDisplayName } = useAuth();
   const { selectedLocationId } = useLocationContext();
-  const { refreshInventory } = useInventoryContext();
+  const { refreshInventory, acknowledgeHandover } = useInventoryContext();
 
   const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,58 +179,27 @@ export function PendingTransfersView() {
     setActionError(null);
     setActionSuccess(null);
 
-    // Strict Authorization Verification:
-    // User must be CentralAdmin OR user's selected location must match destination to_location_id!
-    const isTargetBranchUser = selectedLocationId && tx.to_location_id && selectedLocationId === tx.to_location_id;
+    // Authorization Verification:
+    // User must be CentralAdmin/Admin-GDT OR view matches destination or ALL
+    const isAuthorized = isCentralAdmin || 
+      selectedLocationId === 'ALL' || 
+      !selectedLocationId || 
+      String(selectedLocationId) === String(tx.to_location_id);
 
-    if (!isCentralAdmin && !isTargetBranchUser) {
-      setActionError(`សិទ្ធិមិនត្រឹមត្រូវ! គណនីរបស់អ្នកមិនមែនជាមន្ត្រីទទួលខុសត្រូវនៃ ${tx.to_location} ទេ។ ( Authorization Restricted )`);
+    if (!isAuthorized) {
+      setActionError(`សិទ្ធិមិនត្រឹមត្រូវ! សូមជ្រើសរើសទីតាំង "${tx.to_location}" ក្នុងម៉ឺនុយ ឬចូលគណនី Admin ដើម្បីទទួលស្គាល់ការផ្ទេរ។`);
       return;
     }
 
     setAcceptingTxId(tx.id);
 
     try {
-      if (isSupabaseConfigured()) {
-        const { data: rpcData, error: rpcErr } = await supabase.rpc('acknowledge_handover', {
-          p_transaction_id: tx.id,
-          p_received_by: userDisplayName || 'BranchUser'
-        });
-
-        if (rpcErr) {
-          throw new Error(rpcErr.message);
-        }
-      } else {
-        // Mock State Update:
-        // Update mock inventory for target location
-        const targetInv = mockInventory.find(inv => inv.item_id === tx.item_id && inv.location_id === tx.to_location_id);
-        if (targetInv) {
-          targetInv.quantity += tx.quantity;
-          targetInv.last_updated = new Date().toISOString();
-        } else {
-          mockInventory.push({
-            location_id: tx.to_location_id || selectedLocationId || 'loc-branch-1',
-            item_id: tx.item_id,
-            quantity: tx.quantity,
-            last_updated: new Date().toISOString(),
-            item_code: tx.item_code,
-            item_name_kh: tx.item_name_kh,
-            item_name_en: tx.item_name_kh,
-            category: 'Tools',
-            unit: tx.unit,
-            location_name_kh: tx.to_location,
-            location_name_en: tx.to_location
-          });
-        }
-
-        // Update mock transaction status
-        const txIndex = mockTransactions.findIndex(t => t.id === tx.id);
-        if (txIndex >= 0) {
-          mockTransactions[txIndex].status = 'RECEIVED';
-        }
+      const res = await acknowledgeHandover(tx.id, userDisplayName || 'BranchUser');
+      if (!res.success) {
+        throw new Error(res.message);
       }
 
-      setActionSuccess(`បានទទួលស្គាល់ការផ្ទេរសម្ភារៈ "${tx.item_name_kh}" ចំនួន ${tx.quantity} ${tx.unit} ចូលស្តុកសាខាជោគជ័យ!`);
+      setActionSuccess(res.message || `បានទទួលស្គាល់ការផ្ទេរសម្ភារៈ "${tx.item_name_kh}" ចំនួន ${tx.quantity} ${tx.unit} ចូលស្តុកសាខាជោគជ័យ!`);
 
       // Refresh global inventory state across all pages
       try {

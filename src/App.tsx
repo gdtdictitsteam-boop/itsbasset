@@ -20,6 +20,7 @@ import { PendingTransfersView } from './views/PendingTransfersView';
 import { AuditTrailView } from './views/AuditTrailView';
 import { SqlCodeView } from './views/SqlCodeView';
 import { NewItemView } from './views/NewItemView';
+import { AdjustmentView } from './views/AdjustmentView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { useLanguage } from './contexts/LanguageContext';
 
@@ -52,7 +53,7 @@ function MainLayout() {
       case 'stockOut':
         return <StockOutView />;
       case 'adjustment':
-        return <PlaceholderView title={t.adjustment} />;
+        return <AdjustmentView />;
       case 'auditTrail':
         return <AuditTrailView />;
       case 'sql':

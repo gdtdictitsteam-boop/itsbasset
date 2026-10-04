@@ -1,11 +1,327 @@
 import React, { useEffect, useState } from 'react';
-import { Database, Code2, Copy, Check, FileText, ShieldCheck, HardDrive, Clock } from 'lucide-react';
+import { Database, Code2, Copy, Check, FileText, ShieldCheck, HardDrive, Clock, SlidersHorizontal } from 'lucide-react';
 
 export function SqlCodeView() {
-  const [activeTab, setActiveTab] = useState<'step4' | 'storage' | 'rls' | 'python' | 'sql'>('step4');
+  const [activeTab, setActiveTab] = useState<'rpcs' | 'step4' | 'storage' | 'rls' | 'sql'>('rpcs');
   const [sqlCode, setSqlCode] = useState<string>('Loading schema...');
-  const [pythonCode, setPythonCode] = useState<string>('Loading app.py...');
   const [copied, setCopied] = useState<boolean>(false);
+
+  const rpcsCode = `-- =========================================================================
+-- COMPLETE SUPABASE ATOMIC RPC FUNCTIONS FOR GDT INVENTORY SYSTEM
+-- Run this script in Supabase Dashboard -> SQL Editor
+-- =========================================================================
+
+-- Function 1: record_stock_in (Add stock to selected location)
+CREATE OR REPLACE FUNCTION public.record_stock_in(
+    p_location_id UUID,
+    p_item_id UUID,
+    p_quantity INT,
+    p_recorded_by VARCHAR,
+    p_remark TEXT DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_new_qty INT;
+    v_transaction_id UUID;
+    v_item_code VARCHAR;
+    v_item_name_kh VARCHAR;
+    v_item_unit VARCHAR;
+BEGIN
+    IF p_quantity <= 0 THEN
+        RAISE EXCEPTION 'បរិមាណបញ្ចូលត្រូវតែធំជាង ០ (Quantity must be greater than zero)';
+    END IF;
+
+    -- Fetch item metadata
+    SELECT code, name_kh, unit INTO v_item_code, v_item_name_kh, v_item_unit
+    FROM public.items WHERE id = p_item_id;
+
+    IF v_item_code IS NULL THEN
+        RAISE EXCEPTION 'រកមិនឃើញសម្ភារៈក្នុងប្រព័ន្ធឡើយ (Item not found)';
+    END IF;
+
+    -- Upsert inventory table
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+    VALUES (p_location_id, p_item_id, p_quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = public.inventory.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    RETURNING quantity INTO v_new_qty;
+
+    -- Record transaction
+    INSERT INTO public.transactions (
+        type, to_location_id, item_id, item_code, item_name_kh,
+        quantity, unit, recorded_by, remark, status
+    ) VALUES (
+        'STOCK_IN', p_location_id, p_item_id, v_item_code, v_item_name_kh,
+        p_quantity, v_item_unit, p_recorded_by, COALESCE(p_remark, 'បញ្ចូលស្តុកថ្មី'), 'RECEIVED'
+    )
+    RETURNING id INTO v_transaction_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'new_quantity', v_new_qty,
+        'transaction_id', v_transaction_id
+    );
+END;
+$$;
+
+
+-- Function 2: handle_branch_handover (Deduct from HQ, Status PENDING)
+CREATE OR REPLACE FUNCTION public.handle_branch_handover(
+    p_from_location UUID,
+    p_to_location UUID,
+    p_item_id UUID,
+    p_quantity INT,
+    p_recorded_by VARCHAR,
+    p_remark TEXT DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_available_qty INT;
+    v_transaction_id UUID;
+    v_item_code VARCHAR;
+    v_item_name_kh VARCHAR;
+    v_item_unit VARCHAR;
+BEGIN
+    IF p_quantity <= 0 THEN
+        RAISE EXCEPTION 'បរិមាណផ្ទេរត្រូវតែធំជាង ០';
+    END IF;
+
+    -- Check source inventory
+    SELECT quantity INTO v_available_qty
+    FROM public.inventory
+    WHERE location_id = p_from_location AND item_id = p_item_id;
+
+    IF v_available_qty IS NULL OR v_available_qty < p_quantity THEN
+        RAISE EXCEPTION 'ស្តុកនៅទីតាំងដើមមិនគ្រប់គ្រាន់ទេ (មាន: %, ស្នើសុំ: %)', COALESCE(v_available_qty, 0), p_quantity;
+    END IF;
+
+    -- Fetch item metadata
+    SELECT code, name_kh, unit INTO v_item_code, v_item_name_kh, v_item_unit
+    FROM public.items WHERE id = p_item_id;
+
+    -- 1. Deduct stock from source location immediately
+    UPDATE public.inventory
+    SET quantity = quantity - p_quantity,
+        last_updated = NOW()
+    WHERE location_id = p_from_location AND item_id = p_item_id;
+
+    -- 2. Record transaction with status = 'PENDING'
+    INSERT INTO public.transactions (
+        type, from_location_id, to_location_id, item_id, item_code, 
+        item_name_kh, quantity, unit, recorded_by, remark, status
+    ) VALUES (
+        'HANDOVER', p_from_location, p_to_location, p_item_id, v_item_code, 
+        v_item_name_kh, p_quantity, v_item_unit, p_recorded_by, p_remark, 'PENDING'
+    )
+    RETURNING id INTO v_transaction_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'transaction_id', v_transaction_id,
+        'status', 'PENDING'
+    );
+END;
+$$;
+
+
+-- Function 3: acknowledge_handover (Branch receives stock, Status RECEIVED)
+CREATE OR REPLACE FUNCTION public.acknowledge_handover(
+    p_transaction_id UUID,
+    p_received_by VARCHAR DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_tx RECORD;
+    v_new_dest_qty INT;
+BEGIN
+    -- Fetch Transaction details
+    SELECT * INTO v_tx
+    FROM public.transactions
+    WHERE id = p_transaction_id;
+
+    IF v_tx.id IS NULL THEN
+        RAISE EXCEPTION 'រកមិនឃើញទិន្នន័យប្រតិបត្តិការផ្ទេរនេះឡើយ';
+    END IF;
+
+    IF v_tx.status = 'RECEIVED' THEN
+        RAISE EXCEPTION 'ប្រតិបត្តិការនេះត្រូវបានទទួលស្គាល់រួចរាល់ហើយ';
+    END IF;
+
+    -- 1. Update Transaction status to 'RECEIVED'
+    UPDATE public.transactions
+    SET status = 'RECEIVED',
+        recorded_by = CASE WHEN p_received_by <> '' THEN p_received_by ELSE recorded_by END,
+        date = NOW()
+    WHERE id = p_transaction_id;
+
+    -- 2. Add stock to destination branch location
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+    VALUES (v_tx.to_location_id, v_tx.item_id, v_tx.quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = public.inventory.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    RETURNING quantity INTO v_new_dest_qty;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'transaction_id', p_transaction_id,
+        'new_branch_quantity', v_new_dest_qty,
+        'status', 'RECEIVED'
+    );
+END;
+$$;
+
+
+-- Function 4: record_stock_out (Deduct stock from chosen location)
+CREATE OR REPLACE FUNCTION public.record_stock_out(
+    p_location_id UUID,
+    p_item_id UUID,
+    p_quantity INT,
+    p_recorded_by VARCHAR,
+    p_remark TEXT DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_current_qty INT;
+    v_new_qty INT;
+    v_transaction_id UUID;
+    v_item_code VARCHAR;
+    v_item_name_kh VARCHAR;
+    v_item_unit VARCHAR;
+BEGIN
+    IF p_quantity <= 0 THEN
+        RAISE EXCEPTION 'ចំនួនដកចេញត្រូវតែធំជាង ០';
+    END IF;
+
+    -- Check current stock
+    SELECT quantity INTO v_current_qty
+    FROM public.inventory
+    WHERE location_id = p_location_id AND item_id = p_item_id;
+
+    IF v_current_qty IS NULL OR v_current_qty < p_quantity THEN
+        RAISE EXCEPTION 'បរិមាណស្តុកមិនគ្រប់គ្រាន់ទេ (មាន: %, ស្នើសុំដក: %)', COALESCE(v_current_qty, 0), p_quantity;
+    END IF;
+
+    SELECT code, name_kh, unit INTO v_item_code, v_item_name_kh, v_item_unit
+    FROM public.items WHERE id = p_item_id;
+
+    -- Deduct stock
+    UPDATE public.inventory
+    SET quantity = quantity - p_quantity,
+        last_updated = NOW()
+    WHERE location_id = p_location_id AND item_id = p_item_id
+    RETURNING quantity INTO v_new_qty;
+
+    -- Record transaction
+    INSERT INTO public.transactions (
+        type, from_location_id, item_id, item_code, item_name_kh,
+        quantity, unit, recorded_by, remark, status
+    ) VALUES (
+        'STOCK_OUT', p_location_id, p_item_id, v_item_code, v_item_name_kh,
+        p_quantity, v_item_unit, p_recorded_by, COALESCE(p_remark, 'ដកប្រើប្រាស់'), 'RECEIVED'
+    )
+    RETURNING id INTO v_transaction_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'new_quantity', v_new_qty,
+        'transaction_id', v_transaction_id
+    );
+END;
+$$;
+
+
+-- Function 5: record_stock_adjustment (Adjust to Actual Physical Quantity & Calculate Delta)
+CREATE OR REPLACE FUNCTION public.record_stock_adjustment(
+    p_location_id UUID,
+    p_item_id UUID,
+    p_actual_quantity INT,
+    p_recorded_by VARCHAR,
+    p_remark TEXT DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_previous_qty INT;
+    v_delta INT;
+    v_transaction_id UUID;
+    v_item_code VARCHAR;
+    v_item_name_kh VARCHAR;
+    v_item_unit VARCHAR;
+    v_final_remark TEXT;
+BEGIN
+    IF p_actual_quantity < 0 THEN
+        RAISE EXCEPTION 'ចំនួនស្តុកជាក់ស្តែងមិនអាចជាលេខអវិជ្ជមានបានទេ';
+    END IF;
+
+    -- Get current quantity (0 if no record exists)
+    SELECT quantity INTO v_previous_qty
+    FROM public.inventory
+    WHERE location_id = p_location_id AND item_id = p_item_id;
+
+    IF v_previous_qty IS NULL THEN
+        v_previous_qty := 0;
+    END IF;
+
+    -- Calculate difference (Delta)
+    v_delta := p_actual_quantity - v_previous_qty;
+
+    SELECT code, name_kh, unit INTO v_item_code, v_item_name_kh, v_item_unit
+    FROM public.items WHERE id = p_item_id;
+
+    IF v_item_code IS NULL THEN
+        RAISE EXCEPTION 'រកមិនឃើញសម្ភារៈឡើយ';
+    END IF;
+
+    -- Set new actual physical quantity in inventory
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+    VALUES (p_location_id, p_item_id, p_actual_quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = EXCLUDED.quantity,
+        last_updated = NOW();
+
+    v_final_remark := COALESCE(p_remark, 'កែតម្រូវស្តុកជាក់ស្តែង') || 
+        ' [ប្រព័ន្ធ: ' || v_previous_qty || ' -> ជាក់ស្តែង: ' || p_actual_quantity || 
+        ' | ផលសង: ' || CASE WHEN v_delta >= 0 THEN '+' || v_delta ELSE '' || v_delta END || ' ' || COALESCE(v_item_unit, '') || ']';
+
+    -- Record transaction with delta and audit history
+    INSERT INTO public.transactions (
+        type, to_location_id, from_location_id, item_id, item_code, item_name_kh,
+        quantity, unit, recorded_by, remark, status
+    ) VALUES (
+        'ADJUSTMENT', p_location_id, p_location_id, p_item_id, v_item_code, v_item_name_kh,
+        v_delta, v_item_unit, p_recorded_by, v_final_remark, 'RECEIVED'
+    )
+    RETURNING id INTO v_transaction_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'previous_quantity', v_previous_qty,
+        'actual_quantity', p_actual_quantity,
+        'delta', v_delta,
+        'transaction_id', v_transaction_id
+    );
+END;
+$$;
+`;
 
   const step4Code = `-- =========================================================================
 -- STEP 4: 2-STEP HANDOVER & ACKNOWLEDGEMENT WITH AI OCR VERIFICATION
@@ -280,19 +596,14 @@ USING (bucket_id = 'handover_docs');
       .then(res => res.text())
       .then(text => setSqlCode(text))
       .catch(() => setSqlCode('-- schema.sql located in project root.'));
-
-    fetch('/app.py')
-      .then(res => res.text())
-      .then(text => setPythonCode(text))
-      .catch(() => setPythonCode('# app.py Streamlit code located in project root.'));
   }, []);
 
   const getCurrentCode = () => {
+    if (activeTab === 'rpcs') return rpcsCode;
     if (activeTab === 'step4') return step4Code;
     if (activeTab === 'storage') return storageCode;
     if (activeTab === 'rls') return rlsCode;
-    if (activeTab === 'sql') return sqlCode;
-    return pythonCode;
+    return sqlCode;
   };
 
   const handleCopy = () => {
@@ -311,7 +622,7 @@ USING (bucket_id = 'handover_docs');
           <div>
             <h2 className="text-2xl font-bold text-slate-900">មូលទិន្នន័យ និង កូដសុវត្ថិភាព (Database, RLS & Storage)</h2>
             <p className="text-xs text-slate-500 font-semibold mt-0.5">
-              Supabase Schema, Storage Bucket Policies, 2-Step Handover & Atomic RPC Functions
+              Supabase Schema, Storage Bucket Policies, 5 Atomic RPC Functions & Handover Workflow
             </p>
           </div>
         </div>
@@ -330,6 +641,17 @@ USING (bucket_id = 'handover_docs');
         <div className="bg-slate-50/90 border-b border-slate-200/80 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
           <div className="flex flex-wrap space-x-2 gap-y-1">
             <button
+              onClick={() => setActiveTab('rpcs')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                activeTab === 'rpcs'
+                  ? 'bg-[#03291E] text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-200/60'
+              }`}
+            >
+              <SlidersHorizontal size={15} className="text-emerald-400" />
+              <span>មុខងារ RPC ទាំង៥ (Stock In/Out/Handover/Adjustment)</span>
+            </button>
+            <button
               onClick={() => setActiveTab('step4')}
               className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
                 activeTab === 'step4'
@@ -338,7 +660,7 @@ USING (bucket_id = 'handover_docs');
               }`}
             >
               <Clock size={15} className="text-amber-400" />
-              <span>2-Step RPC & AI (Step 4)</span>
+              <span>2-Step Handover & AI</span>
             </button>
             <button
               onClick={() => setActiveTab('storage')}
@@ -349,7 +671,7 @@ USING (bucket_id = 'handover_docs');
               }`}
             >
               <HardDrive size={15} className="text-teal-400" />
-              <span>Storage Policies (Step 3)</span>
+              <span>Storage Policies</span>
             </button>
             <button
               onClick={() => setActiveTab('rls')}
@@ -359,19 +681,8 @@ USING (bucket_id = 'handover_docs');
                   : 'text-slate-700 hover:bg-slate-200/60'
               }`}
             >
-              <ShieldCheck size={15} className="text-emerald-400" />
-              <span>Table RLS (Step 2)</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('python')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
-                activeTab === 'python'
-                  ? 'bg-[#03291E] text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-200/60'
-              }`}
-            >
-              <FileText size={15} />
-              <span>Python Streamlit</span>
+              <ShieldCheck size={15} className="text-indigo-400" />
+              <span>RLS Security Policies</span>
             </button>
             <button
               onClick={() => setActiveTab('sql')}
@@ -381,13 +692,13 @@ USING (bucket_id = 'handover_docs');
                   : 'text-slate-700 hover:bg-slate-200/60'
               }`}
             >
-              <Code2 size={15} />
+              <Database size={15} className="text-sky-400" />
               <span>Full schema.sql</span>
             </button>
           </div>
 
           <span className="text-xs font-mono text-slate-600 font-bold hidden md:inline-block">
-            {activeTab === 'step4' ? 'step4_2step_rpc.sql' : activeTab === 'storage' ? 'storage_policies.sql' : activeTab === 'rls' ? 'rls_policies.sql' : activeTab === 'python' ? 'app.py' : 'schema.sql'}
+            {activeTab === 'rpcs' ? 'supabase_rpcs_workflow.sql' : activeTab === 'step4' ? 'step4_2step_rpc.sql' : activeTab === 'storage' ? 'storage_policies.sql' : activeTab === 'rls' ? 'rls_policies.sql' : 'schema.sql'}
           </span>
         </div>
 

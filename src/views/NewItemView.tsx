@@ -513,22 +513,23 @@ export function NewItemView() {
               />
             </div>
 
-            {/* Initial Quantity */}
-            <div>
-              <label htmlFor="initialStock" className="block text-sm font-semibold text-gray-700 mb-2">បរិមាណស្តុកដើមដំបូង (Initial Stock Quantity)</label>
-              <input
-                type="number"
-                id="initialStock" name="initialStock"
-                min="0"
-                defaultValue={0}
-                placeholder="ឧ. 10"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
-              />
+            {/* Initial Quantity - Master Data Only Note */}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                ស្ថានភាពស្តុកដំបូង (Initial Stock)
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-bold text-sm bg-white border border-slate-300 px-3 py-1 rounded text-slate-800">0 គ្រឿង</span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  (បង្កើតតែទិន្នន័យមេ Master Data - សូមប្រើមុខងារ «បញ្ចូលស្តុកថ្មី» ដើម្បីបន្ថែមចំនួនស្តុកជាក់ស្តែង)
+                </span>
+              </div>
+              <input type="hidden" id="initialStock" name="initialStock" value="0" />
             </div>
 
-            {/* Default Location */}
+            {/* Default HQ Reference Location */}
             <div>
-              <label htmlFor="locationId" className="block text-sm font-semibold text-gray-700 mb-2">ទីតាំងរក្សាទុកស្តុកដើម</label>
+              <label htmlFor="locationId" className="block text-sm font-semibold text-gray-700 mb-2">ទីតាំងឃ្លាំងកណ្តាលយោង (HQ Reference)</label>
               <select
                 id="locationId"
                 name="locationId"

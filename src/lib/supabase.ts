@@ -308,7 +308,8 @@ export async function fetchAllRows(tableName: string, query = '*', orderBy = 'id
 }
 
 /**
- * Fetch full inventory joined with items and locations from Supabase
+ * Fetch full inventory joined with items and locations from Supabase.
+ * Reflects true current balance directly from the public.inventory table.
  */
 export async function fetchFullInventoryFromSupabase() {
   if (!isSupabaseConfigured()) return null;
@@ -330,8 +331,24 @@ export async function fetchFullInventoryFromSupabase() {
     }
 
     const items = itemsRes.data || [];
-    const inventory = invRes.data || [];
+    let inventory = invRes.data || [];
     const locations = locsRes.data || [];
+
+    if (items.length === 0 || locations.length === 0) {
+      return null;
+    }
+
+    // If Supabase inventory is completely empty, auto-seed standard initial inventory once
+    if (inventory.length === 0) {
+      console.info('Supabase inventory table is empty. Initializing standard stock...');
+      const seedRes = await seedInitialInventoryToSupabase();
+      if (seedRes.success) {
+        const recheckInv = await supabase.from('inventory').select('*');
+        if (recheckInv.data && recheckInv.data.length > 0) {
+          inventory = recheckInv.data;
+        }
+      }
+    }
 
     const defaultHqLoc = locations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locations[0];
 
@@ -355,10 +372,10 @@ export async function fetchFullInventoryFromSupabase() {
       }
     });
 
-    // Construct inventory items
+    // Construct inventory items reflecting TRUE current balances
     const result: any[] = [];
 
-    // 1. Process existing inventory records
+    // 1. Process all existing inventory records in the database
     inventory.forEach(inv => {
       const it = itemMap.get(inv.item_id) || itemMap.get(String(inv.item_id).toLowerCase());
       let loc = locMap.get(inv.location_id) || locMap.get(String(inv.location_id).toLowerCase());
@@ -387,12 +404,12 @@ export async function fetchFullInventoryFromSupabase() {
       }
     });
 
-    // 2. Also ensure every item has at least an HQ row so HQ stock column always tracks it
+    // 2. Also ensure every item has at least an HQ row so HQ stock column tracks it (with 0 if no inventory row yet)
     if (defaultHqLoc) {
       items.forEach(it => {
-        const hasHqInv = inventory.some(inv => 
-          (inv.item_id === it.id || String(inv.item_id).toLowerCase() === String(it.id).toLowerCase()) &&
-          (inv.location_id === defaultHqLoc.id || String(inv.location_id).toLowerCase() === String(defaultHqLoc.id).toLowerCase() || inv.location_id === '1' || inv.location_id === 'HQ-ITSB')
+        const hasHqInv = result.some(r => 
+          (r.item_id === it.id || String(r.item_code).toUpperCase() === String(it.code).toUpperCase()) &&
+          (r.location_id === defaultHqLoc.id || r.location_code === 'HQ-ITSB' || r.type === 'HQ')
         );
         if (!hasHqInv) {
           result.push({
@@ -420,6 +437,465 @@ export async function fetchFullInventoryFromSupabase() {
   } catch (err) {
     console.error('Exception fetching full inventory from Supabase:', err);
     return null;
+  }
+}
+
+// Helper to check if string is UUID
+const isUuid = (val?: string): boolean => {
+  if (!val) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+};
+
+async function resolveDbItemId(itemId: string, itemCode?: string): Promise<string | null> {
+  if (isUuid(itemId)) return itemId;
+
+  if (itemCode) {
+    const { data } = await supabase
+      .from('items')
+      .select('id')
+      .or(`code.eq.${itemCode},code.ilike.${itemCode}`)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  const { data } = await supabase
+    .from('items')
+    .select('id')
+    .or(`code.eq.${itemCode || itemId},id.eq.${itemId}`)
+    .limit(1)
+    .maybeSingle();
+  return data?.id || null;
+}
+
+async function resolveDbLocationId(locId: string, locCode?: string): Promise<string | null> {
+  if (isUuid(locId)) return locId;
+
+  if (locCode) {
+    const { data } = await supabase
+      .from('locations')
+      .select('id')
+      .or(`code.eq.${locCode},code.ilike.${locCode}`)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  if (locId === '1' || locId === 'HQ-ITSB' || locCode === 'HQ-ITSB') {
+    const { data } = await supabase
+      .from('locations')
+      .select('id')
+      .or('type.eq.HQ,code.eq.HQ-ITSB,code.ilike.%HQ%')
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  const { data } = await supabase
+    .from('locations')
+    .select('id')
+    .or(`code.eq.${locCode || locId},id.eq.${locId}`)
+    .limit(1)
+    .maybeSingle();
+  return data?.id || null;
+}
+
+/**
+ * Execute Stock In via Supabase RPC with atomic transaction & fallback
+ */
+export async function supabaseRecordStockIn(params: {
+  locationId: string;
+  itemId: string;
+  itemCode?: string;
+  locationCode?: string;
+  quantity: number;
+  recordedBy: string;
+  remark?: string;
+}) {
+  if (!isSupabaseConfigured()) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const dbLocId = await resolveDbLocationId(params.locationId, params.locationCode);
+    const dbItemId = await resolveDbItemId(params.itemId, params.itemCode);
+
+    if (!dbLocId || !dbItemId) {
+      return { success: false, error: 'Could not resolve database UUIDs for location or item' };
+    }
+
+    // 1. Try atomic RPC call
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('record_stock_in', {
+      p_location_id: dbLocId,
+      p_item_id: dbItemId,
+      p_quantity: params.quantity,
+      p_recorded_by: params.recordedBy,
+      p_remark: params.remark || ''
+    });
+
+    if (!rpcErr && rpcData?.success) {
+      return { success: true, newQuantity: rpcData.new_quantity, transactionId: rpcData.transaction_id };
+    }
+
+    // 2. Direct database query fallback
+    const { data: curInv } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('location_id', dbLocId)
+      .eq('item_id', dbItemId)
+      .maybeSingle();
+
+    const currentQty = curInv ? (curInv.quantity || 0) : 0;
+    const newQty = currentQty + params.quantity;
+
+    await supabase.from('inventory').upsert([
+      {
+        location_id: dbLocId,
+        item_id: dbItemId,
+        quantity: newQty,
+        last_updated: new Date().toISOString()
+      }
+    ], { onConflict: 'location_id,item_id' });
+
+    const { data: itData } = await supabase.from('items').select('code, name_kh, unit').eq('id', dbItemId).maybeSingle();
+
+    const { data: txData } = await supabase.from('transactions').insert([
+      {
+        type: 'STOCK_IN',
+        to_location_id: dbLocId,
+        item_id: dbItemId,
+        item_code: itData?.code || params.itemCode || '',
+        item_name_kh: itData?.name_kh || '',
+        quantity: params.quantity,
+        unit: itData?.unit || 'គ្រឿង',
+        recorded_by: params.recordedBy,
+        remark: params.remark || 'បញ្ចូលស្តុកថ្មី',
+        status: 'RECEIVED'
+      }
+    ]).select('id').maybeSingle();
+
+    return { success: true, newQuantity: newQty, transactionId: txData?.id };
+  } catch (err: any) {
+    console.error('Supabase stock in error:', err);
+    return { success: false, error: err?.message || 'Error executing stock in' };
+  }
+}
+
+/**
+ * Execute Stock Out via Supabase RPC with atomic transaction & fallback
+ */
+export async function supabaseRecordStockOut(params: {
+  locationId: string;
+  itemId: string;
+  itemCode?: string;
+  locationCode?: string;
+  quantity: number;
+  recordedBy: string;
+  remark?: string;
+}) {
+  if (!isSupabaseConfigured()) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const dbLocId = await resolveDbLocationId(params.locationId, params.locationCode);
+    const dbItemId = await resolveDbItemId(params.itemId, params.itemCode);
+
+    if (!dbLocId || !dbItemId) {
+      return { success: false, error: 'Could not resolve database UUIDs for location or item' };
+    }
+
+    // 1. Try atomic RPC call
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('record_stock_out', {
+      p_location_id: dbLocId,
+      p_item_id: dbItemId,
+      p_quantity: params.quantity,
+      p_recorded_by: params.recordedBy,
+      p_remark: params.remark || ''
+    });
+
+    if (!rpcErr && rpcData?.success) {
+      return { success: true, newQuantity: rpcData.new_quantity, transactionId: rpcData.transaction_id };
+    }
+
+    // 2. Direct fallback
+    const { data: curInv } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('location_id', dbLocId)
+      .eq('item_id', dbItemId)
+      .maybeSingle();
+
+    const currentQty = curInv ? (curInv.quantity || 0) : 0;
+    if (currentQty < params.quantity) {
+      return { success: false, error: `Insufficient stock in location. Current: ${currentQty}, Requested: ${params.quantity}` };
+    }
+
+    const newQty = currentQty - params.quantity;
+
+    await supabase.from('inventory').update({
+      quantity: newQty,
+      last_updated: new Date().toISOString()
+    }).eq('location_id', dbLocId).eq('item_id', dbItemId);
+
+    const { data: itData } = await supabase.from('items').select('code, name_kh, unit').eq('id', dbItemId).maybeSingle();
+
+    const { data: txData } = await supabase.from('transactions').insert([
+      {
+        type: 'STOCK_OUT',
+        from_location_id: dbLocId,
+        item_id: dbItemId,
+        item_code: itData?.code || params.itemCode || '',
+        item_name_kh: itData?.name_kh || '',
+        quantity: params.quantity,
+        unit: itData?.unit || 'គ្រឿង',
+        recorded_by: params.recordedBy,
+        remark: params.remark || 'ដកប្រើប្រាស់',
+        status: 'RECEIVED'
+      }
+    ]).select('id').maybeSingle();
+
+    return { success: true, newQuantity: newQty, transactionId: txData?.id };
+  } catch (err: any) {
+    console.error('Supabase stock out error:', err);
+    return { success: false, error: err?.message || 'Error executing stock out' };
+  }
+}
+
+/**
+ * Execute Branch Handover via Supabase RPC with atomic transaction & fallback
+ */
+export async function supabaseHandleHandover(params: {
+  fromLocationId: string;
+  toLocationId: string;
+  fromLocationCode?: string;
+  toLocationCode?: string;
+  itemId: string;
+  itemCode?: string;
+  quantity: number;
+  recordedBy: string;
+  remark?: string;
+}) {
+  if (!isSupabaseConfigured()) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const dbFromLocId = await resolveDbLocationId(params.fromLocationId, params.fromLocationCode);
+    const dbToLocId = await resolveDbLocationId(params.toLocationId, params.toLocationCode);
+    const dbItemId = await resolveDbItemId(params.itemId, params.itemCode);
+
+    if (!dbFromLocId || !dbToLocId || !dbItemId) {
+      return { success: false, error: 'Could not resolve database UUIDs for handover' };
+    }
+
+    // 1. Try atomic RPC call
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('handle_branch_handover', {
+      p_from_location: dbFromLocId,
+      p_to_location: dbToLocId,
+      p_item_id: dbItemId,
+      p_quantity: params.quantity,
+      p_recorded_by: params.recordedBy,
+      p_remark: params.remark || ''
+    });
+
+    if (!rpcErr && rpcData?.success) {
+      return { success: true, transactionId: rpcData.transaction_id };
+    }
+
+    // 2. Direct fallback
+    const { data: curSource } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('location_id', dbFromLocId)
+      .eq('item_id', dbItemId)
+      .maybeSingle();
+
+    if (!curSource || curSource.quantity < params.quantity) {
+      return { success: false, error: 'Insufficient stock in source location' };
+    }
+
+    await supabase.from('inventory').update({
+      quantity: curSource.quantity - params.quantity,
+      last_updated: new Date().toISOString()
+    }).eq('location_id', dbFromLocId).eq('item_id', dbItemId);
+
+    const { data: itData } = await supabase.from('items').select('code, name_kh, unit').eq('id', dbItemId).maybeSingle();
+
+    const { data: txData } = await supabase.from('transactions').insert([
+      {
+        type: 'HANDOVER',
+        from_location_id: dbFromLocId,
+        to_location_id: dbToLocId,
+        item_id: dbItemId,
+        item_code: itData?.code || params.itemCode || '',
+        item_name_kh: itData?.name_kh || '',
+        quantity: params.quantity,
+        unit: itData?.unit || 'គ្រឿង',
+        recorded_by: params.recordedBy,
+        remark: params.remark || 'ផ្ទេរសម្ភារៈជូនសាខា',
+        status: 'PENDING'
+      }
+    ]).select('id').maybeSingle();
+
+    return { success: true, transactionId: txData?.id };
+  } catch (err: any) {
+    console.error('Supabase handover error:', err);
+    return { success: false, error: err?.message || 'Error executing handover' };
+  }
+}
+
+/**
+ * Acknowledge received stock at branch location (Increments branch balance)
+ */
+export async function supabaseAcknowledgeHandover(params: {
+  transactionId: string;
+  receivedBy: string;
+}) {
+  if (!isSupabaseConfigured()) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    // 1. Try atomic RPC call
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('acknowledge_handover', {
+      p_transaction_id: params.transactionId,
+      p_received_by: params.receivedBy
+    });
+
+    if (!rpcErr && rpcData?.success) {
+      return { success: true, newBranchQuantity: rpcData.new_branch_quantity };
+    }
+
+    // 2. Direct fallback
+    const { data: tx } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', params.transactionId)
+      .maybeSingle();
+
+    if (!tx) {
+      return { success: false, error: 'Transaction not found' };
+    }
+
+    await supabase
+      .from('transactions')
+      .update({
+        status: 'RECEIVED',
+        recorded_by: params.receivedBy || tx.recorded_by,
+        date: new Date().toISOString()
+      })
+      .eq('id', params.transactionId);
+
+    const { data: curDestInv } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('location_id', tx.to_location_id)
+      .eq('item_id', tx.item_id)
+      .maybeSingle();
+
+    const newBranchQty = (curDestInv?.quantity || 0) + tx.quantity;
+
+    await supabase.from('inventory').upsert([
+      {
+        location_id: tx.to_location_id,
+        item_id: tx.item_id,
+        quantity: newBranchQty,
+        last_updated: new Date().toISOString()
+      }
+    ], { onConflict: 'location_id,item_id' });
+
+    return { success: true, newBranchQuantity: newBranchQty };
+  } catch (err: any) {
+    console.error('Supabase acknowledge handover error:', err);
+    return { success: false, error: err?.message || 'Error acknowledging handover' };
+  }
+}
+
+/**
+ * Execute Stock Adjustment via Supabase RPC with atomic transaction & fallback
+ */
+export async function supabaseRecordAdjustment(params: {
+  locationId: string;
+  itemId: string;
+  itemCode?: string;
+  locationCode?: string;
+  actualQuantity: number;
+  recordedBy: string;
+  remark?: string;
+}) {
+  if (!isSupabaseConfigured()) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const dbLocId = await resolveDbLocationId(params.locationId, params.locationCode);
+    const dbItemId = await resolveDbItemId(params.itemId, params.itemCode);
+
+    if (!dbLocId || !dbItemId) {
+      return { success: false, error: 'Could not resolve database UUIDs for location or item' };
+    }
+
+    // 1. Try atomic RPC call
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('record_stock_adjustment', {
+      p_location_id: dbLocId,
+      p_item_id: dbItemId,
+      p_actual_quantity: params.actualQuantity,
+      p_recorded_by: params.recordedBy,
+      p_remark: params.remark || ''
+    });
+
+    if (!rpcErr && rpcData?.success) {
+      return { 
+        success: true, 
+        previousQuantity: rpcData.previous_quantity,
+        newQuantity: rpcData.new_quantity,
+        delta: rpcData.delta,
+        transactionId: rpcData.transaction_id 
+      };
+    }
+
+    // 2. Direct fallback
+    const { data: curInv } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('location_id', dbLocId)
+      .eq('item_id', dbItemId)
+      .maybeSingle();
+
+    const previousQty = curInv ? (curInv.quantity || 0) : 0;
+    const delta = params.actualQuantity - previousQty;
+
+    await supabase.from('inventory').upsert([
+      {
+        location_id: dbLocId,
+        item_id: dbItemId,
+        quantity: params.actualQuantity,
+        last_updated: new Date().toISOString()
+      }
+    ], { onConflict: 'location_id,item_id' });
+
+    const { data: itData } = await supabase.from('items').select('code, name_kh, unit').eq('id', dbItemId).maybeSingle();
+
+    const sign = delta >= 0 ? '+' : '';
+    const finalRemark = `${params.remark || 'កែតម្រូវស្តុកជាក់ស្តែង'} [ប្រព័ន្ធ: ${previousQty} -> ជាក់ស្តែង: ${params.actualQuantity} | ផលសង: ${sign}${delta} ${itData?.unit || 'គ្រឿង'}]`;
+
+    const { data: txData } = await supabase.from('transactions').insert([
+      {
+        type: 'ADJUSTMENT',
+        to_location_id: dbLocId,
+        from_location_id: dbLocId,
+        item_id: dbItemId,
+        item_code: itData?.code || params.itemCode || '',
+        item_name_kh: itData?.name_kh || '',
+        quantity: delta,
+        unit: itData?.unit || 'គ្រឿង',
+        recorded_by: params.recordedBy,
+        remark: finalRemark,
+        status: 'RECEIVED'
+      }
+    ]).select('id').maybeSingle();
+
+    return { 
+      success: true, 
+      previousQuantity: previousQty, 
+      newQuantity: params.actualQuantity, 
+      delta, 
+      transactionId: txData?.id 
+    };
+  } catch (err: any) {
+    console.error('Supabase stock adjustment error:', err);
+    return { success: false, error: err?.message || 'Error executing stock adjustment' };
   }
 }
 
