@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useLocationContext } from '../contexts/LocationContext';
+import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon, Building2,
-  Boxes, TrendingUp, RefreshCw
+  Boxes, TrendingUp, RefreshCw, ShieldCheck, CheckCircle2, Lock
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ItemAvatar } from '../components/ItemAvatar';
 
 export function DashboardView() {
   const { t, language } = useLanguage();
+  const { isBranchUser, isCentralAdmin } = useAuth();
   const { selectedLocationId, selectedLocation } = useLocationContext();
   const { inventory, items, locations, isLoading, refreshInventory } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
@@ -47,8 +49,11 @@ export function DashboardView() {
 
   const isSelHq = selectedLocationId !== 'ALL' && isHqLocationOrRow(selectedLocation, locations);
 
-  // Calculate live aggregated inventory per item (reliable code and ID matching)
-  const aggregatedInventory = items.map((item, index) => {
+  // Check if viewing in branch-isolated mode (either logged in as BranchUser or CentralAdmin selected a specific branch)
+  const isBranchView = isBranchUser || isSpecificBranch;
+
+  // Calculate live aggregated inventory per item
+  const rawAggregatedInventory = items.map((item, index) => {
     const itemInventory = inventory.filter(
       inv => (String(inv.item_id) === String(item.id) || 
               String(inv.item_code)?.trim().toUpperCase() === String(item.code)?.trim().toUpperCase())
@@ -102,14 +107,20 @@ export function DashboardView() {
     };
   });
 
+  // CRITICAL RULE FOR BRANCH:
+  // For branch view, strictly filter ONLY the items that this branch actually has in stock (transferred from HQ)
+  const branchFilteredInventory = isBranchView 
+    ? rawAggregatedInventory.filter(item => item.branchStock > 0)
+    : rawAggregatedInventory;
+
   // Filter by category tab
-  const filteredAggregatedInventory = aggregatedInventory.filter(item => {
+  const filteredAggregatedInventory = branchFilteredInventory.filter(item => {
     if (activeTab === 'ALL') return true;
     return item.category === activeTab;
   });
 
-  // Accurate overall stock flow metrics
-  const totalItemCount = items.length;
+  // Accurate overall stock metrics
+  const totalItemCount = branchFilteredInventory.length;
   const totalHqUnits = inventory
     .filter(inv => isHqLocationOrRow(inv, locations))
     .reduce((acc, curr) => acc + (curr.quantity || 0), 0);
@@ -117,29 +128,20 @@ export function DashboardView() {
     .filter(inv => !isHqLocationOrRow(inv, locations) && (!isSpecificBranch || matchesLocationFilter(inv)))
     .reduce((acc, curr) => acc + (curr.quantity || 0), 0);
   const totalStockUnits = isSpecificBranch ? totalBranchUnits : (isSelHq ? totalHqUnits : (totalHqUnits + totalBranchUnits));
-  const lowStockCount = aggregatedInventory.filter(item => item.totalStock > 0 && item.totalStock <= item.minStock).length;
-  const outOfStockCount = aggregatedInventory.filter(item => item.totalStock === 0).length;
-
-  // Chart data
-  const categoryStockData = [
-    { name: 'Tools', stock: aggregatedInventory.filter(i => i.category === 'Tools').reduce((a, c) => a + c.totalStock, 0) },
-    { name: 'Suppliers', stock: aggregatedInventory.filter(i => i.category === 'Suppliers').reduce((a, c) => a + c.totalStock, 0) },
-  ];
-
-  const distributionData = [
-    { name: 'ស្តុកកណ្តាល HQ', value: totalHqUnits },
-    { name: 'ស្តុកតាមសាខា Branches', value: totalBranchUnits },
-  ];
-  const COLORS = ['#03291E', '#1E6047', '#40916C', '#74C69D'];
+  const lowStockCount = branchFilteredInventory.filter(item => item.totalStock > 0 && item.totalStock <= item.minStock).length;
+  const inStockCount = branchFilteredInventory.filter(item => item.totalStock > item.minStock).length;
+  const outOfStockCount = branchFilteredInventory.filter(item => item.totalStock === 0).length;
 
   return (
     <div className="space-y-5 -mt-[5px]">
-      {/* Stat Cards - Accurately Reflecting Stock Flow */}
+      {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Stock Units */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">បរិមាណស្តុកសរុប (Total Units)</p>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              {isBranchView ? 'បរិមាណស្តុកប្រចាំសាខា' : 'បរិមាណស្តុកសរុប (Total Units)'}
+            </p>
             <div className="p-1.5 rounded-lg bg-teal-50 text-teal-800">
               <Boxes size={16} />
             </div>
@@ -152,55 +154,110 @@ export function DashboardView() {
           </div>
         </div>
 
-        {/* Card 2: HQ Stock */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ស្តុកកណ្តាល HQ (HQ-ITSB)</p>
-            <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-800">
-              <Building2 size={16} />
+        {/* Card 2: If Branch View -> Show In-Stock Items (HQ Stock is completely hidden!); If Central -> Show HQ Stock */}
+        {isBranchView ? (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">មុខសម្ភារៈមានស្តុក (In-Stock)</p>
+              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-800">
+                <CheckCircle2 size={16} />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-2">
+              <h3 className="text-2xl md:text-3xl font-black text-emerald-800">{inStockCount}</h3>
+              <span className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
+                ស្តុកគ្រប់គ្រាន់
+              </span>
             </div>
           </div>
-          <div className="flex items-end justify-between mt-2">
-            <h3 className="text-2xl md:text-3xl font-black text-emerald-800">{totalHqUnits.toLocaleString()}</h3>
-            <span className="text-xs text-slate-600 font-bold bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
-              {totalStockUnits > 0 ? `${Math.round((totalHqUnits / totalStockUnits) * 100)}% នៃស្តុក` : '0%'}
-            </span>
+        ) : (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ស្តុកកណ្តាល HQ (HQ-ITSB)</p>
+              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-800">
+                <Building2 size={16} />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-2">
+              <h3 className="text-2xl md:text-3xl font-black text-emerald-800">{totalHqUnits.toLocaleString()}</h3>
+              <span className="text-xs text-slate-600 font-bold bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                {totalStockUnits > 0 ? `${Math.round((totalHqUnits / totalStockUnits) * 100)}% នៃស្តុក` : '0%'}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Card 3: Branch Stock */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ស្តុកតាមសាខា (Branches)</p>
-            <div className="p-1.5 rounded-lg bg-blue-50 text-blue-800">
-              <MapPin size={16} />
+        {/* Card 3: If Branch View -> Low stock count; If Central -> Branch stock total */}
+        {isBranchView ? (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ជិតអស់ស្តុក (Low Stock)</p>
+              <div className="p-1.5 rounded-lg bg-amber-50 text-amber-700">
+                <AlertTriangle size={16} />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-2">
+              <h3 className="text-2xl md:text-3xl font-black text-amber-600">{lowStockCount}</h3>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                lowStockCount > 0 ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {lowStockCount > 0 ? 'ត្រូវការស្នើសុំបំពេញ' : 'គ្រប់គ្រាន់'}
+              </span>
             </div>
           </div>
-          <div className="flex items-end justify-between mt-2">
-            <h3 className="text-2xl md:text-3xl font-black text-blue-900">{totalBranchUnits.toLocaleString()}</h3>
-            <span className="text-xs text-slate-600 font-bold bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
-              {totalStockUnits > 0 ? `${Math.round((totalBranchUnits / totalStockUnits) * 100)}% នៃស្តុក` : '0%'}
-            </span>
+        ) : (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ស្តុកតាមសាខា (Branches)</p>
+              <div className="p-1.5 rounded-lg bg-blue-50 text-blue-800">
+                <MapPin size={16} />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-2">
+              <h3 className="text-2xl md:text-3xl font-black text-blue-900">{totalBranchUnits.toLocaleString()}</h3>
+              <span className="text-xs text-slate-600 font-bold bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                {totalStockUnits > 0 ? `${Math.round((totalBranchUnits / totalStockUnits) * 100)}% នៃស្តុក` : '0%'}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Card 4: Low & Out of Stock */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ជិតអស់ស្តុក (Alerts)</p>
-            <div className="p-1.5 rounded-lg bg-amber-50 text-amber-700">
-              <AlertTriangle size={16} />
+        {/* Card 4: If Branch View -> Branch Assignment info; If Central -> Low Stock alert */}
+        {isBranchView ? (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">សាខាប្រចាំការ (Branch)</p>
+              <div className="p-1.5 rounded-lg bg-teal-50 text-teal-800">
+                <MapPin size={16} />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-2">
+              <h3 className="text-base font-bold text-slate-900 truncate max-w-[150px]" title={selectedLocation.name_kh}>
+                {selectedLocation.code || selectedLocation.name_kh}
+              </h3>
+              <span className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <Lock size={10} /> ចាក់សោ
+              </span>
             </div>
           </div>
-          <div className="flex items-end justify-between mt-2">
-            <h3 className="text-2xl md:text-3xl font-black text-amber-600">{lowStockCount}</h3>
-            <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
-              outOfStockCount > 0 ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-slate-100 text-slate-600'
-            }`}>
-              {outOfStockCount > 0 ? `អស់ស្តុក: ${outOfStockCount}` : 'គ្រប់គ្រាន់'}
-            </span>
+        ) : (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ជិតអស់ស្តុក (Alerts)</p>
+              <div className="p-1.5 rounded-lg bg-amber-50 text-amber-700">
+                <AlertTriangle size={16} />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-2">
+              <h3 className="text-2xl md:text-3xl font-black text-amber-600">{lowStockCount}</h3>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                outOfStockCount > 0 ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {outOfStockCount > 0 ? `អស់ស្តុក: ${outOfStockCount}` : 'គ្រប់គ្រាន់'}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Main Table Container */}
@@ -218,9 +275,11 @@ export function DashboardView() {
                   : `Inventory Status: ${selectedLocation.name_en}`}
               </h3>
               <p className="text-[11px] text-slate-500 font-normal">
-                {selectedLocationId === 'ALL' 
-                  ? 'បង្ហាញស្តុកកណ្តាល HQ និងស្តុកតាមសាខាទាំងអស់ស្របតាមលំហូរស្តុក' 
-                  : `បង្ហាញព័ត៌មានស្តុកជាក់ស្តែងសម្រាប់ទីតាំង ${selectedLocation.name_kh}`}
+                {isBranchView
+                  ? `* បង្ហាញតែមុខសម្ភារៈដែលមានក្នុងស្តុកសាខា ${selectedLocation.name_kh} ជាក់ស្តែង (ដែលបានទទួលផ្ទេរពីស្តុកកណ្តាល HQ)`
+                  : (selectedLocationId === 'ALL' 
+                    ? 'បង្ហាញស្តុកកណ្តាល HQ និងស្តុកតាមសាខាទាំងអស់ស្របតាមលំហូរស្តុក' 
+                    : `បង្ហាញព័ត៌មានស្តុកជាក់ស្តែងសម្រាប់ទីតាំង ${selectedLocation.name_kh}`)}
               </p>
             </div>
           </div>
@@ -229,7 +288,7 @@ export function DashboardView() {
             <div className="flex space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button
                 onClick={() => setActiveTab('ALL')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeTab === 'ALL' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
@@ -237,7 +296,7 @@ export function DashboardView() {
               </button>
               <button
                 onClick={() => setActiveTab('Tools')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                   activeTab === 'Tools' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
@@ -246,7 +305,7 @@ export function DashboardView() {
               </button>
               <button
                 onClick={() => setActiveTab('Suppliers')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                   activeTab === 'Suppliers' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
@@ -258,7 +317,7 @@ export function DashboardView() {
             <button
               onClick={refreshInventory}
               disabled={isLoading}
-              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-teal-800 hover:bg-slate-50 transition-colors shadow-2xs"
+              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-teal-800 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
               title="ទាញយកទិន្នន័យចុងក្រោយ"
             >
               <RefreshCw size={15} className={isLoading ? 'animate-spin text-teal-600' : ''} />
@@ -275,10 +334,21 @@ export function DashboardView() {
                 <th className="px-4 py-3 font-bold">សម្ភារ:</th>
                 <th className="px-4 py-3 font-bold text-center">ប្រភេទ</th>
                 <th className="px-4 py-3 font-bold text-center">ឯកតា</th>
-                <th className="px-4 py-3 font-bold text-center">ស្តុក HQ</th>
-                <th className="px-4 py-3 font-bold text-center">ស្តុកសាខា</th>
-                <th className="px-4 py-3 font-bold text-center">ស្តុកសរុប</th>
-                <th className="px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
+                {/* For CentralAdmin only: show HQ Stock and Branch Stock columns */}
+                {!isBranchView && (
+                  <th className="px-4 py-3 font-bold text-center">ស្តុក HQ</th>
+                )}
+                {!isBranchView && (
+                  <th className="px-4 py-3 font-bold text-center">ស្តុកសាខា</th>
+                )}
+                {/* Main Stock Column */}
+                <th className="px-4 py-3 font-bold text-center">
+                  {isBranchView ? 'បរិមាណស្តុកប្រចាំសាខា' : 'ស្តុកសរុប'}
+                </th>
+                {/* For CentralAdmin only: show other branches with stock */}
+                {!isBranchView && (
+                  <th className="px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
+                )}
                 <th className="px-4 py-3 font-bold text-center">ស្ថានភាព</th>
               </tr>
             </thead>
@@ -324,38 +394,44 @@ export function DashboardView() {
                   {/* Unit */}
                   <td className="px-4 py-2.5 text-slate-600 font-semibold text-center">{item.unit}</td>
                   
-                  {/* HQ Stock */}
-                  <td className="px-4 py-2.5 font-black text-center text-slate-900">
-                    {item.hqStock}
-                  </td>
+                  {/* HQ Stock (CentralAdmin ONLY) */}
+                  {!isBranchView && (
+                    <td className="px-4 py-2.5 font-black text-center text-slate-900">
+                      {item.hqStock}
+                    </td>
+                  )}
                   
-                  {/* Branch Stock */}
-                  <td className="px-4 py-2.5 font-black text-center text-blue-900">
-                    {item.branchStock}
-                  </td>
+                  {/* Branch Stock (CentralAdmin ONLY) */}
+                  {!isBranchView && (
+                    <td className="px-4 py-2.5 font-black text-center text-blue-900">
+                      {item.branchStock}
+                    </td>
+                  )}
 
-                  {/* Total Combined Stock */}
+                  {/* Total Stock / Branch Stock */}
                   <td className="px-4 py-2.5 font-black text-center text-emerald-800">
                     {item.totalStock}
                   </td>
 
-                  {/* Branches with Stock Badges */}
-                  <td className="px-4 py-2.5 max-w-[200px]">
-                    <div className="flex flex-wrap gap-1.5">
-                      {item.branchesWithStock.length > 0 ? (
-                        item.branchesWithStock.map((branch, i) => (
-                          <div key={i} className="inline-flex items-center rounded-md border border-teal-200 bg-teal-50/60 overflow-hidden shadow-2xs">
-                            <span className="text-[10px] font-bold text-teal-900 px-1.5 py-0.5">{branch.code}</span>
-                            <span className="bg-teal-700 text-white font-bold text-[9px] px-1 py-0.5 min-w-[16px] text-center">
-                              {branch.quantity}
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-slate-400 text-xs italic">គ្មានសាខាមានស្តុក</span>
-                      )}
-                    </div>
-                  </td>
+                  {/* Branches with Stock Badges (CentralAdmin ONLY) */}
+                  {!isBranchView && (
+                    <td className="px-4 py-2.5 max-w-[200px]">
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.branchesWithStock.length > 0 ? (
+                          item.branchesWithStock.map((branch, i) => (
+                            <div key={i} className="inline-flex items-center rounded-md border border-teal-200 bg-teal-50/60 overflow-hidden shadow-2xs">
+                              <span className="text-[10px] font-bold text-teal-900 px-1.5 py-0.5">{branch.code}</span>
+                              <span className="bg-teal-700 text-white font-bold text-[9px] px-1 py-0.5 min-w-[16px] text-center">
+                                {branch.quantity}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <span className="text-slate-400 text-xs italic">គ្មានសាខាមានស្តុក</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
 
                   {/* Status */}
                   <td className="px-4 py-2.5 text-center">
@@ -374,8 +450,18 @@ export function DashboardView() {
 
               {filteredAggregatedInventory.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-slate-500 text-sm">
-                    {isLoading ? 'កំពុងទាញយកទិន្នន័យ...' : 'មិនមានទិន្នន័យ'}
+                  <td colSpan={isBranchView ? 6 : 9} className="px-6 py-12 text-center text-slate-500 text-sm">
+                    {isLoading ? (
+                      'កំពុងទាញយកទិន្នន័យ...'
+                    ) : isBranchView ? (
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <Package className="text-slate-300" size={36} />
+                        <p className="font-semibold text-slate-600">មិនទាន់មានសម្ភារៈណាមួយត្រូវបានផ្ទេរមកកាន់សាខានេះនៅឡើយទេ</p>
+                        <p className="text-xs text-slate-400">នៅពេលស្តុកកណ្តាល HQ ធ្វើការផ្ទេរសម្ភារៈមកកាន់សាខានេះ ទិន្នន័យនឹងបង្ហាញនៅទីនេះដោយស្វ័យប្រវត្តិ។</p>
+                      </div>
+                    ) : (
+                      'មិនមានទិន្នន័យសម្ភារៈឡើយ'
+                    )}
                   </td>
                 </tr>
               )}
