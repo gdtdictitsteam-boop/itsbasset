@@ -30,17 +30,21 @@ function MainLayout() {
   const { isBranchUser, isCentralAdmin } = useAuth();
 
   // Enforce view restriction for BranchUser:
-  // BranchUser is ONLY allowed 3 views: "stockOut", "adjustment", "auditTrail"
+  // BranchUser is allowed: "dashboard", "inventory", "stockOut", "adjustment", "auditTrail"
   useEffect(() => {
-    if (isBranchUser && !['stockOut', 'adjustment', 'auditTrail'].includes(currentView)) {
-      setCurrentView('stockOut');
+    if (isBranchUser && !['dashboard', 'inventory', 'stockOut', 'adjustment', 'auditTrail'].includes(currentView)) {
+      setCurrentView('dashboard');
     }
   }, [isBranchUser, currentView]);
 
   const renderView = () => {
-    // If BranchUser, strictly allow only the 3 permitted views
+    // If BranchUser, allow the 5 permitted views (dashboard & inventory locked to assigned branch)
     if (isBranchUser) {
       switch (currentView) {
+        case 'dashboard':
+          return <DashboardView />;
+        case 'inventory':
+          return <InventoryView />;
         case 'stockOut':
           return <StockOutView />;
         case 'adjustment':
@@ -48,7 +52,7 @@ function MainLayout() {
         case 'auditTrail':
           return <AuditTrailView />;
         default:
-          return <StockOutView />;
+          return <DashboardView />;
       }
     }
 
