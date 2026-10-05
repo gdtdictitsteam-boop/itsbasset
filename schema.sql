@@ -661,3 +661,227 @@ CROSS JOIN public.items i
 WHERE l.code = 'HQ-ITSB'
 ON CONFLICT (location_id, item_id) DO UPDATE 
 SET quantity = EXCLUDED.quantity, last_updated = NOW();
+
+-- =========================================================================
+-- STEP 6: SUPABASE AUTH USERS & PASSWORD RPC FUNCTION
+-- ប្រព័ន្ធគ្រប់គ្រងសិទ្ធិ និងគណនីមន្ត្រីសម្រាប់ Login (GDT Inventory Management)
+-- Default Password សម្រាប់គណនីទាំងអស់៖ GDT@2026
+-- =========================================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Helper Stored Procedure: create_or_update_gdt_user
+CREATE OR REPLACE FUNCTION public.create_or_update_gdt_user(
+    p_email TEXT,
+    p_password TEXT,
+    p_full_name TEXT,
+    p_role TEXT,
+    p_location_code TEXT
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_encrypted_pwd TEXT;
+    v_location_id UUID;
+BEGIN
+    v_encrypted_pwd := crypt(p_password, gen_salt('bf'));
+
+    SELECT id INTO v_location_id 
+    FROM public.locations 
+    WHERE code = p_location_code OR id::text = p_location_code
+    LIMIT 1;
+
+    SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = lower(p_email);
+
+    IF v_user_id IS NULL THEN
+        v_user_id := gen_random_uuid();
+
+        INSERT INTO auth.users (
+            instance_id, id, aud, role, email, encrypted_password,
+            email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+            created_at, updated_at, confirmation_token, recovery_token
+        ) VALUES (
+            '00000000-0000-0000-0000-000000000000',
+            v_user_id,
+            'authenticated',
+            'authenticated',
+            lower(p_email),
+            v_encrypted_pwd,
+            NOW(),
+            '{"provider":"email","providers":["email"]}'::jsonb,
+            jsonb_build_object('full_name', p_full_name, 'role', p_role),
+            NOW(),
+            NOW(),
+            '',
+            ''
+        );
+
+        INSERT INTO auth.identities (
+            id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+        ) VALUES (
+            v_user_id,
+            v_user_id,
+            jsonb_build_object('sub', v_user_id, 'email', lower(p_email)),
+            'email',
+            NOW(),
+            NOW(),
+            NOW()
+        );
+    ELSE
+        UPDATE auth.users
+        SET 
+            encrypted_password = v_encrypted_pwd,
+            email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+            raw_app_meta_data = '{"provider":"email","providers":["email"]}'::jsonb,
+            raw_user_meta_data = jsonb_build_object('full_name', p_full_name, 'role', p_role),
+            updated_at = NOW()
+        WHERE id = v_user_id;
+
+        IF NOT EXISTS (SELECT 1 FROM auth.identities WHERE user_id = v_user_id) THEN
+            INSERT INTO auth.identities (
+                id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+            ) VALUES (
+                v_user_id,
+                v_user_id,
+                jsonb_build_object('sub', v_user_id, 'email', lower(p_email)),
+                'email',
+                NOW(),
+                NOW(),
+                NOW()
+            );
+        END IF;
+    END IF;
+
+    -- Upsert public.user_profiles
+    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, created_at)
+    VALUES (
+        v_user_id,
+        lower(p_email),
+        p_full_name,
+        p_role,
+        v_location_id,
+        NOW()
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET 
+        email = EXCLUDED.email,
+        full_name = EXCLUDED.full_name,
+        role = EXCLUDED.role,
+        location_id = EXCLUDED.location_id;
+
+    RETURN v_user_id;
+END;
+$$;
+
+-- Stored Procedure for Frontend Admin RPC call
+CREATE OR REPLACE FUNCTION public.admin_set_user_password(
+    p_email TEXT,
+    p_password TEXT,
+    p_full_name TEXT DEFAULT NULL,
+    p_role TEXT DEFAULT NULL,
+    p_location_id TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_user_id UUID;
+BEGIN
+    IF p_password IS NULL OR length(trim(p_password)) < 6 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Password must be at least 6 characters');
+    END IF;
+
+    v_user_id := public.create_or_update_gdt_user(
+        p_email,
+        p_password,
+        COALESCE(p_full_name, split_part(p_email, '@', 1)),
+        COALESCE(p_role, 'BranchUser'),
+        COALESCE(p_location_id, '2')
+    );
+
+    RETURN jsonb_build_object(
+        'success', true, 
+        'user_id', v_user_id, 
+        'email', p_email,
+        'message', 'Password updated successfully in auth.users'
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_or_update_gdt_user TO postgres, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_set_user_password TO authenticated, service_role, anon;
+
+-- BATCH SEED ALL EXISTING OFFICERS WITH DEFAULT PASSWORD: GDT@2026
+DO $$
+BEGIN
+    -- 1. Central Admin (GDT ITS Team)
+    PERFORM public.create_or_update_gdt_user(
+        'gdt.dict.its.team@gmail.com',
+        'GDT@2026',
+        'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS Team)',
+        'CentralAdmin',
+        'HQ-ITSB'
+    );
+
+    -- 2. Central Admin (Admin ITS)
+    PERFORM public.create_or_update_gdt_user(
+        'admin.its@tax.gov.kh',
+        'GDT@2026',
+        'មន្ត្រីកណ្តាល ITSB (រដ្ឋបាល)',
+        'CentralAdmin',
+        'HQ-ITSB'
+    );
+
+    -- 3. Branch 7MK Officer (៧មករា)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.7mk@tax.gov.kh',
+        'GDT@2026',
+        'លោក សុខ ចាន់ថន (មន្ត្រី ៧មករា)',
+        'BranchUser',
+        '7MK'
+    );
+
+    -- 4. Branch CKM Officer (ចំការមន)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.ckm@tax.gov.kh',
+        'GDT@2026',
+        'កញ្ញា គង់ សុជាតា (មន្ត្រី ចំការមន)',
+        'BranchUser',
+        'CKM'
+    );
+
+    -- 5. Branch DPE Officer (ដូនពេញ)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.dpe@tax.gov.kh',
+        'GDT@2026',
+        'លោក វ៉ាន់ សុភ័ក្ត្រ (មន្ត្រី ដូនពេញ)',
+        'BranchUser',
+        'DPE'
+    );
+
+    -- 6. Branch TKO Officer (ទួលគោក)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.tko@tax.gov.kh',
+        'GDT@2026',
+        'លោក ហេង វិបុល (មន្ត្រី ទួលគោក)',
+        'BranchUser',
+        'TKO'
+    );
+
+    -- 7. Branch KPC Officer (កំពង់ចាម)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.kpc@tax.gov.kh',
+        'GDT@2026',
+        'លោក ជ័យ វិចិត្រ (មន្ត្រី កំពង់ចាម)',
+        'BranchUser',
+        'KPC'
+    );
+END;
+$$;
+

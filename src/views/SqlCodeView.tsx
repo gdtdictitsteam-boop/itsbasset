@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Database, Code2, Copy, Check, FileText, ShieldCheck, HardDrive, Clock, SlidersHorizontal } from 'lucide-react';
+import { Database, Code2, Copy, Check, FileText, ShieldCheck, HardDrive, Clock, SlidersHorizontal, KeyRound } from 'lucide-react';
+import { SUPABASE_AUTH_USERS_SQL } from '../components/UserManagementModal';
 
 export function SqlCodeView() {
-  const [activeTab, setActiveTab] = useState<'rpcs' | 'step4' | 'storage' | 'rls' | 'sql'>('rpcs');
+  const [activeTab, setActiveTab] = useState<'rpcs' | 'auth' | 'step4' | 'storage' | 'rls' | 'sql'>('rpcs');
   const [sqlCode, setSqlCode] = useState<string>('Loading schema...');
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -674,6 +675,7 @@ USING (bucket_id = 'handover_docs');
 
   const getCurrentCode = () => {
     if (activeTab === 'rpcs') return rpcsCode;
+    if (activeTab === 'auth') return SUPABASE_AUTH_USERS_SQL;
     if (activeTab === 'step4') return step4Code;
     if (activeTab === 'storage') return storageCode;
     if (activeTab === 'rls') return rlsCode;
@@ -703,7 +705,7 @@ USING (bucket_id = 'handover_docs');
 
         <button
           onClick={handleCopy}
-          className="flex items-center space-x-2 bg-[#03291E] hover:bg-[#1E6047] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 self-start sm:self-auto"
+          className="flex items-center space-x-2 bg-[#03291E] hover:bg-[#1E6047] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 self-start sm:self-auto cursor-pointer"
         >
           {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
           <span>{copied ? 'បានចម្លង! (Copied)' : 'ចម្លងកូដ (Copy Code)'}</span>
@@ -716,7 +718,7 @@ USING (bucket_id = 'handover_docs');
           <div className="flex flex-wrap space-x-2 gap-y-1">
             <button
               onClick={() => setActiveTab('rpcs')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'rpcs'
                   ? 'bg-[#03291E] text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60'
@@ -726,8 +728,19 @@ USING (bucket_id = 'handover_docs');
               <span>មុខងារ RPC ទាំង៥ (Stock In/Out/Handover/Adjustment)</span>
             </button>
             <button
+              onClick={() => setActiveTab('auth')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                activeTab === 'auth'
+                  ? 'bg-[#03291E] text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-200/60'
+              }`}
+            >
+              <KeyRound size={15} className="text-amber-400" />
+              <span>Auth Users & Password (GDT@2026)</span>
+            </button>
+            <button
               onClick={() => setActiveTab('step4')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'step4'
                   ? 'bg-[#03291E] text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60'
@@ -738,7 +751,7 @@ USING (bucket_id = 'handover_docs');
             </button>
             <button
               onClick={() => setActiveTab('storage')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'storage'
                   ? 'bg-[#03291E] text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60'
@@ -749,7 +762,7 @@ USING (bucket_id = 'handover_docs');
             </button>
             <button
               onClick={() => setActiveTab('rls')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'rls'
                   ? 'bg-[#03291E] text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60'
@@ -760,7 +773,7 @@ USING (bucket_id = 'handover_docs');
             </button>
             <button
               onClick={() => setActiveTab('sql')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 activeTab === 'sql'
                   ? 'bg-[#03291E] text-white shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60'
@@ -772,7 +785,7 @@ USING (bucket_id = 'handover_docs');
           </div>
 
           <span className="text-xs font-mono text-slate-600 font-bold hidden md:inline-block">
-            {activeTab === 'rpcs' ? 'supabase_rpcs_workflow.sql' : activeTab === 'step4' ? 'step4_2step_rpc.sql' : activeTab === 'storage' ? 'storage_policies.sql' : activeTab === 'rls' ? 'rls_policies.sql' : 'schema.sql'}
+            {activeTab === 'rpcs' ? 'supabase_rpcs_workflow.sql' : activeTab === 'auth' ? 'auth_users_and_passwords.sql' : activeTab === 'step4' ? 'step4_2step_rpc.sql' : activeTab === 'storage' ? 'storage_policies.sql' : activeTab === 'rls' ? 'rls_policies.sql' : 'schema.sql'}
           </span>
         </div>
 
