@@ -74,20 +74,11 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
     }
   ];
 
-  // For BranchUser: Full access to Dashboard and Inventory (locked to branch), plus branch operations:
-  // 1. "ផ្ទាំងគ្រប់គ្រង (Dashboard)"
-  // 2. "ស្តុកបច្ចុប្បន្ន (Inventory)"
-  // 3. "ដកប្រើប្រាស់ (Stock Out)"
-  // 4. "កែតម្រូវស្តុក (Adjustment)"
-  // 5. "ប្រវត្តិសវនកម្ម (Audit Trail)"
+  // For BranchUser: ONLY 3 allowed functions per RBAC requirements:
+  // 1. "ដកប្រើប្រាស់ (Stock Out)"
+  // 2. "កែតម្រូវស្តុក (Adjustment)"
+  // 3. "ប្រវត្តិសវនកម្ម (Audit Trail)"
   const branchUserMenuGroups: MenuGroup[] = [
-    {
-      title: language === 'kh' ? 'ព័ត៌មានទូទៅ' : 'General Info',
-      items: [
-        { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
-        { id: 'inventory', icon: Package, label: t.inventory },
-      ]
-    },
     {
       title: language === 'kh' ? 'ប្រតិបត្តិការសាខា' : 'Branch Operations',
       items: [
