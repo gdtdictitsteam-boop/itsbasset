@@ -115,17 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return INITIAL_USER_PROFILES;
   });
 
-  // Demo user state
+  // Demo user state (Must default to null so signed-out users stay on Login screen!)
   const [demoUser, setDemoUser] = useState<{ email: string; role: string; name: string; locationId?: string; id?: string } | null>(() => {
     try {
       const stored = localStorage.getItem(DEMO_USER_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : {
-        id: 'user-001',
-        email: 'admin.its@tax.gov.kh',
-        role: 'CentralAdmin',
-        name: 'មន្ត្រីកណ្តាល ITSB (រដ្ឋបាល)',
-        locationId: '1'
-      };
+      return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
     }
@@ -156,29 +150,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [configured]);
 
   useEffect(() => {
+    let isMounted = true;
+
     if (!configured) {
       setLoading(false);
       return;
     }
 
-    // 1. Check existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    // 1. Check existing session from Supabase
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      if (!isMounted) return;
+      if (currentSession?.user) {
+        setSession(currentSession);
+        setUser(currentSession.user);
+        setDemoUser(null);
+      } else {
+        setSession(null);
+        setUser(null);
+        // Only keep demoUser if explicitly present in localStorage
+        const storedDemo = localStorage.getItem(DEMO_USER_STORAGE_KEY);
+        if (!storedDemo) {
+          setDemoUser(null);
+        }
+      }
       setLoading(false);
     }).catch((err) => {
       console.warn('Error fetching Supabase auth session:', err);
-      setLoading(false);
+      if (isMounted) {
+        setSession(null);
+        setUser(null);
+        setDemoUser(null);
+        setLoading(false);
+      }
     });
 
     // 2. Fetch users profiles
     fetchUsersList();
 
     // 3. Listen to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (!isMounted) return;
+      if (event === 'SIGNED_OUT' || !newSession?.user) {
+        setSession(null);
+        setUser(null);
+        setDemoUser(null);
+        localStorage.removeItem(DEMO_USER_STORAGE_KEY);
+      } else if (newSession?.user) {
+        setSession(newSession);
+        setUser(newSession.user);
         setDemoUser(null);
         localStorage.removeItem(DEMO_USER_STORAGE_KEY);
       }
@@ -186,6 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, [configured, fetchUsersList]);
@@ -241,19 +261,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Sign out
+  // Sign out - completely purge session, state, and localStorage tokens
   const signOut = async () => {
-    if (configured) {
-      try {
+    try {
+      if (configured) {
         await supabase.auth.signOut();
-      } catch (err) {
-        console.warn('Supabase signout notice:', err);
+      }
+    } catch (err) {
+      console.warn('Supabase signout notice:', err);
+    } finally {
+      setUser(null);
+      setSession(null);
+      setDemoUser(null);
+      try {
+        localStorage.removeItem(DEMO_USER_STORAGE_KEY);
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('sb-') || key.includes('auth-token') || key.includes('supabase.auth') || key.includes('demo_user'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch (storageErr) {
+        console.warn('Notice clearing localStorage on signout:', storageErr);
       }
     }
-    setUser(null);
-    setSession(null);
-    setDemoUser(null);
-    localStorage.removeItem(DEMO_USER_STORAGE_KEY);
   };
 
   // Demo sign in for development & offline testing
@@ -429,13 +462,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     id: user?.id || demoUser?.id || 'profile-' + Date.now(),
     email: currentEmail,
     full_name: user?.user_metadata?.full_name || demoUser?.name || (isEmailAdmin ? 'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)' : currentEmail.split('@')[0]),
-    role: (isEmailAdmin ? 'CentralAdmin' : 'CentralAdmin'),
-    location_id: '1'
+    role: (isEmailAdmin ? 'CentralAdmin' : 'BranchUser'),
+    location_id: isEmailAdmin ? '1' : '2'
   } : null);
 
   const effectiveUser = user || (demoUser ? { email: demoUser.email } as any : null);
 
-  const rawRole = userProfile?.role || user?.user_metadata?.role || demoUser?.role || (isEmailAdmin ? 'CentralAdmin' : 'CentralAdmin');
+  const rawRole = userProfile?.role || user?.user_metadata?.role || demoUser?.role || (isEmailAdmin ? 'CentralAdmin' : 'BranchUser');
   
   // Normalize role string
   const userRole = (rawRole === 'Admin-GDT' || rawRole === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';

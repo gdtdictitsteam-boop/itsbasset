@@ -27,9 +27,9 @@ export function Header() {
     }
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     if (typeof signOut === 'function') {
-      signOut();
+      await signOut();
     }
   };
 
