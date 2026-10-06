@@ -1,34 +1,142 @@
-import { createClient } from '@supabase/supabase-js';
-import { mockLocations } from '../mockData';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const metaEnv = (import.meta as any).env || {};
-const supabaseUrl = metaEnv.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || '';
+// Retrieve credentials dynamically from import.meta.env or localStorage
+export const getSupabaseConfig = (): { url: string; anonKey: string } => {
+  const metaEnv = (import.meta as any).env || {};
+  let url = (metaEnv.VITE_SUPABASE_URL || '').trim();
+  let anonKey = (metaEnv.VITE_SUPABASE_ANON_KEY || '').trim();
 
-// Initialize client safely (use fallback URL if credentials are empty to avoid crash)
-const validUrl = supabaseUrl && supabaseUrl.startsWith('http') ? supabaseUrl : 'https://placeholder.supabase.co';
-const validKey = supabaseAnonKey || 'placeholder-key';
+  // If environment variable is missing, empty, or placeholder, check localStorage
+  if ((!url || url.includes('YOUR_SUPABASE') || !url.startsWith('http')) && typeof window !== 'undefined') {
+    const storedUrl = localStorage.getItem('gdt_supabase_url') || localStorage.getItem('VITE_SUPABASE_URL') || '';
+    if (storedUrl && storedUrl.startsWith('http')) {
+      url = storedUrl.trim();
+    }
+  }
 
-export const supabase = createClient(validUrl, validKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
+  if ((!anonKey || anonKey.includes('YOUR_SUPABASE') || anonKey === 'placeholder-key') && typeof window !== 'undefined') {
+    const storedKey = localStorage.getItem('gdt_supabase_anon_key') || localStorage.getItem('VITE_SUPABASE_ANON_KEY') || '';
+    if (storedKey) {
+      anonKey = storedKey.trim();
+    }
+  }
+
+  return { url, anonKey };
+};
 
 /**
  * Check whether valid Supabase credentials have been provided
  */
 export const isSupabaseConfigured = (): boolean => {
+  const { url, anonKey } = getSupabaseConfig();
   return (
-    Boolean(supabaseUrl) &&
-    Boolean(supabaseAnonKey) &&
-    !supabaseUrl.includes('YOUR_SUPABASE_PROJECT_URL') &&
-    !supabaseUrl.includes('placeholder.supabase.co') &&
-    supabaseUrl.startsWith('http')
+    Boolean(url) &&
+    Boolean(anonKey) &&
+    !url.includes('YOUR_SUPABASE') &&
+    !url.includes('placeholder.supabase.co') &&
+    url.startsWith('http')
   );
 };
+
+let currentClient: SupabaseClient<any> | null = null;
+let currentClientKey = '';
+
+export const getSupabaseClient = (): SupabaseClient<any> => {
+  const { url, anonKey } = getSupabaseConfig();
+  const validUrl = url && url.startsWith('http') ? url : 'https://placeholder.supabase.co';
+  const validKey = anonKey || 'placeholder-key';
+  const key = `${validUrl}::${validKey}`;
+
+  if (!currentClient || currentClientKey !== key) {
+    currentClient = createClient<any>(validUrl, validKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+    currentClientKey = key;
+  }
+  return currentClient;
+};
+
+// Export proxy for `supabase` so any existing `supabase.from(...)` call continues to work seamlessly with active credentials
+export const supabase: SupabaseClient<any> = new Proxy({} as any, {
+  get(_target, prop) {
+    const client = getSupabaseClient();
+    const value = (client as any)[prop];
+    if (typeof value === 'function') {
+      return value.bind(client);
+    }
+    return value;
+  },
+});
+
+export const setSupabaseConfig = (url: string, anonKey: string) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('gdt_supabase_url', url.trim());
+    localStorage.setItem('gdt_supabase_anon_key', anonKey.trim());
+    localStorage.setItem('VITE_SUPABASE_URL', url.trim());
+    localStorage.setItem('VITE_SUPABASE_ANON_KEY', anonKey.trim());
+    currentClient = null; // force recreation
+    window.dispatchEvent(new Event('supabase-config-changed'));
+  }
+};
+
+/**
+ * Test connectivity to Supabase and return status and table counts
+ */
+export async function testSupabaseConnection(): Promise<{
+  connected: boolean;
+  message: string;
+  itemsCount?: number;
+  locationsCount?: number;
+  inventoryCount?: number;
+  transactionsCount?: number;
+  error?: string;
+}> {
+  if (!isSupabaseConfigured()) {
+    return {
+      connected: false,
+      message: 'Supabase credentials not configured',
+      error: 'សូមបញ្ចូល Project URL និង Anon Key',
+    };
+  }
+
+  try {
+    const [itemsRes, locsRes, invRes, txRes] = await Promise.all([
+      supabase.from('items').select('id', { count: 'exact', head: true }),
+      supabase.from('locations').select('id', { count: 'exact', head: true }),
+      supabase.from('inventory').select('id', { count: 'exact', head: true }),
+      supabase.from('transactions').select('id', { count: 'exact', head: true }),
+    ]);
+
+    if (itemsRes.error && locsRes.error) {
+      console.error('Supabase connection test failed:', itemsRes.error || locsRes.error);
+      return {
+        connected: false,
+        message: 'បរាជ័យក្នុងការតភ្ជាប់ទៅ Supabase',
+        error: itemsRes.error?.message || locsRes.error?.message,
+      };
+    }
+
+    return {
+      connected: true,
+      message: 'តភ្ជាប់ទៅកាន់ Supabase Database ជោគជ័យ!',
+      itemsCount: itemsRes.count ?? 0,
+      locationsCount: locsRes.count ?? 0,
+      inventoryCount: invRes.count ?? 0,
+      transactionsCount: txRes.count ?? 0,
+    };
+  } catch (err: any) {
+    console.error('Exception testing Supabase connection:', err);
+    return {
+      connected: false,
+      message: 'មានបញ្ហាតភ្ជាប់',
+      error: err?.message || String(err),
+    };
+  }
+}
 
 export interface InsertNewItemParams {
   code: string;
@@ -154,17 +262,15 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
       insertPayload.image_url = image_url;
     }
 
-    console.log('[Supabase insertItemToSupabase] Sending insert payload to items table:', insertPayload);
-
     let { data: itemData, error: itemError } = await supabase
       .from('items')
       .insert([insertPayload])
       .select()
       .single();
 
-    // Resilience 1: If error is PGRST204 regarding image_url column not existing yet, fallback without image_url
+    // If error was PGRST204 regarding image_url column not existing yet, fallback without image_url with warning
     if (itemError && (itemError.code === 'PGRST204' || itemError.message?.includes('image_url'))) {
-      console.warn('Column image_url does not exist in items table. Retrying insert without image_url...', itemError.message);
+      console.warn('Column image_url does not exist yet in items table. Retrying insert without image_url...');
       delete insertPayload.image_url;
       const retryResult = await supabase
         .from('items')
@@ -175,33 +281,8 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
       itemError = retryResult.error;
     }
 
-    // Resilience 2: If table has 'name' column instead of or in addition to 'name_kh'
-    if (itemError && (itemError.code === 'PGRST204' || itemError.message?.toLowerCase().includes('name') || itemError.message?.toLowerCase().includes('column'))) {
-      console.warn('Retrying insert with name column fallback...', itemError.message);
-      const adaptedPayload: Record<string, any> = {
-        code,
-        name: name_kh,
-        name_kh,
-        name_en,
-        category,
-        unit,
-        min_stock,
-        ...(insertPayload.image_url ? { image_url: insertPayload.image_url } : {})
-      };
-      const retryName = await supabase.from('items').insert([adaptedPayload]).select().single();
-      if (!retryName.error && retryName.data) {
-        itemData = retryName.data;
-        itemError = null;
-      }
-    }
-
     if (itemError) {
-      console.error('[Supabase items insert error]:', {
-        code: itemError.code,
-        message: itemError.message,
-        details: itemError.details,
-        hint: itemError.hint
-      });
+      console.error('Supabase item insert error:', itemError);
       
       let errMsg = itemError.message || 'បរាជ័យក្នុងការរក្សាទុកទៅក្នុង Supabase Table items';
       let errDetails = `Error Code: ${itemError.code || 'UNKNOWN'} | Details: ${itemError.details || itemError.hint || ''}`;
@@ -209,10 +290,10 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
       if (itemError.code === '23505') {
         errMsg = `លេខកូដសម្ភារ "${code}" មានរួចហើយនៅក្នុង Supabase (Duplicate SKU code)!`;
         errDetails = 'សូមផ្លាស់ប្តូរលេខកូដសម្ភារ ឱ្យខុសពីលេខកូដដែលមានស្រាប់។';
-      } else if (itemError.code === '42501' || itemError.message?.includes('row-level security') || itemError.message?.includes('policy')) {
-        errMsg = 'បរាជ័យដោយសារ Row Level Security (RLS Policy) លើ Table "items"!';
-        errDetails = 'សូមដំណើរការ SQL ក្នុង Supabase: CREATE POLICY "Authenticated users full access on items" ON public.items FOR ALL TO authenticated USING (true) WITH CHECK (true); ឬ ALTER TABLE public.items DISABLE ROW LEVEL SECURITY;';
-      } else if (itemError.code === 'PGRST204' || itemError.message?.includes('Columns') || itemError.message?.includes('schema cache')) {
+      } else if (itemError.code === '42501' || itemError.message?.includes('row-level security')) {
+        errMsg = 'បរាជ័យដោយសារ Row Level Security (RLS) របស់ Supabase!';
+        errDetails = 'សូមចូលទៅកាន់ Supabase Dashboard -> SQL Editor ហើយដំណើរការ៖ ALTER TABLE public.items DISABLE ROW LEVEL SECURITY;';
+      } else if (itemError.code === 'PGRST204' || itemError.message?.includes('Columns')) {
         errMsg = 'រចនាសម្ព័ន្ធ Table "items" ក្នុង Supabase មិនត្រូវគ្នានឹងកូដ!';
         errDetails = 'សូមប្រាកដថាតារាង items មាន column: code, name_kh, name_en, category, unit, min_stock, image_url';
       }
@@ -225,7 +306,6 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
       };
     }
 
-    console.log('[Supabase items insert success]: Created item:', itemData);
     const createdItemId = itemData.id;
 
     const isUuid = (val?: string): boolean => {
@@ -270,23 +350,16 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
 
       // Insert transaction record if initial stock > 0
       if (initial_stock > 0) {
-        const { error: txErr } = await supabase.from('transactions').insert([
+        await supabase.from('transactions').insert([
           {
             type: 'STOCK_IN',
-            to_location_id: targetLocationId,
+            to_location: targetLocationId,
             item_id: createdItemId,
-            item_code: code,
-            item_name_kh: name_kh,
             quantity: initial_stock,
-            unit,
             remark: params.remark || 'បញ្ចូលសម្ភារថ្មីដំបូង',
             recorded_by: params.recorded_by || 'Admin-GDT',
-            status: 'COMPLETED'
           },
         ]);
-        if (txErr) {
-          console.warn('Supabase initial transaction notice:', txErr);
-        }
       }
     }
 
@@ -368,10 +441,10 @@ export async function fetchFullInventoryFromSupabase() {
 
     const items = itemsRes.data || [];
     let inventory = invRes.data || [];
-    const locations = (locsRes.data && locsRes.data.length > 0) ? locsRes.data : mockLocations;
+    const locations = locsRes.data || [];
 
-    if (items.length === 0) {
-      return [];
+    if (items.length === 0 || locations.length === 0) {
+      return null;
     }
 
     // If Supabase inventory is completely empty, auto-seed standard initial inventory once
@@ -386,7 +459,7 @@ export async function fetchFullInventoryFromSupabase() {
       }
     }
 
-    const defaultHqLoc = locations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locations[0] || mockLocations[0];
+    const defaultHqLoc = locations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locations[0];
 
     const locMap = new Map<string, any>();
     locations.forEach(loc => {
@@ -402,10 +475,9 @@ export async function fetchFullInventoryFromSupabase() {
     items.forEach(it => {
       itemMap.set(it.id, it);
       itemMap.set(String(it.id).toLowerCase(), it);
-      const codeKey = it.code || it.sku;
-      if (codeKey) {
-        itemMap.set(codeKey, it);
-        itemMap.set(String(codeKey).toUpperCase(), it);
+      if (it.code) {
+        itemMap.set(it.code, it);
+        itemMap.set(String(it.code).toUpperCase(), it);
       }
     });
 
@@ -421,17 +493,14 @@ export async function fetchFullInventoryFromSupabase() {
       }
       if (it) {
         const isHq = loc ? (loc.type === 'HQ' || loc.code === 'HQ-ITSB' || loc.code === 'ITSB-HQ') : false;
-        const itemCode = it.code || it.sku || '';
-        const itemNameKh = it.name_kh || it.name || '';
-        const itemNameEn = it.name_en || it.name || itemNameKh;
         result.push({
           location_id: inv.location_id,
           item_id: inv.item_id,
           quantity: inv.quantity ?? 0,
           last_updated: inv.last_updated || new Date().toISOString(),
-          item_code: itemCode,
-          item_name_kh: itemNameKh,
-          item_name_en: itemNameEn,
+          item_code: it.code || '',
+          item_name_kh: it.name_kh || '',
+          item_name_en: it.name_en || it.name_kh || '',
           category: it.category || 'Tools',
           unit: it.unit || 'គ្រឿង',
           min_stock: it.min_stock ?? 0,
@@ -447,11 +516,8 @@ export async function fetchFullInventoryFromSupabase() {
     // 2. Also ensure every item has at least an HQ row so HQ stock column tracks it (with 0 if no inventory row yet)
     if (defaultHqLoc) {
       items.forEach(it => {
-        const itemCode = it.code || it.sku || '';
-        const itemNameKh = it.name_kh || it.name || '';
-        const itemNameEn = it.name_en || it.name || itemNameKh;
         const hasHqInv = result.some(r => 
-          (r.item_id === it.id || (itemCode && String(r.item_code).toUpperCase() === String(itemCode).toUpperCase())) &&
+          (r.item_id === it.id || String(r.item_code).toUpperCase() === String(it.code).toUpperCase()) &&
           (r.location_id === defaultHqLoc.id || r.location_code === 'HQ-ITSB' || r.type === 'HQ')
         );
         if (!hasHqInv) {
@@ -460,9 +526,9 @@ export async function fetchFullInventoryFromSupabase() {
             item_id: it.id,
             quantity: 0,
             last_updated: it.created_at || new Date().toISOString(),
-            item_code: itemCode,
-            item_name_kh: itemNameKh,
-            item_name_en: itemNameEn,
+            item_code: it.code || '',
+            item_name_kh: it.name_kh || '',
+            item_name_en: it.name_en || it.name_kh || '',
             category: it.category || 'Tools',
             unit: it.unit || 'គ្រឿង',
             min_stock: it.min_stock ?? 0,
@@ -480,6 +546,31 @@ export async function fetchFullInventoryFromSupabase() {
   } catch (err) {
     console.error('Exception fetching full inventory from Supabase:', err);
     return null;
+  }
+}
+
+/**
+ * Fetch all transaction records directly from Supabase public.transactions
+ */
+export async function fetchTransactionsFromSupabase(limit = 500): Promise<any[]> {
+  if (!isSupabaseConfigured()) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('Supabase fetch transactions error:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.error('Exception fetching transactions from Supabase:', err);
+    return [];
   }
 }
 

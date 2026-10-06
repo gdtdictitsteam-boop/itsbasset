@@ -3,7 +3,6 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { formatLocationOption } from '../contexts/LocationContext';
-import { mockLocations, mockItems, mockTransactions } from '../mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
   ArrowRightLeft, 
@@ -53,9 +52,9 @@ export function HandoverView() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadedDocUrl, setUploadedDocUrl] = useState<string | null>(null);
 
-  // Master Data: Prioritize context lists with graceful mock fallback
-  const items = contextItems.length > 0 ? contextItems : mockItems;
-  const locations = contextLocations.length > 0 ? contextLocations : mockLocations;
+  // Master Data: Direct from Database context
+  const items = contextItems;
+  const locations = contextLocations;
 
   // Separate Branch and HQ Locations
   const hqLocations = useMemo(() => {
@@ -64,7 +63,7 @@ export function HandoverView() {
     return locations.filter(loc => loc.code === 'HQ-ITSB' || loc.id === '1' || loc.type === 'HQ');
   }, [locations]);
 
-  const defaultHqLocation = hqLocations[0] || locations[0] || mockLocations[0];
+  const defaultHqLocation = hqLocations[0] || locations[0];
 
   const branchLocations = useMemo(() => {
     return locations.filter(loc => 

@@ -156,37 +156,12 @@ WITH CHECK (
     )
 );
 
--- Full CRUD on catalog items for authenticated users (including CentralAdmin)
-ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
-
+-- Public read on catalog items and locations
 DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-DROP POLICY IF EXISTS "Allow read items" ON public.items;
-DROP POLICY IF EXISTS "Authenticated users full access on items" ON public.items;
-DROP POLICY IF EXISTS "Enable all for authenticated users only" ON public.items;
-DROP POLICY IF EXISTS "Allow authenticated users to manage items" ON public.items;
-CREATE POLICY "Authenticated users full access on items" 
-ON public.items 
-FOR ALL 
-TO authenticated 
-USING (true) 
-WITH CHECK (true);
-
--- Allow anon users to read catalog items as well
-DROP POLICY IF EXISTS "Allow anon read items" ON public.items;
-CREATE POLICY "Allow anon read items" 
-ON public.items 
-FOR SELECT 
-TO anon 
-USING (true);
-
--- Grant permissions
-GRANT ALL ON TABLE public.items TO authenticated;
-GRANT SELECT ON TABLE public.items TO anon;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+CREATE POLICY "Allow all access on items" ON public.items FOR SELECT TO authenticated USING (true);
 
 DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
-CREATE POLICY "Allow all access on locations" ON public.locations FOR SELECT TO authenticated, anon USING (true);
-GRANT SELECT ON TABLE public.locations TO authenticated, anon;
+CREATE POLICY "Allow all access on locations" ON public.locations FOR SELECT TO authenticated USING (true);
 
 
 -- =========================================================================
@@ -755,18 +730,6 @@ BEGIN
             '',
             ''
         );
-
-        INSERT INTO auth.identities (
-            id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
-        ) VALUES (
-            v_user_id,
-            v_user_id,
-            jsonb_build_object('sub', v_user_id, 'email', lower(p_email)),
-            'email',
-            NOW(),
-            NOW(),
-            NOW()
-        );
     ELSE
         UPDATE auth.users
         SET 
@@ -776,21 +739,27 @@ BEGIN
             raw_user_meta_data = jsonb_build_object('full_name', p_full_name, 'role', p_role),
             updated_at = NOW()
         WHERE id = v_user_id;
-
-        IF NOT EXISTS (SELECT 1 FROM auth.identities WHERE user_id = v_user_id) THEN
-            INSERT INTO auth.identities (
-                id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
-            ) VALUES (
-                v_user_id,
-                v_user_id,
-                jsonb_build_object('sub', v_user_id, 'email', lower(p_email)),
-                'email',
-                NOW(),
-                NOW(),
-                NOW()
-            );
-        END IF;
     END IF;
+
+    -- Clean up any existing identity to avoid constraint conflict
+    DELETE FROM auth.identities 
+    WHERE user_id = v_user_id 
+       OR (provider = 'email' AND provider_id = v_user_id::text)
+       OR (provider = 'email' AND lower(identity_data->>'email') = lower(p_email));
+
+    -- Insert into auth.identities (Required by GoTrue, includes provider_id)
+    INSERT INTO auth.identities (
+        id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+    ) VALUES (
+        gen_random_uuid(),
+        v_user_id,
+        jsonb_build_object('sub', v_user_id::text, 'email', lower(p_email)),
+        'email',
+        v_user_id::text,
+        NOW(),
+        NOW(),
+        NOW()
+    );
 
     -- Upsert public.user_profiles
     INSERT INTO public.user_profiles (id, email, full_name, role, location_id, created_at)

@@ -23,7 +23,6 @@ import {
   User,
   Info
 } from 'lucide-react';
-import { mockTransactions } from '../mockData';
 
 export function AdjustmentView() {
   const { t, language } = useLanguage();
@@ -32,6 +31,7 @@ export function AdjustmentView() {
     inventory, 
     items, 
     locations, 
+    transactions,
     recordAdjustment, 
     refreshInventory 
   } = useInventoryContext();
@@ -108,7 +108,7 @@ export function AdjustmentView() {
 
   // Recent Adjustment Transactions History
   const recentAdjustments = useMemo(() => {
-    return mockTransactions
+    return (transactions || [])
       .filter(tx => tx.type === 'ADJUSTMENT')
       .filter(tx => {
         if (!historySearch.trim()) return true;

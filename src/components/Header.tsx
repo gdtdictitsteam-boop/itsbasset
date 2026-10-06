@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext } from '../contexts/LocationContext';
-import { Settings, LogOut, ShieldCheck, Building2, Loader2 } from 'lucide-react';
+import { Settings, LogOut, ShieldCheck, Building2, Loader2, Database } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { SupabaseConnectionModal } from './SupabaseConnectionModal';
 
 export function Header() {
   const { language, t } = useLanguage();
   const auth = useAuth();
   const locationCtx = useLocationContext();
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
 
   const user = auth?.user ?? null;
   const userRole = auth?.userRole ?? 'CentralAdmin';
@@ -20,6 +23,8 @@ export function Header() {
 
   const selectedLocation = locationCtx?.selectedLocation;
   const locationCode = selectedLocation?.code || selectedLocation?.id || 'Branch';
+
+  const isDbConfigured = isSupabaseConfigured();
 
   const handleOpenSettings = () => {
     if (typeof setIsSettingsOpen === 'function') {
@@ -34,6 +39,7 @@ export function Header() {
   };
 
   return (
+    <>
     <header className="bg-[#A3D8C2] text-[#03291E] flex items-center justify-between px-6 py-3 shadow-sm border-b-4 border-[#6EC8A0] shrink-0 font-siemreap">
       <div className="flex items-center space-x-4">
         <div className="bg-[#03291E] p-1 rounded-md shadow-xs">
@@ -49,6 +55,23 @@ export function Header() {
       </div>
 
       <div className="flex items-center space-x-3">
+        {/* Supabase Database Connection Status Button */}
+        <button
+          type="button"
+          onClick={() => setIsDbModalOpen(true)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs hover:shadow-xs ${
+            isDbConfigured 
+              ? 'bg-emerald-950/15 border-emerald-800/30 text-emerald-950 hover:bg-emerald-950/20' 
+              : 'bg-amber-500/20 border-amber-600/40 text-amber-950 hover:bg-amber-500/30 animate-pulse'
+          }`}
+          title="ចុចដើម្បីពិនិត្យស្ថានភាព ឬកំណត់ការតភ្ជាប់ Supabase Database"
+        >
+          <Database size={14} className={isDbConfigured ? 'text-emerald-800' : 'text-amber-700'} />
+          <span className="hidden md:inline font-mono text-[11px]">
+            {isDbConfigured ? '🟢 Supabase DB' : '🟡 Connect DB'}
+          </span>
+        </button>
+
         {/* Real User Role & Identity Badge */}
         <div className="flex items-center space-x-2.5 bg-[#03291E]/10 px-3 py-1.5 rounded-xl border border-[#03291E]/20 shadow-2xs">
           <div className="w-8 h-8 rounded-full bg-[#03291E] text-[#A3D8C2] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
@@ -105,5 +128,11 @@ export function Header() {
         </button>
       </div>
     </header>
+
+    <SupabaseConnectionModal 
+      isOpen={isDbModalOpen} 
+      onClose={() => setIsDbModalOpen(false)} 
+    />
+    </>
   );
 }

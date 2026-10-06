@@ -1,61 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, AlertTriangle, Database, Info, Copy, ShieldCheck, ChevronUp, ExternalLink } from 'lucide-react';
+import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, AlertTriangle, Database, Info } from 'lucide-react';
 
-import { mockItems, mockInventory, mockLocations } from '../mockData';
-import { supabase, insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured } from '../lib/supabase';
+import { insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured } from '../lib/supabase';
 import { useInventoryContext } from '../contexts/InventoryContext';
 import { formatLocationOption } from '../contexts/LocationContext';
 
-export const RLS_FIX_SQL = `-- =========================================================================
--- កូដ SQL សម្រាប់បើកសិទ្ធិ RLS លើ Table items ក្នុង Supabase SQL Editor
--- (អនុញ្ញាតឱ្យ Authenticated Users / CentralAdmin អាច SELECT, INSERT, UPDATE, DELETE)
--- =========================================================================
-
--- 1. បើកដំណើរការ Row Level Security លើ Table items
-ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
-
--- 2. លុប Policies ចាស់ៗដែលអាចបង្កការរាំងស្ទះ
-DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-DROP POLICY IF EXISTS "Allow read items" ON public.items;
-DROP POLICY IF EXISTS "Authenticated users full access on items" ON public.items;
-DROP POLICY IF EXISTS "Enable all for authenticated users only" ON public.items;
-DROP POLICY IF EXISTS "Allow authenticated users to manage items" ON public.items;
-DROP POLICY IF EXISTS "Allow anon read items" ON public.items;
-
--- 3. បង្កើត Policy អនុញ្ញាតពេញលេញ (SELECT, INSERT, UPDATE, DELETE) សម្រាប់ Authenticated Users
-CREATE POLICY "Authenticated users full access on items" 
-ON public.items 
-FOR ALL 
-TO authenticated 
-USING (true) 
-WITH CHECK (true);
-
--- 4. បង្កើត Policy អនុញ្ញាតឱ្យ Anon Users អាចអានទិន្នន័យ (SELECT) បាន
-CREATE POLICY "Allow anon read items" 
-ON public.items 
-FOR SELECT 
-TO anon 
-USING (true);
-
--- 5. ផ្តល់សិទ្ធិពេញលេញ (GRANT ALL) លើ Table items
-GRANT ALL ON TABLE public.items TO authenticated;
-GRANT SELECT ON TABLE public.items TO anon;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
-
--- 6. បន្ថែម Columns បម្រុងទុក (ធានាថាឈ្មោះ Columns ត្រូវគ្នា ១០០%)
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS code VARCHAR(100);
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_kh VARCHAR(255);
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name_en VARCHAR(255);
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS name VARCHAR(255);
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS category VARCHAR(100);
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS unit VARCHAR(50);
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS min_stock INTEGER DEFAULT 0;
-ALTER TABLE public.items ADD COLUMN IF NOT EXISTS image_url TEXT;`;
-
 export function NewItemView() {
-  const { refreshInventory, addNewItemToContext } = useInventoryContext();
-  const [copiedSql, setCopiedSql] = useState(false);
-  const [showRlsSql, setShowRlsSql] = useState(false);
+  const { refreshInventory, addNewItemToContext, locations } = useInventoryContext();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [uploadingImageText, setUploadingImageText] = useState<string | null>(null);
@@ -69,7 +20,6 @@ export function NewItemView() {
     savedToSupabase: boolean;
     message: string;
     details?: string;
-    isRlsError?: boolean;
   } | null>(null);
 
   const [unitSearch, setUnitSearch] = useState('');
@@ -79,25 +29,6 @@ export function NewItemView() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isConfigured = isSupabaseConfigured();
-
-  const [locations, setLocations] = useState(isConfigured ? [] : mockLocations);
-
-  useEffect(() => {
-    async function fetchLocations() {
-      if (isConfigured) {
-        const { supabase } = await import('../lib/supabase');
-        const { data } = await supabase.from('locations').select('*');
-        if (data) setLocations(data as any);
-      }
-    }
-    fetchLocations();
-  }, [isConfigured]);
-
-  const copyRlsSql = () => {
-    navigator.clipboard.writeText(RLS_FIX_SQL);
-    setCopiedSql(true);
-    setTimeout(() => setCopiedSql(false), 2500);
-  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -198,304 +129,98 @@ export function NewItemView() {
     setSubmitResult(null);
     setUploadingImageText(null);
 
-    try {
-      const form = e.target as HTMLFormElement;
-      const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value.trim();
-      const brand = (form.elements.namedItem('brand') as HTMLInputElement).value.trim();
-      const minStock = parseInt((form.elements.namedItem('minStock') as HTMLInputElement).value || '0', 10);
-      const initialStock = parseInt((form.elements.namedItem('initialStock') as HTMLInputElement)?.value || '0', 10);
-      const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement)?.value || '1';
-      const description = (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || '';
+    const form = e.target as HTMLFormElement;
+    const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value.trim();
+    const brand = (form.elements.namedItem('brand') as HTMLInputElement).value.trim();
+    const minStock = parseInt((form.elements.namedItem('minStock') as HTMLInputElement).value || '0', 10);
+    const initialStock = parseInt((form.elements.namedItem('initialStock') as HTMLInputElement)?.value || '0', 10);
+    const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement)?.value || '1';
+    const description = (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || '';
 
-      const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
-      const selectedUnit = unitSearch.trim() || 'គ្រឿង';
+    const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
+    const selectedUnit = unitSearch.trim() || 'គ្រឿង';
 
-      console.log('[NewItemView Form Submit] Attempting to insert new item into Supabase:', {
-        code: materialCode,
-        name_kh: materialName,
-        name_en: brand || materialName,
-        category: categoryName,
-        unit: selectedUnit,
-        min_stock: minStock,
-        initial_stock: initialStock,
-        location_id: locationId,
-        description
-      });
+    let finalImageUrl: string | undefined = undefined;
+    let storageNotice: string | undefined = undefined;
 
-      let finalImageUrl: string | undefined = undefined;
-      let storageNotice: string | undefined = undefined;
-
-      // 1. Upload Image to Supabase Storage if file was provided
-      if (selectedImageFile) {
-        if (isConfigured) {
-          try {
-            setUploadingImageText('កំពុង Upload រូបភាពសម្ភារទៅកាន់ Supabase Storage (bucket: item_images)...');
-            console.log('[NewItemView] Uploading image file to Supabase storage...');
-            const uploadRes = await uploadItemImageToStorage(selectedImageFile);
-            if (uploadRes.publicUrl) {
-              finalImageUrl = uploadRes.publicUrl;
-              console.log('[NewItemView] Image uploaded to Storage:', finalImageUrl);
-            } else {
-              console.warn('[NewItemView] Storage image upload notice:', uploadRes.errorMessage);
-              storageNotice = uploadRes.errorMessage || 'មិនអាច Upload រូបភាពទៅ Supabase Storage បានឡើយ។';
-            }
-          } catch (uploadErr) {
-            console.warn('[NewItemView] Storage upload exception:', uploadErr);
-          }
-        } else {
-          finalImageUrl = imagePreview || undefined;
-        }
-      }
-
-      setUploadingImageText(null);
-
-      // 2. Perform insert directly with supabase.from('items').insert(...)
+    // 1. Upload Image to Supabase Storage if file was provided
+    if (selectedImageFile) {
       if (isConfigured) {
-        // Construct primary payload with exact column names from Table `items`
-        const primaryPayload: Record<string, any> = {
-          code: materialCode.trim(),
-          name_kh: materialName.trim(),
-          name_en: brand.trim() || materialName.trim(),
-          category: categoryName,
-          unit: selectedUnit,
-          min_stock: minStock,
-        };
-        if (finalImageUrl) {
-          primaryPayload.image_url = finalImageUrl;
+        setUploadingImageText('កំពុង Upload រូបភាពសម្ភារទៅកាន់ Supabase Storage (bucket: item_images)...');
+        const uploadRes = await uploadItemImageToStorage(selectedImageFile);
+        if (uploadRes.publicUrl) {
+          finalImageUrl = uploadRes.publicUrl;
+        } else {
+          console.warn('Storage image upload notice:', uploadRes.errorMessage);
+          storageNotice = uploadRes.errorMessage || 'មិនអាច Upload រូបភាពទៅ Supabase Storage បានឡើយ។';
         }
-
-        console.log('[NewItemView] Calling supabase.from("items").insert(...) with columns:', primaryPayload);
-
-        let insertedItemData: any = null;
-        let insertItemError: any = null;
-
-        try {
-          const res = await supabase
-            .from('items')
-            .insert([primaryPayload])
-            .select()
-            .single();
-
-          insertedItemData = res.data;
-          insertItemError = res.error;
-          console.log('[NewItemView] Initial supabase.from("items").insert result:', { data: res.data, error: res.error });
-        } catch (callErr: any) {
-          console.error('[NewItemView] Direct call exception during supabase.from("items").insert:', callErr);
-          insertItemError = { message: callErr?.message || String(callErr) };
-        }
-
-        // Column Compatibility Resilience 1: If image_url column doesn't exist in Supabase table items
-        if (insertItemError && (insertItemError.code === 'PGRST204' || insertItemError.message?.includes('image_url'))) {
-          console.warn('[NewItemView] Column image_url not found in items table. Retrying insert without image_url...', insertItemError.message);
-          delete primaryPayload.image_url;
-          try {
-            const retryRes = await supabase
-              .from('items')
-              .insert([primaryPayload])
-              .select()
-              .single();
-            insertedItemData = retryRes.data;
-            insertItemError = retryRes.error;
-            console.log('[NewItemView] Retry without image_url result:', { data: retryRes.data, error: retryRes.error });
-          } catch (retryErr: any) {
-            insertItemError = { message: retryErr?.message || String(retryErr) };
-          }
-        }
-
-        // Column Compatibility Resilience 2: If table uses 'name' column instead of or in addition to 'name_kh'
-        if (insertItemError && (insertItemError.code === 'PGRST204' || insertItemError.message?.toLowerCase().includes('name'))) {
-          console.warn('[NewItemView] Column name_kh not found or table expects "name". Retrying with name column...', insertItemError.message);
-          const adaptedPayload: Record<string, any> = {
-            code: materialCode.trim(),
-            name: materialName.trim(),
-            name_kh: materialName.trim(),
-            name_en: brand.trim() || materialName.trim(),
-            category: categoryName,
-            unit: selectedUnit,
-            min_stock: minStock,
-            ...(finalImageUrl ? { image_url: finalImageUrl } : {})
-          };
-          try {
-            const retryName = await supabase.from('items').insert([adaptedPayload]).select().single();
-            if (!retryName.error && retryName.data) {
-              insertedItemData = retryName.data;
-              insertItemError = null;
-              console.log('[NewItemView] Retry with name column succeeded:', insertedItemData);
-            } else if (retryName.error?.code === 'PGRST204') {
-              // Try basic schema (code, name, category, unit, min_stock)
-              const simplePayload = {
-                code: materialCode.trim(),
-                name: materialName.trim(),
-                category: categoryName,
-                unit: selectedUnit,
-                min_stock: minStock,
-              };
-              const retrySimple = await supabase.from('items').insert([simplePayload]).select().single();
-              if (!retrySimple.error && retrySimple.data) {
-                insertedItemData = retrySimple.data;
-                insertItemError = null;
-                console.log('[NewItemView] Retry with simple schema succeeded:', insertedItemData);
-              }
-            }
-          } catch (nameErr) {
-            console.warn('[NewItemView] Exception during name column retry:', nameErr);
-          }
-        }
-
-        // Column Compatibility Resilience 3: If table uses 'sku' column instead of 'code'
-        if (insertItemError && (insertItemError.code === 'PGRST204' || insertItemError.message?.toLowerCase().includes('code'))) {
-          console.warn('[NewItemView] Column "code" not found. Retrying with "sku" column...', insertItemError.message);
-          const skuPayload: Record<string, any> = {
-            sku: materialCode.trim(),
-            name: materialName.trim(),
-            name_kh: materialName.trim(),
-            category: categoryName,
-            unit: selectedUnit,
-            min_stock: minStock,
-          };
-          try {
-            const retrySku = await supabase.from('items').insert([skuPayload]).select().single();
-            if (!retrySku.error && retrySku.data) {
-              insertedItemData = retrySku.data;
-              insertItemError = null;
-              console.log('[NewItemView] Retry with sku column succeeded:', insertedItemData);
-            }
-          } catch (skuErr) {
-            console.warn('[NewItemView] Exception during sku column retry:', skuErr);
-          }
-        }
-
-        // Check if insertion was rejected by Supabase
-        if (insertItemError) {
-          console.error('[NewItemView] CRITICAL: supabase.from("items").insert failed:', {
-            code: insertItemError.code,
-            message: insertItemError.message,
-            details: insertItemError.details,
-            hint: insertItemError.hint
-          });
-
-          const isRls = insertItemError.code === '42501' || 
-                        insertItemError.message?.toLowerCase().includes('row-level security') || 
-                        insertItemError.message?.toLowerCase().includes('policy') ||
-                        insertItemError.details?.toLowerCase().includes('policy');
-
-          let errMsg = insertItemError.message || 'បរាជ័យក្នុងការរក្សាទុកសម្ភារៈទៅក្នុង Supabase Database!';
-          let errDetails = `Error Code: ${insertItemError.code || 'UNKNOWN'} | Details: ${insertItemError.details || insertItemError.hint || ''}`;
-
-          if (insertItemError.code === '23505') {
-            errMsg = `លេខកូដសម្ភារ "${materialCode}" មានរួចហើយនៅក្នុង Supabase (Duplicate SKU/Code)!`;
-            errDetails = 'សូមផ្លាស់ប្តូរលេខកូដសម្ភារ ឬចុចប៊ូតុង «បង្កើតកូដថ្មី»។';
-          } else if (isRls) {
-            errMsg = 'ជាប់រាំងស្ទះសិទ្ធិ Row Level Security (RLS Policy) លើ Table "items"!';
-            errDetails = 'Supabase បានបដិសេធសិទ្ធិ INSERT ដោយសារគ្មាន RLS Policy សម្រាប់ Authenticated Users។ សូមដំណើរការកូដ SQL បើកសិទ្ធិ RLS ក្នុង Supabase Dashboard -> SQL Editor (មើលកូដខាងក្រោម)។';
-            setShowRlsSql(true);
-          } else if (insertItemError.code === 'PGRST204' || insertItemError.message?.includes('Columns') || insertItemError.message?.includes('schema cache')) {
-            errMsg = 'រចនាសម្ព័ន្ធ Table "items" ក្នុង Supabase មិនត្រូវគ្នានឹងកូដ!';
-            errDetails = 'សូមប្រាកដថាតារាង items មាន column: code, name_kh (ឬ name), name_en, category, unit, min_stock';
-          }
-
-          setSubmitResult({
-            success: false,
-            savedToSupabase: false,
-            message: errMsg,
-            details: errDetails,
-            isRlsError: isRls,
-          });
-          return;
-        }
-
-        console.log('[NewItemView] SUCCESS! Item successfully inserted into Supabase items table:', insertedItemData);
-        const newItemId = insertedItemData.id;
-
-        // 3. Initialize inventory row in Supabase so item is linked to HQ
-        try {
-          const { data: hqLoc } = await supabase
-            .from('locations')
-            .select('id')
-            .or('type.eq.HQ,code.eq.HQ-ITSB,code.ilike.%HQ%')
-            .limit(1)
-            .maybeSingle();
-
-          const targetLocId = hqLoc?.id || locationId;
-          console.log('[NewItemView] Initializing inventory row in Supabase:', { location_id: targetLocId, item_id: newItemId, quantity: initialStock });
-          await supabase.from('inventory').upsert([{
-            location_id: targetLocId,
-            item_id: newItemId,
-            quantity: initialStock || 0,
-            last_updated: new Date().toISOString()
-          }], { onConflict: 'location_id,item_id' });
-        } catch (invErr) {
-          console.warn('[NewItemView] Non-fatal notice when linking initial inventory row:', invErr);
-        }
-
-        // 4. Update React Context immediately
-        addNewItemToContext({
-          id: newItemId,
-          code: insertedItemData.code || insertedItemData.sku || materialCode,
-          name_kh: insertedItemData.name_kh || insertedItemData.name || materialName,
-          name_en: insertedItemData.name_en || insertedItemData.name || brand || materialName,
-          category: categoryName,
-          unit: selectedUnit,
-          min_stock: minStock,
-          image_url: finalImageUrl || imagePreview || undefined,
-        }, initialStock, locationId);
-
-        // 5. Automatically re-fetch live items & inventory from Supabase so all views update immediately
-        try {
-          console.log('[NewItemView] Re-fetching inventory and items from Supabase immediately...');
-          await refreshInventory();
-          console.log('[NewItemView] refreshInventory completed successfully! Inventory table now updated.');
-        } catch (e) {
-          console.warn('[NewItemView] refreshInventory error:', e);
-        }
-
-        let successMsg = `បានរក្សាទុកក្នុង Supabase Database (Table: items) ជោគជ័យ! (ID: ${newItemId}, Code: ${materialCode})`;
-        if (finalImageUrl) {
-          successMsg += ' | រូបភាពត្រូវបាន Upload ទៅកាន់ Storage bucket (item_images) រួចរាល់។';
-        }
-        setSubmitResult({
-          success: true,
-          savedToSupabase: true,
-          message: successMsg,
-          details: storageNotice,
-        });
-        resetForm();
-
       } else {
-        // Fallback when Supabase credentials are not in .env
-        console.warn('[NewItemView] Supabase is not configured. Saving to local state context...');
-        const newItemId = Math.random().toString(36).substring(7);
-        addNewItemToContext({
-          id: newItemId,
-          code: materialCode,
-          name_kh: materialName,
-          name_en: brand || materialName,
-          category: categoryName,
-          unit: selectedUnit,
-          min_stock: minStock,
-          image_url: finalImageUrl || imagePreview || undefined,
-        }, initialStock, locationId);
-        await refreshInventory();
-
-        setSubmitResult({
-          success: true,
-          savedToSupabase: false,
-          message: `បានបញ្ចូលសម្ភារៈថ្មីក្នុង Local Storage (កូដ: ${materialCode})`,
-          details: 'ប្រព័ន្ធមិនទាន់បានកំណត់ Supabase Credentials (.env) នៅឡើយទេ។',
-        });
-        resetForm();
+        // Local mode preview fallback
+        finalImageUrl = imagePreview || undefined;
       }
-    } catch (err: any) {
-      console.error('[NewItemView] Unhandled exception in handleSubmit:', err);
+    }
+
+    setUploadingImageText(null);
+
+    // 2. Send data to Supabase (with image_url)
+    const res = await insertItemToSupabase({
+      code: materialCode,
+      name_kh: materialName,
+      name_en: brand || materialName,
+      category: categoryName,
+      unit: selectedUnit,
+      min_stock: minStock,
+      initial_stock: initialStock,
+      location_id: locationId,
+      remark: description || 'បញ្ចូលសម្ភារថ្មី',
+      recorded_by: 'Admin-GDT',
+      image_url: finalImageUrl,
+    });
+
+    // 3. Add to context and local storage immediately
+    const newItemId = res.item?.id || Math.random().toString(36).substring(7);
+
+    addNewItemToContext({
+      id: newItemId,
+      code: materialCode,
+      name_kh: materialName,
+      name_en: brand || materialName,
+      category: categoryName,
+      unit: selectedUnit,
+      min_stock: minStock,
+      image_url: finalImageUrl || imagePreview || undefined,
+    }, initialStock, locationId);
+
+    try {
+      await refreshInventory();
+    } catch (e) {
+      console.warn('Could not refresh inventory context:', e);
+    }
+
+    setIsSubmitting(false);
+
+    if (res.success && res.savedToSupabase) {
+      let successMsg = `រក្សាទុកក្នុង Supabase Database ជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`;
+      if (finalImageUrl) {
+        successMsg += ' | រូបភាពត្រូវបាន Upload ទៅកាន់ Storage bucket (item_images) និងរក្សាទុក URL រួចរាល់។';
+      }
       setSubmitResult({
-        success: false,
-        savedToSupabase: false,
-        message: 'មានបញ្ហាមិនរំពឹងទុកពេលបញ្ចូលសម្ភារៈ: ' + (err?.message || err?.toString()),
-        details: err?.stack || err?.toString(),
+        success: true,
+        savedToSupabase: true,
+        message: successMsg,
+        details: storageNotice,
       });
-    } finally {
-      setIsSubmitting(false);
-      setUploadingImageText(null);
+      resetForm();
+    } else {
+      setSubmitResult({
+        success: true,
+        savedToSupabase: false,
+        message: `បានបញ្ចូលសម្ភារៈថ្មីជោគជ័យ! (កូដ: ${materialCode})`,
+        details: isConfigured 
+          ? (res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ដោយសារបញ្ហាភ្ជាប់ Supabase។')
+          : 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ព្រោះ Supabase មិនទាន់ភ្ជាប់។',
+      });
+      resetForm();
     }
   };
 
@@ -551,29 +276,10 @@ export function NewItemView() {
                     💡 {submitResult.details}
                   </p>
                 )}
-                {submitResult.isRlsError && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowRlsSql(true);
-                      copyRlsSql();
-                    }}
-                    className="mt-2 text-xs font-bold text-amber-950 bg-amber-200/90 hover:bg-amber-300 px-3 py-1.5 rounded-lg border border-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Copy size={13} />
-                    <span>{copiedSql ? 'បានចម្លងកូដ SQL រួចរាល់!' : 'ចម្លងកូដ SQL បើកសិទ្ធិ RLS ភ្លាមៗ'}</span>
-                  </button>
-                )}
-                {!submitResult.savedToSupabase && !submitResult.isRlsError && (
+                {!submitResult.savedToSupabase && (
                   <div className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1.5 mt-2 bg-emerald-100/70 p-2 rounded border border-emerald-200">
                     <Info size={14} />
                     <span>ទិន្នន័យសម្ភារត្រូវបានបញ្ចូលក្នុង Local Inventory ប្រព័ន្ធរួចរាល់សម្រាប់តេស្តប្រើប្រាស់!</span>
-                  </div>
-                )}
-                {submitResult.success && (
-                  <div className="text-[11px] font-medium text-teal-800 flex items-center gap-1.5 mt-2 bg-teal-100/60 p-2 rounded border border-teal-200">
-                    <Check size={14} className="text-teal-700" />
-                    <span>ទិន្នន័យត្រូវបាន Fetch និង Update ចូលផ្ទាំង «ស្តុកបច្ចុប្បន្ន (Inventory)» ដោយស្វ័យប្រវត្តរួចរាល់។</span>
                   </div>
                 )}
               </div>
@@ -587,60 +293,6 @@ export function NewItemView() {
           </div>
         </div>
       )}
-
-      {/* RLS Policy Helper Card & SQL Script Copy Box */}
-      <div className="bg-white border border-teal-200/90 rounded-2xl p-4 shadow-2xs">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-teal-100 text-teal-800 rounded-lg">
-              <ShieldCheck size={18} />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                <span>កូដ SQL បើកសិទ្ធិ RLS លើ Table "items" (Supabase RLS Policy)</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-teal-100 text-teal-800 font-bold">
-                  SQL Editor
-                </span>
-              </h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                ដំណើរការកូដនេះក្នុង Supabase Dashboard -&gt; SQL Editor ដើម្បីអនុញ្ញាតឱ្យ Authenticated Users (CentralAdmin) អាច SELECT, INSERT, UPDATE, DELETE ដោយគ្មានការរាំងស្ទះ។
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={copyRlsSql}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-700 text-white hover:bg-teal-800 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
-            >
-              {copiedSql ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
-              <span>{copiedSql ? 'បានចម្លងរួចរាល់!' : 'ចម្លងកូដ SQL'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowRlsSql(!showRlsSql)}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
-            >
-              <span>{showRlsSql ? 'លាក់កូដ' : 'មើលកូដ'}</span>
-              <ChevronDown size={14} className={`transition-transform duration-200 ${showRlsSql ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
-        </div>
-
-        {showRlsSql && (
-          <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
-              <span>-- SQL Script សម្រាប់ដំណើការក្នុង Supabase Dashboard -&gt; SQL Editor</span>
-              <span className="text-[10px] text-teal-700 font-bold bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                1-Click Copy Ready
-              </span>
-            </div>
-            <pre className="p-3 bg-slate-900 text-emerald-300 rounded-xl text-[11px] font-mono overflow-x-auto max-h-60 leading-relaxed border border-slate-800">
-              <code>{RLS_FIX_SQL}</code>
-            </pre>
-          </div>
-        )}
-      </div>
 
       <div className="bg-white rounded-2xl shadow-xs border border-slate-200/90 overflow-hidden">
         {/* Header Section */}

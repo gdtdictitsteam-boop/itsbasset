@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
-import { mockTransactions, mockLocations } from '../mockData';
-import { supabase, isSupabaseConfigured, fetchAllRows } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -52,131 +51,27 @@ export function AuditTrailView() {
 
     if (isSupabaseConfigured()) {
       try {
-        // If user is BranchUser, RLS automatically restricts rows on backend,
-        // but we can also filter explicitly by location if desired
-        // Use fetchAllRows to bypass the 1000 rows limit on Supabase Free Plan
-        const data = await fetchAllRows('transactions', '*', 'date', false);
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .order('date', { ascending: false });
 
-        setTransactions(data || []);
+        if (error) {
+          console.error('Error fetching audit trail from Supabase:', error);
+          setTransactions([]);
+        } else {
+          setTransactions(data || []);
+        }
       } catch (err: any) {
-        console.error('Error fetching audit trail from Supabase:', err);
-        loadMockTransactions();
+        console.error('Exception fetching audit trail from Supabase:', err);
+        setTransactions([]);
       } finally {
         setLoading(false);
       }
     } else {
-      loadMockTransactions();
+      setTransactions([]);
       setLoading(false);
     }
-  };
-
-  const loadMockTransactions = () => {
-    // Standard mock transactions + additional rich sample records
-    let baseData = [...mockTransactions];
-
-    if (baseData.length < 5) {
-      baseData = [
-        {
-          id: 'tx-001',
-          date: new Date(Date.now() - 86400000 * 1).toISOString(),
-          type: 'HANDOVER',
-          from_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-          from_location_id: 'loc-hq-1',
-          to_location: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)',
-          to_location_id: 'loc-branch-1',
-          item_code: 'T-001',
-          item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
-          quantity: 2,
-          unit: 'គ្រឿង',
-          recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
-          status: 'RECEIVED',
-          document_url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80',
-          remark: 'ផ្ទេរសម្ភារៈបច្ចេកទេសជូនសាខា ៧មករា'
-        },
-        {
-          id: 'tx-002',
-          date: new Date(Date.now() - 86400000 * 2).toISOString(),
-          type: 'STOCK_IN',
-          from_location: 'ក្រុមហ៊ុនផ្គត់ផ្គង់ (Supplier Corp)',
-          to_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-          to_location_id: 'loc-hq-1',
-          item_code: 'T-002',
-          item_name_kh: 'ស្វានបុកម៉ាក BOSCH Rotary Hammer (GBH 2-26 DRE)',
-          quantity: 10,
-          unit: 'គ្រឿង',
-          recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
-          status: 'RECEIVED',
-          document_url: 'https://raw.githubusercontent.com/mozilla/pdf.js/master/examples/learning/helloworld.pdf',
-          remark: 'ទិញចូលស្តុកកណ្តាលប្រចាំត្រីមាស'
-        },
-        {
-          id: 'tx-003',
-          date: new Date(Date.now() - 86400000 * 3).toISOString(),
-          type: 'STOCK_OUT',
-          from_location: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)',
-          from_location_id: 'loc-branch-1',
-          to_location: 'ការិយាល័យបច្ចេកវិទ្យាព័ត៌មាន',
-          to_location_id: 'loc-branch-1',
-          item_code: 'T-001',
-          item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
-          quantity: 1,
-          unit: 'គ្រឿង',
-          recorded_by: 'មន្ត្រីសាខា ៧មករា',
-          status: 'RECEIVED',
-          document_url: null,
-          remark: 'ដកប្រើប្រាស់សម្រាប់ការងារជួសជុល Network'
-        },
-        {
-          id: 'tx-004',
-          date: new Date(Date.now() - 86400000 * 4).toISOString(),
-          type: 'ADJUSTMENT',
-          from_location: 'សាខាពន្ធដារខណ្ឌដង្កោ',
-          from_location_id: 'loc-branch-2',
-          to_location: 'សាខាពន្ធដារខណ្ឌដង្កោ',
-          to_location_id: 'loc-branch-2',
-          item_code: 'S-005',
-          item_name_kh: 'ម៉ាសពេទ្យ (Medical Mask)',
-          quantity: -2,
-          unit: 'ប្រអប់',
-          recorded_by: 'មន្ត្រីសាខា ដង្កោ',
-          status: 'RECEIVED',
-          document_url: null,
-          remark: 'កែតម្រូវស្តុកដោយសារខូចខាតអំឡុងពេលដឹកជញ្ជូន'
-        },
-        {
-          id: 'tx-005',
-          date: new Date(Date.now() - 86400000 * 5).toISOString(),
-          type: 'HANDOVER',
-          from_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-          from_location_id: 'loc-hq-1',
-          to_location: 'សាខាពន្ធដារខណ្ឌដង្កោ',
-          to_location_id: 'loc-branch-2',
-          item_code: 'C-003',
-          item_name_kh: 'ខ្សែកាបបណ្តាញ Network Cable CAT6 Patch Cord (3m)',
-          quantity: 20,
-          unit: 'ខ្សែ',
-          recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
-          status: 'COMPLETED',
-          document_url: null,
-          remark: 'ផ្ទេរខ្សែកាបបណ្តាញសម្រាប់ដំឡើងម៉ាស៊ីនបោះពុម្ព'
-        }
-      ];
-    }
-
-    // Apply RLS rule to Mock Data:
-    // If BranchUser, only show transactions where branch matches selectedLocationId or user's assigned branch
-    if (isBranchUser && selectedLocationId) {
-      const selectedLocObj = mockLocations.find(l => l.id === selectedLocationId);
-      const locNameKh = selectedLocObj?.name_kh || '';
-
-      baseData = baseData.filter(tx => 
-        tx.from_location_id === selectedLocationId || 
-        tx.to_location_id === selectedLocationId ||
-        (locNameKh && (tx.from_location?.includes(locNameKh) || tx.to_location?.includes(locNameKh)))
-      );
-    }
-
-    setTransactions(baseData);
   };
 
   useEffect(() => {

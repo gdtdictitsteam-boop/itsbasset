@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 
 
 -- =========================================================================
--- STEP 2: ROW LEVEL SECURITY (RLS) POLICIES
+-- STEP 2: ROW LEVEL SECURITY (RLS) POLICIES & RBAC BRANCH ISOLATION
 -- =========================================================================
 
 -- Enable RLS
@@ -79,22 +79,89 @@ ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- Allow universal full access on operational tables to ensure frontend works seamlessly
-DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-CREATE POLICY "Allow all access on items" ON public.items FOR ALL USING (true) WITH CHECK (true);
+-- Helper functions for checking RBAC in database
+CREATE OR REPLACE FUNCTION public.is_central_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT')
+  ) OR (auth.jwt() ->> 'role') IN ('CentralAdmin', 'Admin-GDT');
+$$;
 
-DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
-CREATE POLICY "Allow all access on locations" ON public.locations FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow all access on inventory" ON public.inventory;
-CREATE POLICY "Allow all access on inventory" ON public.inventory FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow all access on transactions" ON public.transactions;
-CREATE POLICY "Allow all access on transactions" ON public.transactions FOR ALL USING (true) WITH CHECK (true);
+CREATE OR REPLACE FUNCTION public.get_user_location_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+  SELECT location_id FROM public.user_profiles
+  WHERE id = auth.uid();
+$$;
 
 -- User Profiles Policies
-DROP POLICY IF EXISTS "Allow all access on user_profiles" ON public.user_profiles;
-CREATE POLICY "Allow all access on user_profiles" ON public.user_profiles FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "CentralAdmin full access on user_profiles" ON public.user_profiles;
+CREATE POLICY "CentralAdmin full access on user_profiles"
+ON public.user_profiles FOR ALL TO authenticated
+USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "Users view own profile" ON public.user_profiles;
+CREATE POLICY "Users view own profile"
+ON public.user_profiles FOR SELECT TO authenticated
+USING (auth.uid() = id);
+
+-- Inventory Policies (BranchUser locked to assigned branch)
+DROP POLICY IF EXISTS "CentralAdmin full access on inventory" ON public.inventory;
+CREATE POLICY "CentralAdmin full access on inventory"
+ON public.inventory FOR ALL TO authenticated
+USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "BranchUser view assigned location inventory only" ON public.inventory;
+CREATE POLICY "BranchUser view assigned location inventory only"
+ON public.inventory FOR SELECT TO authenticated
+USING (public.is_central_admin() OR location_id = public.get_user_location_id());
+
+DROP POLICY IF EXISTS "BranchUser update assigned location inventory only" ON public.inventory;
+CREATE POLICY "BranchUser update assigned location inventory only"
+ON public.inventory FOR UPDATE TO authenticated
+USING (public.is_central_admin() OR location_id = public.get_user_location_id())
+WITH CHECK (public.is_central_admin() OR location_id = public.get_user_location_id());
+
+-- Transactions Policies (BranchUser sees & records only own branch transactions)
+DROP POLICY IF EXISTS "CentralAdmin full access on transactions" ON public.transactions;
+CREATE POLICY "CentralAdmin full access on transactions"
+ON public.transactions FOR ALL TO authenticated
+USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
+
+DROP POLICY IF EXISTS "BranchUser view own branch transactions" ON public.transactions;
+CREATE POLICY "BranchUser view own branch transactions"
+ON public.transactions FOR SELECT TO authenticated
+USING (
+    public.is_central_admin()
+    OR from_location_id = public.get_user_location_id()
+    OR to_location_id = public.get_user_location_id()
+);
+
+DROP POLICY IF EXISTS "BranchUser insert own branch transactions" ON public.transactions;
+CREATE POLICY "BranchUser insert own branch transactions"
+ON public.transactions FOR INSERT TO authenticated
+WITH CHECK (
+    public.is_central_admin()
+    OR (
+        type IN ('STOCK_OUT', 'ADJUSTMENT') 
+        AND (from_location_id = public.get_user_location_id() OR to_location_id = public.get_user_location_id())
+    )
+);
+
+-- Public read on catalog items and locations
+DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
+CREATE POLICY "Allow all access on items" ON public.items FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
+CREATE POLICY "Allow all access on locations" ON public.locations FOR SELECT TO authenticated USING (true);
 
 
 -- =========================================================================
@@ -205,7 +272,7 @@ END;
 $$;
 
 
--- Function 2: handle_branch_handover (Deduct from HQ, Status PENDING)
+-- Function 2: handle_branch_handover (Direct Handover: Deducts from HQ, Adds to Branch Immediately, Status COMPLETED)
 CREATE OR REPLACE FUNCTION public.handle_branch_handover(
     p_from_location UUID,
     p_to_location UUID,
@@ -220,6 +287,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_available_qty INT;
+    v_new_dest_qty INT;
     v_transaction_id UUID;
     v_item_code VARCHAR;
     v_item_name_kh VARCHAR;
@@ -248,20 +316,30 @@ BEGIN
         last_updated = NOW()
     WHERE location_id = p_from_location AND item_id = p_item_id;
 
-    -- 2. Record transaction with status = 'PENDING'
+    -- 2. Increment / Insert stock into target destination branch immediately (Auto Sync)
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+    VALUES (p_to_location, p_item_id, p_quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = public.inventory.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    RETURNING quantity INTO v_new_dest_qty;
+
+    -- 3. Record transaction with status = 'COMPLETED'
     INSERT INTO public.transactions (
         type, from_location_id, to_location_id, item_id, item_code, 
         item_name_kh, quantity, unit, recorded_by, remark, status
     ) VALUES (
         'HANDOVER', p_from_location, p_to_location, p_item_id, v_item_code, 
-        v_item_name_kh, p_quantity, v_item_unit, p_recorded_by, p_remark, 'PENDING'
+        v_item_name_kh, p_quantity, v_item_unit, p_recorded_by, p_remark, 'COMPLETED'
     )
     RETURNING id INTO v_transaction_id;
 
     RETURN jsonb_build_object(
         'success', true,
         'transaction_id', v_transaction_id,
-        'status', 'PENDING'
+        'new_branch_quantity', v_new_dest_qty,
+        'status', 'COMPLETED'
     );
 END;
 $$;
@@ -594,3 +672,221 @@ CROSS JOIN public.items i
 WHERE l.code = 'HQ-ITSB'
 ON CONFLICT (location_id, item_id) DO UPDATE 
 SET quantity = EXCLUDED.quantity, last_updated = NOW();
+
+-- =========================================================================
+-- STEP 6: SUPABASE AUTH USERS & PASSWORD RPC FUNCTION
+-- ប្រព័ន្ធគ្រប់គ្រងសិទ្ធិ និងគណនីមន្ត្រីសម្រាប់ Login (GDT Inventory Management)
+-- Default Password សម្រាប់គណនីទាំងអស់៖ GDT@2026
+-- =========================================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Helper Stored Procedure: create_or_update_gdt_user
+CREATE OR REPLACE FUNCTION public.create_or_update_gdt_user(
+    p_email TEXT,
+    p_password TEXT,
+    p_full_name TEXT,
+    p_role TEXT,
+    p_location_code TEXT
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_encrypted_pwd TEXT;
+    v_location_id UUID;
+BEGIN
+    v_encrypted_pwd := crypt(p_password, gen_salt('bf'));
+
+    SELECT id INTO v_location_id 
+    FROM public.locations 
+    WHERE code = p_location_code OR id::text = p_location_code
+    LIMIT 1;
+
+    SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = lower(p_email);
+
+    IF v_user_id IS NULL THEN
+        v_user_id := gen_random_uuid();
+
+        INSERT INTO auth.users (
+            instance_id, id, aud, role, email, encrypted_password,
+            email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+            created_at, updated_at, confirmation_token, recovery_token
+        ) VALUES (
+            '00000000-0000-0000-0000-000000000000',
+            v_user_id,
+            'authenticated',
+            'authenticated',
+            lower(p_email),
+            v_encrypted_pwd,
+            NOW(),
+            '{"provider":"email","providers":["email"]}'::jsonb,
+            jsonb_build_object('full_name', p_full_name, 'role', p_role),
+            NOW(),
+            NOW(),
+            '',
+            ''
+        );
+    ELSE
+        UPDATE auth.users
+        SET 
+            encrypted_password = v_encrypted_pwd,
+            email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+            raw_app_meta_data = '{"provider":"email","providers":["email"]}'::jsonb,
+            raw_user_meta_data = jsonb_build_object('full_name', p_full_name, 'role', p_role),
+            updated_at = NOW()
+        WHERE id = v_user_id;
+    END IF;
+
+    -- Clean up any existing identity to avoid constraint conflict
+    DELETE FROM auth.identities 
+    WHERE user_id = v_user_id 
+       OR (provider = 'email' AND provider_id = v_user_id::text)
+       OR (provider = 'email' AND lower(identity_data->>'email') = lower(p_email));
+
+    -- Insert into auth.identities (Required by GoTrue, includes provider_id)
+    INSERT INTO auth.identities (
+        id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+    ) VALUES (
+        gen_random_uuid(),
+        v_user_id,
+        jsonb_build_object('sub', v_user_id::text, 'email', lower(p_email)),
+        'email',
+        v_user_id::text,
+        NOW(),
+        NOW(),
+        NOW()
+    );
+
+    -- Upsert public.user_profiles
+    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, created_at)
+    VALUES (
+        v_user_id,
+        lower(p_email),
+        p_full_name,
+        p_role,
+        v_location_id,
+        NOW()
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET 
+        email = EXCLUDED.email,
+        full_name = EXCLUDED.full_name,
+        role = EXCLUDED.role,
+        location_id = EXCLUDED.location_id;
+
+    RETURN v_user_id;
+END;
+$$;
+
+-- Stored Procedure for Frontend Admin RPC call
+CREATE OR REPLACE FUNCTION public.admin_set_user_password(
+    p_email TEXT,
+    p_password TEXT,
+    p_full_name TEXT DEFAULT NULL,
+    p_role TEXT DEFAULT NULL,
+    p_location_id TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_user_id UUID;
+BEGIN
+    IF p_password IS NULL OR length(trim(p_password)) < 6 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Password must be at least 6 characters');
+    END IF;
+
+    v_user_id := public.create_or_update_gdt_user(
+        p_email,
+        p_password,
+        COALESCE(p_full_name, split_part(p_email, '@', 1)),
+        COALESCE(p_role, 'BranchUser'),
+        COALESCE(p_location_id, '2')
+    );
+
+    RETURN jsonb_build_object(
+        'success', true, 
+        'user_id', v_user_id, 
+        'email', p_email,
+        'message', 'Password updated successfully in auth.users'
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_or_update_gdt_user TO postgres, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_set_user_password TO authenticated, service_role, anon;
+
+-- BATCH SEED ALL EXISTING OFFICERS WITH DEFAULT PASSWORD: GDT@2026
+DO $$
+BEGIN
+    -- 1. Central Admin (GDT ITS Team)
+    PERFORM public.create_or_update_gdt_user(
+        'gdt.dict.its.team@gmail.com',
+        'GDT@2026',
+        'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS Team)',
+        'CentralAdmin',
+        'HQ-ITSB'
+    );
+
+    -- 2. Central Admin (Admin ITS)
+    PERFORM public.create_or_update_gdt_user(
+        'admin.its@tax.gov.kh',
+        'GDT@2026',
+        'មន្ត្រីកណ្តាល ITSB (រដ្ឋបាល)',
+        'CentralAdmin',
+        'HQ-ITSB'
+    );
+
+    -- 3. Branch 7MK Officer (៧មករា)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.7mk@tax.gov.kh',
+        'GDT@2026',
+        'លោក សុខ ចាន់ថន (មន្ត្រី ៧មករា)',
+        'BranchUser',
+        '7MK'
+    );
+
+    -- 4. Branch CKM Officer (ចំការមន)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.ckm@tax.gov.kh',
+        'GDT@2026',
+        'កញ្ញា គង់ សុជាតា (មន្ត្រី ចំការមន)',
+        'BranchUser',
+        'CKM'
+    );
+
+    -- 5. Branch DPE Officer (ដូនពេញ)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.dpe@tax.gov.kh',
+        'GDT@2026',
+        'លោក វ៉ាន់ សុភ័ក្ត្រ (មន្ត្រី ដូនពេញ)',
+        'BranchUser',
+        'DPE'
+    );
+
+    -- 6. Branch TKO Officer (ទួលគោក)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.tko@tax.gov.kh',
+        'GDT@2026',
+        'លោក ហេង វិបុល (មន្ត្រី ទួលគោក)',
+        'BranchUser',
+        'TKO'
+    );
+
+    -- 7. Branch KPC Officer (កំពង់ចាម)
+    PERFORM public.create_or_update_gdt_user(
+        'officer.kpc@tax.gov.kh',
+        'GDT@2026',
+        'លោក ជ័យ វិចិត្រ (មន្ត្រី កំពង់ចាម)',
+        'BranchUser',
+        'KPC'
+    );
+END;
+$$;
+

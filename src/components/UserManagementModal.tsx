@@ -103,24 +103,6 @@ BEGIN
             ''
         );
 
-        -- Insert into auth.identities (Required by GoTrue)
-        INSERT INTO auth.identities (
-            id,
-            user_id,
-            identity_data,
-            provider,
-            last_sign_in_at,
-            created_at,
-            updated_at
-        ) VALUES (
-            v_user_id,
-            v_user_id,
-            jsonb_build_object('sub', v_user_id, 'email', lower(p_email)),
-            'email',
-            NOW(),
-            NOW(),
-            NOW()
-        );
     ELSE
         -- Update password and metadata if user exists
         UPDATE auth.users
@@ -131,28 +113,34 @@ BEGIN
             raw_user_meta_data = jsonb_build_object('full_name', p_full_name, 'role', p_role),
             updated_at = NOW()
         WHERE id = v_user_id;
-
-        -- Ensure auth.identities exists
-        IF NOT EXISTS (SELECT 1 FROM auth.identities WHERE user_id = v_user_id) THEN
-            INSERT INTO auth.identities (
-                id,
-                user_id,
-                identity_data,
-                provider,
-                last_sign_in_at,
-                created_at,
-                updated_at
-            ) VALUES (
-                v_user_id,
-                v_user_id,
-                jsonb_build_object('sub', v_user_id, 'email', lower(p_email)),
-                'email',
-                NOW(),
-                NOW(),
-                NOW()
-            );
-        END IF;
     END IF;
+
+    -- Clean up existing identity for this user/email to prevent conflicts
+    DELETE FROM auth.identities 
+    WHERE user_id = v_user_id 
+       OR (provider = 'email' AND provider_id = v_user_id::text)
+       OR (provider = 'email' AND lower(identity_data->>'email') = lower(p_email));
+
+    -- Insert into auth.identities (Required by GoTrue, includes provider_id)
+    INSERT INTO auth.identities (
+        id,
+        user_id,
+        identity_data,
+        provider,
+        provider_id,
+        last_sign_in_at,
+        created_at,
+        updated_at
+    ) VALUES (
+        gen_random_uuid(),
+        v_user_id,
+        jsonb_build_object('sub', v_user_id::text, 'email', lower(p_email)),
+        'email',
+        v_user_id::text,
+        NOW(),
+        NOW(),
+        NOW()
+    );
 
     -- Ensure public.user_profiles exists and is in sync
     INSERT INTO public.user_profiles (id, email, full_name, role, location_id, created_at)
