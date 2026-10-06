@@ -610,12 +610,37 @@ WITH CHECK (
     )
 );
 
--- 7. គោលការណ៍ Read សម្រាប់ LOCATIONS និង ITEMS
+-- 7. គោលការណ៍ RLS លើ LOCATIONS និង ITEMS (សម្ភារៈ)
 DROP POLICY IF EXISTS "Allow read locations" ON public.locations;
-CREATE POLICY "Allow read locations" ON public.locations FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow read locations" ON public.locations FOR SELECT TO authenticated, anon USING (true);
+GRANT SELECT ON TABLE public.locations TO authenticated, anon;
+
+-- Full CRUD លើ Table items សម្រាប់ Authenticated Users (CentralAdmin អាច SELECT, INSERT, UPDATE, DELETE)
+ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow read items" ON public.items;
-CREATE POLICY "Allow read items" ON public.items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
+DROP POLICY IF EXISTS "Authenticated users full access on items" ON public.items;
+DROP POLICY IF EXISTS "Enable all for authenticated users only" ON public.items;
+DROP POLICY IF EXISTS "Allow authenticated users to manage items" ON public.items;
+CREATE POLICY "Authenticated users full access on items" 
+ON public.items 
+FOR ALL 
+TO authenticated 
+USING (true) 
+WITH CHECK (true);
+
+-- អនុញ្ញាតឱ្យ Anon Users អាចអានសម្ភារៈបានផងដែរ
+DROP POLICY IF EXISTS "Allow anon read items" ON public.items;
+CREATE POLICY "Allow anon read items" 
+ON public.items 
+FOR SELECT 
+TO anon 
+USING (true);
+
+GRANT ALL ON TABLE public.items TO authenticated;
+GRANT SELECT ON TABLE public.items TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 `;
 
   const storageCode = `-- =========================================================================

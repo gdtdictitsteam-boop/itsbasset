@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
@@ -16,6 +16,11 @@ export function DashboardView() {
   const { selectedLocationId, selectedLocation } = useLocationContext();
   const { inventory, items, locations, isLoading, refreshInventory } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
+
+  // Auto-refresh live data from Supabase upon mounting Dashboard view
+  useEffect(() => {
+    refreshInventory();
+  }, [refreshInventory]);
 
   // Helper to check if inventory row belongs to HQ
   const isHqRow = (inv: any) => isHqLocationOrRow(inv, locations);

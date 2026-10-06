@@ -156,12 +156,37 @@ WITH CHECK (
     )
 );
 
--- Public read on catalog items and locations
+-- Full CRUD on catalog items for authenticated users (including CentralAdmin)
+ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
+
 DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-CREATE POLICY "Allow all access on items" ON public.items FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Allow read items" ON public.items;
+DROP POLICY IF EXISTS "Authenticated users full access on items" ON public.items;
+DROP POLICY IF EXISTS "Enable all for authenticated users only" ON public.items;
+DROP POLICY IF EXISTS "Allow authenticated users to manage items" ON public.items;
+CREATE POLICY "Authenticated users full access on items" 
+ON public.items 
+FOR ALL 
+TO authenticated 
+USING (true) 
+WITH CHECK (true);
+
+-- Allow anon users to read catalog items as well
+DROP POLICY IF EXISTS "Allow anon read items" ON public.items;
+CREATE POLICY "Allow anon read items" 
+ON public.items 
+FOR SELECT 
+TO anon 
+USING (true);
+
+-- Grant permissions
+GRANT ALL ON TABLE public.items TO authenticated;
+GRANT SELECT ON TABLE public.items TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
 DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
-CREATE POLICY "Allow all access on locations" ON public.locations FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow all access on locations" ON public.locations FOR SELECT TO authenticated, anon USING (true);
+GRANT SELECT ON TABLE public.locations TO authenticated, anon;
 
 
 -- =========================================================================

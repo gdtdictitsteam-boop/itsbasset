@@ -202,19 +202,29 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     try {
       // 1. Fetch live items from Supabase
       const { data: dbItems, error: itemsErr } = await supabase.from('items').select('*');
+      if (itemsErr) {
+        console.error('[InventoryContext] Error fetching items from Supabase (Check RLS policy on items):', itemsErr);
+      }
       if (!itemsErr && dbItems && dbItems.length > 0) {
+        console.log(`[InventoryContext] Fetched ${dbItems.length} items from Supabase.`);
         const itemMap = new Map<string, Item>();
         mockItems.forEach(i => itemMap.set(i.code, i));
-        dbItems.forEach((i: any) => itemMap.set(i.code, {
-          id: i.id,
-          code: i.code,
-          name_kh: i.name_kh,
-          name_en: i.name_en || i.name_kh,
-          category: i.category || 'Tools',
-          unit: i.unit || 'គ្រឿង',
-          min_stock: i.min_stock ?? 5,
-          image_url: i.image_url || undefined,
-        }));
+        dbItems.forEach((i: any) => {
+          const itemCode = (i.code || i.sku || '').trim();
+          const itemNameKh = (i.name_kh || i.name || '').trim();
+          const itemNameEn = (i.name_en || i.name || itemNameKh).trim();
+          const key = itemCode || i.id;
+          itemMap.set(key, {
+            id: i.id,
+            code: itemCode || key,
+            name_kh: itemNameKh || 'សម្ភារៈគ្មានឈ្មោះ',
+            name_en: itemNameEn || 'Unnamed Item',
+            category: i.category || 'Tools',
+            unit: i.unit || 'គ្រឿង',
+            min_stock: i.min_stock ?? 5,
+            image_url: i.image_url || undefined,
+          });
+        });
         const mergedItems = Array.from(itemMap.values());
         setItems(mergedItems);
         mockItems.length = 0;
@@ -236,7 +246,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
       // 3. Fetch full inventory with join
       const liveInventory = await fetchFullInventoryFromSupabase();
-      if (liveInventory && liveInventory.length > 0) {
+      if (liveInventory !== null) {
         setInventory(liveInventory);
         mockInventory.length = 0;
         mockInventory.push(...liveInventory);
