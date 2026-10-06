@@ -43,8 +43,8 @@ export function HandoverView() {
     refreshInventory 
   } = useInventoryContext();
   
-  // Navigation Tabs: 'handover' (Dispatch) | 'requisition' (Request) | 'transfers' (List & Accept)
-  const [activeTab, setActiveTab] = useState<'handover' | 'requisition' | 'transfers'>('handover');
+  // Navigation Tabs: 'handover' (Dispatch) | 'requisition' (Request)
+  const [activeTab, setActiveTab] = useState<'handover' | 'requisition'>('handover');
 
   // Loading & Notification States
   const [loading, setLoading] = useState(false);
@@ -95,13 +95,6 @@ export function HandoverView() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileValidationError, setFileValidationError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
-
-  // Transfers & History States
-  const [transfersList, setTransfersList] = useState<any[]>([]);
-  const [transfersLoading, setTransfersLoading] = useState(false);
-  const [transferFilter, setTransferFilter] = useState<'ALL' | 'PENDING' | 'RECEIVED'>('ALL');
-  const [transferSearch, setTransferSearch] = useState('');
-  const [acceptingTxId, setAcceptingTxId] = useState<string | null>(null);
 
   // Voucher Print Modal State
   const [voucherData, setVoucherData] = useState<any | null>(null);
@@ -164,42 +157,6 @@ export function HandoverView() {
     if (!reqItemId || !defaultHqLocation) return null;
     return getAvailableStock(reqItemId, defaultHqLocation.id);
   }, [reqItemId, defaultHqLocation, inventory, items, locations]);
-
-  // Fetch Transfers / Transactions for Tab 3
-  const fetchTransfers = async () => {
-    setTransfersLoading(true);
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('type', 'HANDOVER')
-          .order('date', { ascending: false });
-
-        if (!error && data && data.length > 0) {
-          setTransfersList(data);
-          setTransfersLoading(false);
-          return;
-        }
-      } catch (e) {
-        console.warn('Supabase fetch transactions error, using local fallback:', e);
-      }
-    }
-
-    // Local fallback
-    const local = mockTransactions.filter(tx => tx.type === 'HANDOVER');
-    setTransfersList(local);
-    setTransfersLoading(false);
-  };
-
-  useEffect(() => {
-    fetchTransfers();
-  }, [submitSuccess]);
-
-  // Count pending transfers
-  const pendingCount = useMemo(() => {
-    return transfersList.filter(t => t.status === 'PENDING' || !t.status).length;
-  }, [transfersList]);
 
   // File Upload Security Check
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -352,7 +309,6 @@ export function HandoverView() {
       setSelectedFile(null);
 
       await refreshInventory();
-      await fetchTransfers();
 
     } catch (err: any) {
       console.error('Handover submit error:', err);
@@ -420,7 +376,6 @@ export function HandoverView() {
       setSelectedFile(null);
 
       await refreshInventory();
-      await fetchTransfers();
 
     } catch (err: any) {
       console.error('Requisition submit error:', err);
@@ -430,83 +385,6 @@ export function HandoverView() {
       setUploadProgress(null);
     }
   };
-
-  // Branch Accept / Acknowledge Received Stock
-  const handleAcceptTransfer = async (tx: any) => {
-    setAcceptingTxId(tx.id);
-    try {
-      if (isSupabaseConfigured()) {
-        try {
-          const { error: rpcErr } = await supabase.rpc('acknowledge_handover', {
-            p_transaction_id: tx.id,
-            p_received_by: userDisplayName || officerName || 'BranchOfficer'
-          });
-          if (rpcErr) console.warn('Supabase acknowledge RPC notice:', rpcErr);
-        } catch (e) {
-          console.warn('Acknowledge RPC fallback to direct:', e);
-        }
-
-        // Direct update transaction status in Supabase
-        await supabase
-          .from('transactions')
-          .update({ status: 'RECEIVED' })
-          .eq('id', tx.id);
-      }
-
-      // Update in-memory / local mock
-      const txIndex = mockTransactions.findIndex(t => t.id === tx.id);
-      if (txIndex >= 0) {
-        mockTransactions[txIndex].status = 'RECEIVED';
-      }
-
-      // Add stock to target branch inventory
-      const targetLocId = tx.to_location_id;
-      const targetItemCode = tx.item_code;
-      const targetInvIndex = inventory.findIndex(inv => 
-        (String(inv.item_code) === String(targetItemCode) || String(inv.item_id) === String(tx.item_id)) &&
-        (String(inv.location_id) === String(targetLocId))
-      );
-
-      if (targetInvIndex >= 0) {
-        inventory[targetInvIndex].quantity = (inventory[targetInvIndex].quantity || 0) + Number(tx.quantity);
-        inventory[targetInvIndex].last_updated = new Date().toISOString();
-      }
-
-      await refreshInventory();
-      await fetchTransfers();
-
-      setSuccessMessage(`បានទទួលស្គាល់ការផ្ទេរសម្ភារៈ "${tx.item_name_kh}" ចំនួន ${tx.quantity} ${tx.unit} ចូលស្តុកសាខាជោគជ័យ!`);
-      setSubmitSuccess(true);
-    } catch (e: any) {
-      console.error('Accept transfer error:', e);
-      setSubmitError('បរាជ័យក្នុងការទទួលស្គាល់សម្ភារៈ: ' + (e.message || ''));
-    } finally {
-      setAcceptingTxId(null);
-    }
-  };
-
-  // Filtered transfers for Tab 3
-  const filteredTransfers = useMemo(() => {
-    return transfersList.filter(t => {
-      // Status filter
-      if (transferFilter === 'PENDING' && t.status === 'RECEIVED') return false;
-      if (transferFilter === 'RECEIVED' && t.status !== 'RECEIVED') return false;
-
-      // Search query
-      if (transferSearch.trim()) {
-        const q = transferSearch.toLowerCase();
-        const matchName = t.item_name_kh?.toLowerCase().includes(q);
-        const matchCode = t.item_code?.toLowerCase().includes(q);
-        const matchFrom = t.from_location?.toLowerCase().includes(q);
-        const matchTo = t.to_location?.toLowerCase().includes(q);
-        const matchOfficer = t.recorded_by?.toLowerCase().includes(q);
-        const matchRemark = t.remark?.toLowerCase().includes(q);
-        return matchName || matchCode || matchFrom || matchTo || matchOfficer || matchRemark;
-      }
-
-      return true;
-    });
-  }, [transfersList, transferFilter, transferSearch]);
 
   return (
     <div className="flex-1 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col overflow-hidden max-w-5xl mx-auto w-full font-siemreap">
@@ -526,7 +404,7 @@ export function HandoverView() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                គ្រប់គ្រងការផ្ទេរសម្ភារៈបច្ចេកទេសពីរដ្ឋបាលកណ្តាល (HQ) ទៅកាន់សាខា និងការដាក់ពាក្យស្នើសុំសម្ភារៈ
+                ប្រព័ន្ធផ្ទេរសម្ភារៈដោយផ្ទាល់ (Direct Handover Auto Sync): កាត់ស្តុកកណ្តាល និងបញ្ចូលស្តុកសាខាស្វ័យប្រវត្តិ (Status: COMPLETED)
               </p>
             </div>
           </div>
@@ -556,7 +434,7 @@ export function HandoverView() {
             }`}
           >
             <SendHorizontal size={15} className={activeTab === 'handover' ? 'text-[#03291E]' : 'text-slate-400'} />
-            <span>១. ផ្ទេរ/ប្រគល់សម្ភារៈ (Handover Dispatch)</span>
+            <span>១. ប្រគល់/ផ្ទេរសម្ភារៈ (Direct Handover)</span>
           </button>
 
           <button
@@ -570,24 +448,6 @@ export function HandoverView() {
           >
             <ClipboardList size={15} className={activeTab === 'requisition' ? 'text-[#03291E]' : 'text-slate-400'} />
             <span>២. ដាក់ពាក្យស្នើសុំសម្ភារៈ (Requisition)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setActiveTab('transfers'); setSubmitError(null); setSubmitSuccess(false); fetchTransfers(); }}
-            className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all flex items-center gap-2 border-b-2 ${
-              activeTab === 'transfers'
-                ? 'border-[#03291E] text-[#03291E] bg-white font-extrabold shadow-2xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-            }`}
-          >
-            <Clock size={15} className={activeTab === 'transfers' ? 'text-[#03291E]' : 'text-slate-400'} />
-            <span>៣. បញ្ជីផ្ទេរ និងទទួលសម្ភារៈ (Transfers)</span>
-            {pendingCount > 0 && (
-              <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
-                {pendingCount}
-              </span>
-            )}
           </button>
         </div>
       </div>
@@ -665,6 +525,15 @@ export function HandoverView() {
             
             {/* Left Column: Locations & Items */}
             <div className="space-y-4">
+
+              {/* Direct Handover Auto Sync Indicator */}
+              <div className="bg-emerald-50/80 border border-emerald-200/90 rounded-xl p-3 flex items-start gap-2.5 text-xs text-emerald-950 font-medium shadow-2xs">
+                <CheckCircle2 size={16} className="text-emerald-700 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong className="text-emerald-900 font-bold block">ការផ្ទេរចូលភ្លាមៗ (Direct Handover Auto Sync)</strong>
+                  <span>ពេលចុច <strong>&ldquo;បញ្ជាក់ការផ្ញើសម្ភារៈ&rdquo;</strong> ប្រព័ន្ធនឹងកាត់ស្តុកកណ្តាល ហើយបូកចូលស្តុកសាខាគោលដៅភ្លាមៗ ដោយកំណត់ស្ថានភាពថា <span className="font-mono font-bold text-emerald-800">COMPLETED</span> (ពុំចាំបាច់ឆ្លងកាត់ការចុចទទួលពីសាខាឡើយ)។</span>
+                </div>
+              </div>
               
               {/* Location Selectors */}
               <div className="grid grid-cols-2 gap-4">
@@ -996,7 +865,10 @@ export function HandoverView() {
                     <span>កំពុងផ្ទេរស្តុក...</span>
                   </>
                 ) : (
-                  <span>បញ្ជាក់ការផ្ទេរសម្ភារៈ (Confirm Handover)</span>
+                  <span className="flex items-center gap-1.5">
+                    <SendHorizontal size={14} />
+                    <span>បញ្ជាក់ការផ្ញើសម្ភារៈ (Confirm Dispatch)</span>
+                  </span>
                 )}
               </button>
             </div>
@@ -1248,179 +1120,6 @@ export function HandoverView() {
             </div>
           </div>
         </form>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: បញ្ជីផ្ទេរ និងទទួលសម្ភារៈ (Transfers List & Acknowledgment) */}
-      {/* ========================================================================= */}
-      {activeTab === 'transfers' && (
-        <div className="flex-1 flex flex-col bg-white overflow-hidden">
-          
-          {/* Controls Bar */}
-          <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center space-x-2 w-full sm:w-auto">
-              {(['ALL', 'PENDING', 'RECEIVED'] as const).map((filter) => (
-                <button
-                  key={filter}
-                  type="button"
-                  onClick={() => setTransferFilter(filter)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    transferFilter === filter
-                      ? 'bg-[#03291E] text-white shadow-2xs'
-                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  {filter === 'ALL' && `ទាំងអស់ (${transfersList.length})`}
-                  {filter === 'PENDING' && `កំពុងរង់ចាំទទួល (${pendingCount})`}
-                  {filter === 'RECEIVED' && `បានទទួលជោគជ័យ (${transfersList.length - pendingCount})`}
-                </button>
-              ))}
-            </div>
-
-            <div className="relative w-full sm:w-72">
-              <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                value={transferSearch}
-                onChange={(e) => setTransferSearch(e.target.value)}
-                placeholder="ស្វែងរកតាម SKU, ឈ្មោះ ឬសាខា..."
-                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
-              />
-            </div>
-          </div>
-
-          {/* Transfers Table / Cards */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {transfersLoading ? (
-              <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
-                <div className="animate-spin w-6 h-6 border-2 border-[#03291E] border-t-transparent rounded-full"></div>
-                <span className="text-xs font-bold">កំពុងទាញយកទិន្នន័យផ្ទេរសម្ភារៈ...</span>
-              </div>
-            ) : filteredTransfers.length === 0 ? (
-              <div className="py-16 text-center text-slate-400 space-y-2">
-                <Package size={36} className="mx-auto text-slate-300" />
-                <p className="text-xs font-bold text-slate-600">គ្មានកំណត់ត្រាផ្ទេរសម្ភារៈត្រូវនឹងលក្ខខណ្ឌស្វែងរកឡើយ</p>
-              </div>
-            ) : (
-              filteredTransfers.map((tx) => {
-                const isPending = tx.status === 'PENDING' || !tx.status;
-                const docUrl = tx.remark?.match(/https?:\/\/[^\s]+/)?.[0] || tx.document_url;
-
-                return (
-                  <div 
-                    key={tx.id}
-                    className={`rounded-2xl border transition-all p-4 ${
-                      isPending 
-                        ? 'bg-amber-50/30 border-amber-200 shadow-2xs hover:border-amber-300' 
-                        : 'bg-white border-slate-200/90 shadow-2xs'
-                    }`}
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                      
-                      {/* Left: Transfer Route & Item info */}
-                      <div className="space-y-1.5 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
-                            {tx.item_code}
-                          </span>
-                          <span className="text-sm font-bold text-slate-900">
-                            {tx.item_name_kh}
-                          </span>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase border ${
-                            isPending 
-                              ? 'bg-amber-100 border-amber-300 text-amber-900' 
-                              : 'bg-emerald-100 border-emerald-300 text-emerald-900'
-                          }`}>
-                            {isPending ? '⏳ កំពុងរង់ចាំទទួល (Pending)' : '✅ បានទទួលជោគជ័យ (Received)'}
-                          </span>
-                        </div>
-
-                        {/* Location Flow */}
-                        <div className="flex items-center gap-2 text-xs text-slate-600 font-medium">
-                          <span className="text-slate-800 font-bold">{tx.from_location}</span>
-                          <ArrowRight size={13} className="text-slate-400" />
-                          <span className="text-emerald-900 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                            {tx.to_location}
-                          </span>
-                          <span className="text-slate-400">|</span>
-                          <span className="font-mono text-slate-500 text-[11px]">
-                            {new Date(tx.date || tx.created_at || Date.now()).toLocaleDateString('km-KH')}
-                          </span>
-                        </div>
-
-                        {/* Remark & Officer */}
-                        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 pt-0.5">
-                          <span>មន្ត្រីកត់ត្រា៖ <strong className="text-slate-700">{tx.recorded_by || 'CentralAdmin'}</strong></span>
-                          {tx.remark && (
-                            <>
-                              <span>•</span>
-                              <span className="italic text-slate-600 truncate max-w-md">
-                                {tx.remark.replace(/https?:\/\/[^\s]+/, '')}
-                              </span>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Document Link if available */}
-                        {docUrl && (
-                          <div className="pt-1">
-                            <a 
-                              href={docUrl} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              className="inline-flex items-center gap-1 text-[11px] text-blue-700 hover:text-blue-900 font-semibold underline"
-                            >
-                              <FileText size={12} />
-                              <span>មើលឯកសារយោងភ្ជាប់ (View Doc)</span>
-                              <ExternalLink size={10} />
-                            </a>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Right: Quantity Badge & Actions */}
-                      <div className="flex md:flex-col items-center md:items-end justify-between gap-3 shrink-0">
-                        <div className="text-right">
-                          <span className="text-xl font-extrabold font-mono text-slate-900">
-                            {tx.quantity}
-                          </span>
-                          <span className="text-xs font-bold text-slate-600 ml-1">
-                            {tx.unit || 'គ្រឿង'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* Accept Button for Pending */}
-                          {isPending && (
-                            <button
-                              type="button"
-                              onClick={() => handleAcceptTransfer(tx)}
-                              disabled={acceptingTxId === tx.id}
-                              className="px-4 py-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-                            >
-                              {acceptingTxId === tx.id ? (
-                                <span>កំពុងទទួល...</span>
-                              ) : (
-                                <>
-                                  <Check size={14} className="text-emerald-400" />
-                                  <span>ទទួលសម្ភារៈ</span>
-                                </>
-                              )}
-                            </button>
-                          )}
-                        </div>
-
-                      </div>
-
-                    </div>
-
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-        </div>
       )}
 
     </div>

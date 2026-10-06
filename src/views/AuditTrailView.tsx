@@ -156,7 +156,7 @@ export function AuditTrailView() {
           quantity: 20,
           unit: 'ខ្សែ',
           recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
-          status: 'PENDING',
+          status: 'COMPLETED',
           document_url: null,
           remark: 'ផ្ទេរខ្សែកាបបណ្តាញសម្រាប់ដំឡើងម៉ាស៊ីនបោះពុម្ព'
         }
@@ -670,7 +670,7 @@ export function AuditTrailView() {
                             : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                         }`}>
                           {isPending ? <Clock size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
-                          <span>{isPending ? 'PENDING' : 'RECEIVED'}</span>
+                          <span>{isPending ? 'PENDING' : (tx.status || 'COMPLETED')}</span>
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-600 font-semibold text-[11px] whitespace-nowrap">

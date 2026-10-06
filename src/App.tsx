@@ -17,7 +17,6 @@ import { InventoryView } from './views/InventoryView';
 import { StockInView } from './views/StockInView';
 import { StockOutView } from './views/StockOutView';
 import { HandoverView } from './views/HandoverView';
-import { PendingTransfersView } from './views/PendingTransfersView';
 import { AuditTrailView } from './views/AuditTrailView';
 import { SqlCodeView } from './views/SqlCodeView';
 import { NewItemView } from './views/NewItemView';
@@ -70,8 +69,6 @@ function MainLayout() {
         );
       case 'handover':
         return <HandoverView />;
-      case 'pendingTransfers':
-        return <PendingTransfersView />;
       case 'newSku':
         return (
           <ProtectedRoute allowedRoles={['CentralAdmin', 'Admin-GDT']}>

@@ -71,7 +71,7 @@ END;
 $$;
 
 
--- Function 2: handle_branch_handover (Deduct from HQ, Status PENDING)
+-- Function 2: handle_branch_handover (Direct Handover: Deducts from HQ, Adds to Branch Immediately, Status COMPLETED)
 CREATE OR REPLACE FUNCTION public.handle_branch_handover(
     p_from_location UUID,
     p_to_location UUID,
@@ -86,6 +86,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_available_qty INT;
+    v_new_dest_qty INT;
     v_transaction_id UUID;
     v_item_code VARCHAR;
     v_item_name_kh VARCHAR;
@@ -114,20 +115,30 @@ BEGIN
         last_updated = NOW()
     WHERE location_id = p_from_location AND item_id = p_item_id;
 
-    -- 2. Record transaction with status = 'PENDING'
+    -- 2. Increment / Insert stock into target destination branch immediately (Auto Sync)
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+    VALUES (p_to_location, p_item_id, p_quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = public.inventory.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    RETURNING quantity INTO v_new_dest_qty;
+
+    -- 3. Record transaction with status = 'COMPLETED'
     INSERT INTO public.transactions (
         type, from_location_id, to_location_id, item_id, item_code, 
         item_name_kh, quantity, unit, recorded_by, remark, status
     ) VALUES (
         'HANDOVER', p_from_location, p_to_location, p_item_id, v_item_code, 
-        v_item_name_kh, p_quantity, v_item_unit, p_recorded_by, p_remark, 'PENDING'
+        v_item_name_kh, p_quantity, v_item_unit, p_recorded_by, p_remark, 'COMPLETED'
     )
     RETURNING id INTO v_transaction_id;
 
     RETURN jsonb_build_object(
         'success', true,
         'transaction_id', v_transaction_id,
-        'status', 'PENDING'
+        'new_branch_quantity', v_new_dest_qty,
+        'status', 'COMPLETED'
     );
 END;
 $$;
@@ -328,11 +339,11 @@ $$;
 -- STEP 4: 2-STEP HANDOVER & ACKNOWLEDGEMENT (ផ្ទេរ និងទទួលសម្ភារៈ)
 -- =========================================================================
 
--- 1. បន្ថែម Column status ក្នុង Table transactions (PENDING -> RECEIVED)
+-- 1. បន្ថែម Column status ក្នុង Table transactions (COMPLETED)
 ALTER TABLE public.transactions 
-ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'PENDING';
+ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED';
 
--- 2. Step 1 RPC: CentralAdmin ផ្ទេរសម្ភារៈ (កាត់ស្តុកកណ្តាល HQ, កត់ត្រា status = 'PENDING')
+-- 2. Direct Handover Auto Sync RPC: CentralAdmin ផ្ទេរសម្ភារៈ (កាត់ស្តុក HQ, បូកចូលស្តុកសាខាភ្លាមៗ, status = 'COMPLETED')
 CREATE OR REPLACE FUNCTION handle_branch_handover(
     p_from_location UUID,
     p_to_location UUID,
@@ -347,6 +358,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_available_qty INT;
+    v_new_dest_qty INT;
     v_transaction_id UUID;
     v_item_code VARCHAR;
     v_item_name_kh VARCHAR;
@@ -384,7 +396,16 @@ BEGIN
         last_updated = NOW()
     WHERE location_id = p_from_location AND item_id = p_item_id;
 
-    -- 2. កត់ត្រាប្រតិបត្តិការជាមួយ status = 'PENDING'
+    -- 2. បូកបញ្ចូលក្នុង Table inventory របស់សាខាគោលដៅភ្លាមៗ (Auto Sync)
+    INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+    VALUES (p_to_location, p_item_id, p_quantity, NOW())
+    ON CONFLICT (location_id, item_id)
+    DO UPDATE SET 
+        quantity = public.inventory.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    RETURNING quantity INTO v_new_dest_qty;
+
+    -- 3. កត់ត្រាប្រតិបត្តិការជាមួយ status = 'COMPLETED'
     INSERT INTO public.transactions (
         type, from_location_id, to_location_id, item_id,
         item_code, item_name_kh, quantity, unit,
@@ -392,15 +413,16 @@ BEGIN
     ) VALUES (
         'HANDOVER', p_from_location, p_to_location, p_item_id,
         v_item_code, v_item_name_kh, p_quantity, v_item_unit,
-        p_recorded_by, p_remark, 'PENDING'
+        p_recorded_by, p_remark, 'COMPLETED'
     )
     RETURNING id INTO v_transaction_id;
 
     RETURN jsonb_build_object(
         'success', true,
         'transaction_id', v_transaction_id,
-        'status', 'PENDING',
-        'message', 'Stock deducted from HQ. Status set to PENDING awaiting branch acknowledgment.'
+        'new_branch_quantity', v_new_dest_qty,
+        'status', 'COMPLETED',
+        'message', 'Stock transferred directly to destination branch. Status set to COMPLETED.'
     );
 END;
 $$;

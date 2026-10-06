@@ -697,7 +697,7 @@ export async function supabaseHandleHandover(params: {
       return { success: true, transactionId: rpcData.transaction_id };
     }
 
-    // 2. Direct fallback
+    // 2. Direct fallback (Direct Handover Auto Sync)
     const { data: curSource } = await supabase
       .from('inventory')
       .select('quantity')
@@ -709,10 +709,33 @@ export async function supabaseHandleHandover(params: {
       return { success: false, error: 'Insufficient stock in source location' };
     }
 
+    // Deduct source
     await supabase.from('inventory').update({
       quantity: curSource.quantity - params.quantity,
       last_updated: new Date().toISOString()
     }).eq('location_id', dbFromLocId).eq('item_id', dbItemId);
+
+    // Auto Sync: Increment / insert into destination branch inventory immediately
+    const { data: curDest } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('location_id', dbToLocId)
+      .eq('item_id', dbItemId)
+      .maybeSingle();
+
+    if (curDest) {
+      await supabase.from('inventory').update({
+        quantity: (curDest.quantity || 0) + params.quantity,
+        last_updated: new Date().toISOString()
+      }).eq('location_id', dbToLocId).eq('item_id', dbItemId);
+    } else {
+      await supabase.from('inventory').insert([{
+        location_id: dbToLocId,
+        item_id: dbItemId,
+        quantity: params.quantity,
+        last_updated: new Date().toISOString()
+      }]);
+    }
 
     const { data: itData } = await supabase.from('items').select('code, name_kh, unit').eq('id', dbItemId).maybeSingle();
 
@@ -728,7 +751,7 @@ export async function supabaseHandleHandover(params: {
         unit: itData?.unit || 'គ្រឿង',
         recorded_by: params.recordedBy,
         remark: params.remark || 'ផ្ទេរសម្ភារៈជូនសាខា',
-        status: 'PENDING'
+        status: 'COMPLETED'
       }
     ]).select('id').maybeSingle();
 

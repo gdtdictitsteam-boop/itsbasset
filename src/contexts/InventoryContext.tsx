@@ -735,7 +735,46 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       remainingToDeduct -= deductFromThis;
     }
 
-    // 3. Create transaction record with status PENDING until received by branch
+    // 3. Direct Handover Auto Sync: Credit / Add stock to destination branch in-memory immediately
+    const destRowIndex = mockInventory.findIndex(inv => {
+      const matchItem = String(inv.item_code)?.trim().toUpperCase() === String(targetItem.code)?.trim().toUpperCase() || 
+                        String(inv.item_id) === String(targetItem.id);
+      if (!matchItem) return false;
+
+      if (String(inv.location_id) === String(toLocation.id) || 
+          String(inv.location_id) === String(toLocation.code)) return true;
+
+      if (toLocation.code && inv.location_code && String(inv.location_code).toUpperCase() === String(toLocation.code).toUpperCase()) return true;
+      if (toLocation.code && inv.location_name_kh && inv.location_name_kh.includes(toLocation.code)) return true;
+      if (toLocation.name_kh && inv.location_name_kh && 
+          (inv.location_name_kh.includes(toLocation.name_kh) || toLocation.name_kh.includes(inv.location_name_kh))) return true;
+
+      return false;
+    });
+
+    if (destRowIndex >= 0) {
+      mockInventory[destRowIndex].quantity = (mockInventory[destRowIndex].quantity || 0) + params.quantity;
+      mockInventory[destRowIndex].last_updated = new Date().toISOString();
+    } else {
+      mockInventory.push({
+        location_id: toLocation.id,
+        item_id: targetItem.id,
+        quantity: params.quantity,
+        last_updated: new Date().toISOString(),
+        item_code: targetItem.code,
+        item_name_kh: targetItem.name_kh,
+        item_name_en: targetItem.name_en,
+        category: targetItem.category,
+        unit: targetItem.unit,
+        min_stock: targetItem.min_stock ?? 5,
+        location_name_kh: toLocation.name_kh,
+        location_name_en: toLocation.name_en,
+        location_code: toLocation.code,
+        type: toLocation.type || 'BRANCH'
+      });
+    }
+
+    // 4. Create transaction record with status COMPLETED (Direct Handover)
     const finalRemark = params.documentUrl
       ? `${(params.purpose || 'ផ្ទេរសម្ភារៈជូនសាខា').trim()} | ឯកសារយោង: ${params.documentUrl}`
       : (params.purpose || 'ផ្ទេរសម្ភារៈជូនសាខា').trim();
@@ -756,13 +795,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       unit: targetItem.unit,
       recorded_by: params.officerName || 'Admin-GDT',
       remark: finalRemark,
-      status: 'PENDING'
+      status: 'COMPLETED'
     });
 
     saveToStorage(mockItems, mockInventory, mockTransactions);
     setInventory([...mockInventory]);
 
-    // 4. Supabase DB Persistence
+    // 5. Supabase DB Persistence
     if (isConfigured) {
       try {
         await supabaseHandleHandover({
@@ -793,7 +832,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     return {
       success: true,
       newQuantity: remainingSource,
-      message: `បានដាក់ស្នើ/ផ្ទេរសម្ភារៈ "${targetItem.name_kh}" ចំនួន ${params.quantity} ${targetItem.unit} ទៅកាន់ "${toLocation.name_kh}" ជោគជ័យ!`
+      message: `បានផ្ទេរ និងបញ្ចូលស្តុកសម្ភារៈ "${targetItem.name_kh}" ចំនួន ${params.quantity} ${targetItem.unit} ទៅកាន់ "${toLocation.name_kh}" រួចរាល់ដោយស្វ័យប្រវត្តិ (ស្ថានភាព: COMPLETED)!`
     };
   };
 
