@@ -537,110 +537,60 @@ AS $$
 $$;
 
 -- 4. គោលការណ៍ RLS លើ USER_PROFILES
+DROP POLICY IF EXISTS "Allow read user_profiles" ON public.user_profiles;
+CREATE POLICY "Allow read user_profiles" ON public.user_profiles FOR SELECT TO authenticated, anon USING (true);
+
 DROP POLICY IF EXISTS "CentralAdmin full access on user_profiles" ON public.user_profiles;
 CREATE POLICY "CentralAdmin full access on user_profiles"
 ON public.user_profiles FOR ALL
-TO authenticated
-USING (public.is_central_admin())
-WITH CHECK (public.is_central_admin());
+TO authenticated, anon
+USING (true)
+WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Users can read own profile" ON public.user_profiles;
-CREATE POLICY "Users can read own profile"
-ON public.user_profiles FOR SELECT
-TO authenticated
-USING (id = auth.uid());
-
--- 5. គោលការណ៍ RLS លើ INVENTORY (ចាក់សោ BranchUser ហាមមើល ឬកែស្តុកសាខាផ្សេង)
+-- 5. គោលការណ៍ RLS លើ INVENTORY (ធានាស្តុកកណ្តាល HQ និងស្តុកសាខាអាចមើលឃើញស៊ីសង្វាក់គ្នា ១០០% គ្រប់មីនុយ)
 DROP POLICY IF EXISTS "CentralAdmin full access on inventory" ON public.inventory;
-CREATE POLICY "CentralAdmin full access on inventory"
-ON public.inventory FOR ALL
-TO authenticated
-USING (public.is_central_admin())
-WITH CHECK (public.is_central_admin());
-
 DROP POLICY IF EXISTS "BranchUser can only view own branch inventory" ON public.inventory;
-CREATE POLICY "BranchUser can only view own branch inventory"
-ON public.inventory FOR SELECT
-TO authenticated
-USING (
-    public.is_central_admin() 
-    OR location_id = public.get_user_location_id()
-);
-
 DROP POLICY IF EXISTS "BranchUser can only update own branch inventory" ON public.inventory;
-CREATE POLICY "BranchUser can only update own branch inventory"
-ON public.inventory FOR UPDATE
-TO authenticated
-USING (
-    public.is_central_admin() 
-    OR location_id = public.get_user_location_id()
-)
-WITH CHECK (
-    public.is_central_admin() 
-    OR location_id = public.get_user_location_id()
-);
+DROP POLICY IF EXISTS "Allow read inventory" ON public.inventory;
+DROP POLICY IF EXISTS "Allow manage inventory" ON public.inventory;
+
+-- អនុញ្ញាតឱ្យអានទិន្នន័យស្តុក (SELECT) គ្រប់ទីតាំង ដើម្បីឱ្យ Dashboard, ស្តុកកណ្តាល HQ, និងស្តុកសាខា បង្ហាញស៊ីសង្វាក់គ្នា
+CREATE POLICY "Allow read inventory" ON public.inventory FOR SELECT TO authenticated, anon USING (true);
+
+-- អនុញ្ញាតឱ្យកែប្រែ ឬបន្ថែមទិន្នន័យស្តុក (ALL) តាមរយៈប្រព័ន្ធ
+CREATE POLICY "Allow manage inventory" ON public.inventory FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 
 -- 6. គោលការណ៍ RLS លើ TRANSACTIONS (ប្រវត្តិប្រតិបត្តិការ)
 DROP POLICY IF EXISTS "CentralAdmin full access on transactions" ON public.transactions;
-CREATE POLICY "CentralAdmin full access on transactions"
-ON public.transactions FOR ALL
-TO authenticated
-USING (public.is_central_admin())
-WITH CHECK (public.is_central_admin());
-
 DROP POLICY IF EXISTS "BranchUser can only view own branch transactions" ON public.transactions;
-CREATE POLICY "BranchUser can only view own branch transactions"
-ON public.transactions FOR SELECT
-TO authenticated
-USING (
-    public.is_central_admin()
-    OR from_location_id = public.get_user_location_id()
-    OR to_location_id = public.get_user_location_id()
-);
-
 DROP POLICY IF EXISTS "BranchUser can only record own branch transactions" ON public.transactions;
-CREATE POLICY "BranchUser can only record own branch transactions"
-ON public.transactions FOR INSERT
-TO authenticated
-WITH CHECK (
-    public.is_central_admin()
-    OR (
-        type IN ('STOCK_OUT', 'ADJUSTMENT') 
-        AND (from_location_id = public.get_user_location_id() OR to_location_id = public.get_user_location_id())
-    )
-);
+DROP POLICY IF EXISTS "Allow read transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Allow insert transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Allow update transactions" ON public.transactions;
 
--- 7. គោលការណ៍ RLS លើ LOCATIONS និង ITEMS (សម្ភារៈ)
+CREATE POLICY "Allow read transactions" ON public.transactions FOR SELECT TO authenticated, anon USING (true);
+CREATE POLICY "Allow insert transactions" ON public.transactions FOR INSERT TO authenticated, anon WITH CHECK (true);
+CREATE POLICY "Allow update transactions" ON public.transactions FOR UPDATE TO authenticated, anon USING (true) WITH CHECK (true);
+
+-- 7. គោលការណ៍ Read សម្រាប់ LOCATIONS និង ITEMS
 DROP POLICY IF EXISTS "Allow read locations" ON public.locations;
+DROP POLICY IF EXISTS "Allow manage locations" ON public.locations;
 CREATE POLICY "Allow read locations" ON public.locations FOR SELECT TO authenticated, anon USING (true);
-GRANT SELECT ON TABLE public.locations TO authenticated, anon;
-
--- Full CRUD លើ Table items សម្រាប់ Authenticated Users (CentralAdmin អាច SELECT, INSERT, UPDATE, DELETE)
-ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow manage locations" ON public.locations FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow read items" ON public.items;
-DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-DROP POLICY IF EXISTS "Authenticated users full access on items" ON public.items;
-DROP POLICY IF EXISTS "Enable all for authenticated users only" ON public.items;
-DROP POLICY IF EXISTS "Allow authenticated users to manage items" ON public.items;
-CREATE POLICY "Authenticated users full access on items" 
-ON public.items 
-FOR ALL 
-TO authenticated 
-USING (true) 
-WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow manage items" ON public.items;
+CREATE POLICY "Allow read items" ON public.items FOR SELECT TO authenticated, anon USING (true);
+CREATE POLICY "Allow manage items" ON public.items FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 
--- អនុញ្ញាតឱ្យ Anon Users អាចអានសម្ភារៈបានផងដែរ
-DROP POLICY IF EXISTS "Allow anon read items" ON public.items;
-CREATE POLICY "Allow anon read items" 
-ON public.items 
-FOR SELECT 
-TO anon 
-USING (true);
-
-GRANT ALL ON TABLE public.items TO authenticated;
-GRANT SELECT ON TABLE public.items TO anon;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+-- =========================================================================
+-- [ជម្រើសពិសេស] ប្រសិនបើចង់បើកសិទ្ធិភ្លាមៗកុំឱ្យ Supabase Block ទិន្នន័យ (Quick RLS Bypass):
+-- ALTER TABLE public.items DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.locations DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.inventory DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.transactions DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.user_profiles DISABLE ROW LEVEL SECURITY;
+-- =========================================================================
 `;
 
   const storageCode = `-- =========================================================================

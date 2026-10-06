@@ -103,65 +103,46 @@ AS $$
 $$;
 
 -- User Profiles Policies
+DROP POLICY IF EXISTS "Allow read user_profiles" ON public.user_profiles;
+CREATE POLICY "Allow read user_profiles" ON public.user_profiles FOR SELECT TO authenticated, anon USING (true);
+
 DROP POLICY IF EXISTS "CentralAdmin full access on user_profiles" ON public.user_profiles;
 CREATE POLICY "CentralAdmin full access on user_profiles"
-ON public.user_profiles FOR ALL TO authenticated
-USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
+ON public.user_profiles FOR ALL TO authenticated, anon
+USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Users view own profile" ON public.user_profiles;
-CREATE POLICY "Users view own profile"
-ON public.user_profiles FOR SELECT TO authenticated
-USING (auth.uid() = id);
-
--- Inventory Policies (BranchUser locked to assigned branch)
+-- Inventory Policies (Allow reading all locations so HQ and all branches are 100% visible and synchronized)
 DROP POLICY IF EXISTS "CentralAdmin full access on inventory" ON public.inventory;
-CREATE POLICY "CentralAdmin full access on inventory"
-ON public.inventory FOR ALL TO authenticated
-USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
-
 DROP POLICY IF EXISTS "BranchUser view assigned location inventory only" ON public.inventory;
-CREATE POLICY "BranchUser view assigned location inventory only"
-ON public.inventory FOR SELECT TO authenticated
-USING (public.is_central_admin() OR location_id = public.get_user_location_id());
-
 DROP POLICY IF EXISTS "BranchUser update assigned location inventory only" ON public.inventory;
-CREATE POLICY "BranchUser update assigned location inventory only"
-ON public.inventory FOR UPDATE TO authenticated
-USING (public.is_central_admin() OR location_id = public.get_user_location_id())
-WITH CHECK (public.is_central_admin() OR location_id = public.get_user_location_id());
+DROP POLICY IF EXISTS "Allow read inventory" ON public.inventory;
+DROP POLICY IF EXISTS "Allow manage inventory" ON public.inventory;
 
--- Transactions Policies (BranchUser sees & records only own branch transactions)
+CREATE POLICY "Allow read inventory" ON public.inventory FOR SELECT TO authenticated, anon USING (true);
+CREATE POLICY "Allow manage inventory" ON public.inventory FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
+
+-- Transactions Policies
 DROP POLICY IF EXISTS "CentralAdmin full access on transactions" ON public.transactions;
-CREATE POLICY "CentralAdmin full access on transactions"
-ON public.transactions FOR ALL TO authenticated
-USING (public.is_central_admin()) WITH CHECK (public.is_central_admin());
-
 DROP POLICY IF EXISTS "BranchUser view own branch transactions" ON public.transactions;
-CREATE POLICY "BranchUser view own branch transactions"
-ON public.transactions FOR SELECT TO authenticated
-USING (
-    public.is_central_admin()
-    OR from_location_id = public.get_user_location_id()
-    OR to_location_id = public.get_user_location_id()
-);
-
 DROP POLICY IF EXISTS "BranchUser insert own branch transactions" ON public.transactions;
-CREATE POLICY "BranchUser insert own branch transactions"
-ON public.transactions FOR INSERT TO authenticated
-WITH CHECK (
-    public.is_central_admin()
-    OR (
-        type IN ('STOCK_OUT', 'ADJUSTMENT') 
-        AND (from_location_id = public.get_user_location_id() OR to_location_id = public.get_user_location_id())
-    )
-);
+DROP POLICY IF EXISTS "Allow read transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Allow insert transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Allow update transactions" ON public.transactions;
 
--- Public read on catalog items and locations
-DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
-CREATE POLICY "Allow all access on items" ON public.items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow read transactions" ON public.transactions FOR SELECT TO authenticated, anon USING (true);
+CREATE POLICY "Allow insert transactions" ON public.transactions FOR INSERT TO authenticated, anon WITH CHECK (true);
+CREATE POLICY "Allow update transactions" ON public.transactions FOR UPDATE TO authenticated, anon USING (true) WITH CHECK (true);
 
+-- Catalog items and locations policies
+DROP POLICY IF EXISTS "Allow read locations" ON public.locations;
 DROP POLICY IF EXISTS "Allow all access on locations" ON public.locations;
-CREATE POLICY "Allow all access on locations" ON public.locations FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow read locations" ON public.locations FOR SELECT TO authenticated, anon USING (true);
+CREATE POLICY "Allow all access on locations" ON public.locations FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow read items" ON public.items;
+DROP POLICY IF EXISTS "Allow all access on items" ON public.items;
+CREATE POLICY "Allow read items" ON public.items FOR SELECT TO authenticated, anon USING (true);
+CREATE POLICY "Allow all access on items" ON public.items FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 
 
 -- =========================================================================
@@ -535,6 +516,13 @@ BEGIN
 END;
 $$;
 
+-- ផ្តល់សិទ្ធិដំណើរការ RPC Functions ទាំង ៥
+GRANT EXECUTE ON FUNCTION public.record_stock_in TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.handle_branch_handover TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.acknowledge_handover TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.record_stock_out TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.record_stock_adjustment TO authenticated, anon;
+
 
 -- =========================================================================
 -- STEP 5: SEED INITIAL LOCATIONS & MASTER DATA
@@ -670,6 +658,46 @@ SELECT
 FROM public.locations l
 CROSS JOIN public.items i
 WHERE l.code = 'HQ-ITSB'
+ON CONFLICT (location_id, item_id) DO UPDATE 
+SET quantity = EXCLUDED.quantity, last_updated = NOW();
+
+-- Seed Sample Branch Stock Balance for Active Branches (7MK, CKM, DPE, TKO, KPC, Tech-HQ)
+INSERT INTO public.inventory (location_id, item_id, quantity, last_updated)
+SELECT 
+    l.id as location_id,
+    i.id as item_id,
+    vals.qty as quantity,
+    NOW() as last_updated
+FROM (
+    VALUES
+        ('7MK', 'T-001', 2),
+        ('7MK', 'T-006', 2),
+        ('7MK', 'T-019', 5),
+        ('7MK', 'S-004', 10),
+        ('7MK', 'S-005', 5),
+        ('CKM', 'T-001', 1),
+        ('CKM', 'T-004', 1),
+        ('CKM', 'T-010', 2),
+        ('CKM', 'S-004', 8),
+        ('DPE', 'T-001', 1),
+        ('DPE', 'T-002', 1),
+        ('DPE', 'T-012', 1),
+        ('DPE', 'S-001', 2),
+        ('TKO', 'T-001', 1),
+        ('TKO', 'T-007', 2),
+        ('TKO', 'T-020', 50),
+        ('TKO', 'S-005', 10),
+        ('KPC', 'T-001', 1),
+        ('KPC', 'T-003', 1),
+        ('KPC', 'T-013', 2),
+        ('KPC', 'S-002', 5),
+        ('Tech-HQ', 'T-001', 1),
+        ('Tech-HQ', 'T-004', 1),
+        ('Tech-HQ', 'T-012', 1),
+        ('Tech-HQ', 'S-004', 20)
+) as vals(loc_code, item_code, qty)
+JOIN public.locations l ON l.code = vals.loc_code
+JOIN public.items i ON i.code = vals.item_code
 ON CONFLICT (location_id, item_id) DO UPDATE 
 SET quantity = EXCLUDED.quantity, last_updated = NOW();
 

@@ -78,13 +78,26 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   // Find user's assigned branch location if they are a BranchUser
   const assignedBranchLocation: Location | null = React.useMemo(() => {
     if (!userLocationId) {
-      // Default to 7MK (id '2') if not assigned
-      return locationsList.find(l => l.code === '7MK' || l.id === '2') || locationsList[1] || null;
+      return locationsList.find(l => l.code === '7MK') || locationsList[1] || null;
     }
+    // Handle numeric legacy IDs or codes or UUIDs
+    const codeMap: Record<string, string> = {
+      '1': 'HQ-ITSB',
+      '2': '7MK',
+      '3': 'CKM',
+      '4': 'DKO',
+      '5': 'DPE',
+      '6': 'TKO',
+      '24': 'KPC'
+    };
+    const targetCode = codeMap[userLocationId] || userLocationId;
+
     return locationsList.find(l => 
       l.id === userLocationId || 
       l.code === userLocationId ||
-      l.name_kh.includes(userLocationId)
+      l.code === targetCode ||
+      l.name_kh.includes(targetCode) ||
+      (l.code && targetCode.toUpperCase() === l.code.toUpperCase())
     ) || locationsList.find(l => l.code === '7MK') || locationsList[1] || null;
   }, [userLocationId, locationsList]);
 
@@ -97,13 +110,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isBranchUser, isCentralAdmin, assignedBranchLocation]);
 
-  // Restrict locations list: BranchUser sees only their assigned branch; CentralAdmin sees ALL + all locations
+  // Complete locations list available across the app (includes HQ and all branches for calculations)
   const locations = React.useMemo(() => {
-    if (isBranchUser && assignedBranchLocation) {
-      return [assignedBranchLocation];
-    }
     return [ALL_LOCATIONS_OPTION, ...locationsList];
-  }, [isBranchUser, assignedBranchLocation, locationsList]);
+  }, [locationsList]);
 
   // Guarded location setter: prevents BranchUser from switching to other locations
   const setSelectedLocationId = (id: string) => {

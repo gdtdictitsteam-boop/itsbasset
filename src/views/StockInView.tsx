@@ -234,13 +234,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               <select 
                 name="locationId" 
                 value={selectedLocId}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedLocId(val);
-                  if (val) {
-                    setSelectedLocationId(val);
-                  }
-                }}
+                onChange={(e) => setSelectedLocId(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required
               >

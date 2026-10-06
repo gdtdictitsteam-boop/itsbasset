@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
@@ -16,11 +16,6 @@ export function DashboardView() {
   const { selectedLocationId, selectedLocation } = useLocationContext();
   const { inventory, items, locations, isLoading, refreshInventory } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
-
-  // Auto-refresh live data from Supabase upon mounting Dashboard view
-  useEffect(() => {
-    refreshInventory();
-  }, [refreshInventory]);
 
   // Helper to check if inventory row belongs to HQ
   const isHqRow = (inv: any) => isHqLocationOrRow(inv, locations);
@@ -112,11 +107,8 @@ export function DashboardView() {
     };
   });
 
-  // CRITICAL RULE FOR BRANCH:
-  // For branch view, strictly filter ONLY the items that this branch actually has in stock (transferred from HQ)
-  const branchFilteredInventory = isBranchView 
-    ? rawAggregatedInventory.filter(item => item.branchStock > 0)
-    : rawAggregatedInventory;
+  // Show all catalog items with their live stock across locations
+  const branchFilteredInventory = rawAggregatedInventory;
 
   // Filter by category tab
   const filteredAggregatedInventory = branchFilteredInventory.filter(item => {
@@ -339,17 +331,21 @@ export function DashboardView() {
                 <th className="px-4 py-3 font-bold">សម្ភារ:</th>
                 <th className="px-4 py-3 font-bold text-center">ប្រភេទ</th>
                 <th className="px-4 py-3 font-bold text-center">ឯកតា</th>
-                {/* For CentralAdmin only: show HQ Stock and Branch Stock columns */}
-                {!isBranchView && (
-                  <th className="px-4 py-3 font-bold text-center">ស្តុក HQ</th>
-                )}
+                {/* Central HQ Stock column */}
+                <th className="px-4 py-3 font-bold text-center">
+                  {isBranchView ? 'ស្តុកកណ្តាល HQ (អាចស្នើសុំ)' : 'ស្តុក HQ'}
+                </th>
+
+                {/* Branch Stock column for CentralAdmin */}
                 {!isBranchView && (
                   <th className="px-4 py-3 font-bold text-center">ស្តុកសាខា</th>
                 )}
-                {/* Main Stock Column */}
+
+                {/* Main Branch Stock Column for Branch View / Total for Central */}
                 <th className="px-4 py-3 font-bold text-center">
-                  {isBranchView ? 'បរិមាណស្តុកប្រចាំសាខា' : 'ស្តុកសរុប'}
+                  {isBranchView ? 'ស្តុកនៅសាខានេះ' : 'ស្តុកសរុប'}
                 </th>
+
                 {/* For CentralAdmin only: show other branches with stock */}
                 {!isBranchView && (
                   <th className="px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
@@ -399,12 +395,12 @@ export function DashboardView() {
                   {/* Unit */}
                   <td className="px-4 py-2.5 text-slate-600 font-semibold text-center">{item.unit}</td>
                   
-                  {/* HQ Stock (CentralAdmin ONLY) */}
-                  {!isBranchView && (
-                    <td className="px-4 py-2.5 font-black text-center text-slate-900">
+                  {/* HQ Stock (Always visible: shows HQ stock) */}
+                  <td className="px-4 py-2.5 font-black text-center text-slate-900">
+                    <span className={item.hqStock > 0 ? 'text-slate-900 font-black' : 'text-slate-400 font-medium'}>
                       {item.hqStock}
-                    </td>
-                  )}
+                    </span>
+                  </td>
                   
                   {/* Branch Stock (CentralAdmin ONLY) */}
                   {!isBranchView && (
@@ -414,8 +410,10 @@ export function DashboardView() {
                   )}
 
                   {/* Total Stock / Branch Stock */}
-                  <td className="px-4 py-2.5 font-black text-center text-emerald-800">
-                    {item.totalStock}
+                  <td className="px-4 py-2.5 font-black text-center">
+                    <span className={item.totalStock > 0 ? 'text-emerald-800 font-black' : 'text-rose-600 font-bold'}>
+                      {item.totalStock}
+                    </span>
                   </td>
 
                   {/* Branches with Stock Badges (CentralAdmin ONLY) */}

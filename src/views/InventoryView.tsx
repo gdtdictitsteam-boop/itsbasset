@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
@@ -18,11 +18,6 @@ export function InventoryView() {
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'byLocation' | 'consolidated'>('consolidated');
-
-  // Auto-refresh live data from Supabase upon mounting Inventory view
-  useEffect(() => {
-    refreshInventory();
-  }, [refreshInventory]);
 
   // Helper to check if inventory row belongs to HQ
   const isHqRow = (inv: any) => isHqLocationOrRow(inv, locations);
@@ -105,11 +100,6 @@ export function InventoryView() {
       status
     };
   }).filter(item => {
-    // CRITICAL REQUIREMENT FOR BRANCH:
-    // When viewing for branch, strictly include ONLY items where the branch actually has stock (transferred from HQ)
-    if (isBranchView && item.branch_quantity <= 0) {
-      return false;
-    }
     const matchCategory = activeTab === 'ALL' || item.category === activeTab;
     const q = searchQuery.toLowerCase().trim();
     const matchSearch = !q || 
@@ -133,9 +123,15 @@ export function InventoryView() {
 
   // High-level metrics for quick review
   const totalItemsCount = consolidatedItems.length;
-  const totalQuantityUnits = consolidatedItems.reduce((acc, curr) => acc + curr.total_quantity, 0);
-  const lowStockCount = consolidatedItems.filter(item => item.total_quantity > 0 && item.total_quantity <= item.min_stock).length;
-  const outOfStockCount = consolidatedItems.filter(item => item.total_quantity === 0).length;
+  const totalQuantityUnits = consolidatedItems.reduce((acc, curr) => acc + (isBranchView ? curr.branch_quantity : curr.total_quantity), 0);
+  const lowStockCount = consolidatedItems.filter(item => {
+    const qty = isBranchView ? item.branch_quantity : item.total_quantity;
+    return qty > 0 && qty <= item.min_stock;
+  }).length;
+  const outOfStockCount = consolidatedItems.filter(item => {
+    const qty = isBranchView ? item.branch_quantity : item.total_quantity;
+    return qty === 0;
+  }).length;
 
   return (
     <div className="space-y-6 font-siemreap">
@@ -313,24 +309,26 @@ export function InventoryView() {
                   <th className="px-6 py-3.5 font-bold">រូបភាព / កូដ / សម្ភារ:</th>
                   <th className="px-4 py-3.5 font-bold text-center">ប្រភេទ</th>
                   <th className="px-4 py-3.5 font-bold text-center">កម្រិតអប្បបរមា</th>
-                  {/* For CentralAdmin only: show HQ Stock and Branch Stock columns */}
-                  {!isBranchView && (
-                    <th className="px-4 py-3.5 font-bold text-center">ស្តុក HQ</th>
-                  )}
+                  {/* Central HQ Stock column */}
+                  <th className="px-4 py-3.5 font-bold text-center">
+                    {isBranchView ? 'ស្តុកកណ្តាល HQ (អាចស្នើសុំ)' : 'ស្តុក HQ'}
+                  </th>
+                  {/* Branch Stock column for CentralAdmin */}
                   {!isBranchView && (
                     <th className="px-4 py-3.5 font-bold text-center">ស្តុកសាខា</th>
                   )}
                   {/* Branch quantity or total quantity */}
                   <th className="px-6 py-3.5 font-bold text-right">
-                    {isBranchView ? 'បរិមាណស្តុកប្រចាំសាខា' : 'ស្តុកសរុប'}
+                    {isBranchView ? 'ស្តុកនៅសាខានេះ' : 'ស្តុកសរុប'}
                   </th>
                   <th className="px-4 py-3.5 font-bold text-center">ស្ថានភាព</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {consolidatedItems.map((item, idx) => {
-                  const isOutOfStock = item.total_quantity === 0;
-                  const isLowStock = !isOutOfStock && item.total_quantity <= item.min_stock;
+                  const effectiveQty = isBranchView ? item.branch_quantity : item.total_quantity;
+                  const isOutOfStock = effectiveQty === 0;
+                  const isLowStock = !isOutOfStock && effectiveQty <= item.min_stock;
 
                   return (
                     <tr key={`${item.code}-${idx}`} className="even:bg-slate-50/40 odd:bg-white hover:bg-teal-50/30 transition-colors">
@@ -368,12 +366,12 @@ export function InventoryView() {
                       <td className="px-4 py-4 text-xs font-bold text-slate-500 text-center">
                         {item.min_stock} <span className="font-normal text-[11px]">{item.unit}</span>
                       </td>
-                      {/* HQ Stock (CentralAdmin ONLY) */}
-                      {!isBranchView && (
-                        <td className="px-4 py-4 text-sm font-bold text-center text-slate-800">
+                      {/* HQ Stock (Always visible: shows HQ stock) */}
+                      <td className="px-4 py-4 text-sm font-bold text-center text-slate-800">
+                        <span className={item.hq_quantity > 0 ? 'text-slate-900 font-bold' : 'text-slate-400 font-medium'}>
                           {item.hq_quantity}
-                        </td>
-                      )}
+                        </span>
+                      </td>
                       {/* Branch Stock (CentralAdmin ONLY) */}
                       {!isBranchView && (
                         <td className="px-4 py-4 text-sm font-bold text-center text-blue-900">
@@ -382,8 +380,8 @@ export function InventoryView() {
                       )}
                       {/* Effective Stock Column */}
                       <td className="px-6 py-4 text-sm font-black text-right text-slate-900">
-                        <span className={isOutOfStock ? 'text-rose-600' : isLowStock ? 'text-amber-600' : 'text-slate-900'}>
-                          {item.total_quantity}
+                        <span className={isOutOfStock ? 'text-rose-600 font-bold' : isLowStock ? 'text-amber-600 font-bold' : 'text-slate-900 font-black'}>
+                          {effectiveQty}
                         </span>
                         <span className="text-slate-500 font-medium ml-1.5 text-xs">{item.unit}</span>
                       </td>

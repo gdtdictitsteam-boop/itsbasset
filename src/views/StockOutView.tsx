@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useInventoryContext } from '../contexts/InventoryContext';
+import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { useLocationContext, formatLocationOption, getActiveWarehouseLocation } from '../contexts/LocationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { MinusCircle, Check, X, AlertTriangle } from 'lucide-react';
@@ -8,8 +8,8 @@ import { MinusCircle, Check, X, AlertTriangle } from 'lucide-react';
 export function StockOutView() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
-  const { items, locations, recordStockOut } = useInventoryContext();
-  const { setSelectedLocationId, selectedLocation: globalSelectedLoc } = useLocationContext();
+  const { items, locations, inventory, recordStockOut } = useInventoryContext();
+  const { selectedLocation: globalSelectedLoc } = useLocationContext();
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedItemId, setSelectedItemId] = useState('');
@@ -27,18 +27,67 @@ export function StockOutView() {
     }
   }, [globalSelectedLoc, locations, selectedLocId]);
 
-  const selectedItem = items.find(i => i.id === selectedItemId || i.code === selectedItemId);
+  const selectedItem = items.find(i => String(i.id) === String(selectedItemId) || String(i.code) === String(selectedItemId));
+  const selectedLocation = locations.find(l => 
+    l.id !== 'ALL' && l.code !== 'ALL' && 
+    (String(l.id) === String(selectedLocId) || String(l.code) === String(selectedLocId))
+  ) || locations[0];
+
+  // Calculate live available stock for selected item at selected location
+  const availableStock = React.useMemo(() => {
+    if (!selectedItem || !selectedLocation) return 0;
+    const isTargetHq = isHqLocationOrRow(selectedLocation, locations);
+
+    const matchingRows = inventory.filter(inv => {
+      const matchItem = String(inv.item_code)?.toUpperCase() === String(selectedItem.code)?.toUpperCase() || 
+                        String(inv.item_id) === String(selectedItem.id);
+      if (!matchItem) return false;
+
+      if (String(inv.location_id) === String(selectedLocation.id) || 
+          String(inv.location_id) === String(selectedLocation.code)) return true;
+
+      if (isTargetHq && isHqLocationOrRow(inv, locations)) return true;
+
+      if (selectedLocation.code && inv.location_name_kh && inv.location_name_kh.includes(selectedLocation.code)) return true;
+      if (selectedLocation.name_kh && inv.location_name_kh && inv.location_name_kh.includes(selectedLocation.name_kh)) return true;
+
+      return false;
+    });
+
+    return matchingRows.reduce((sum, r) => sum + (r.quantity || 0), 0);
+  }, [selectedItem, selectedLocation, inventory, locations]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setNotice(null);
 
     const form = e.target as HTMLFormElement;
-    const locationId = selectedLocId || (form.elements.namedItem('locationId') as HTMLSelectElement).value;
-    const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement).value || '0', 10);
-    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement).value;
-    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
+    const locationId = selectedLocId || (form.elements.namedItem('locationId') as HTMLSelectElement)?.value;
+    const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement)?.value || '0', 10);
+    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement)?.value;
+    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement)?.value;
+
+    if (!selectedItemId) {
+      setNotice({ type: 'error', message: 'សូមជ្រើសរើសសម្ភារៈ!' });
+      return;
+    }
+    if (!locationId) {
+      setNotice({ type: 'error', message: 'សូមជ្រើសរើសទីតាំង!' });
+      return;
+    }
+    if (quantity <= 0) {
+      setNotice({ type: 'error', message: 'ចំនួនដកចេញត្រូវតែធំជាង ០!' });
+      return;
+    }
+    if (quantity > availableStock) {
+      setNotice({ 
+        type: 'error', 
+        message: `ស្តុកនៅទីតាំងនេះមិនគ្រប់គ្រាន់ទេ! (មានក្នុងស្តុក: ${availableStock} ${selectedItem?.unit || 'គ្រឿង'}, ស្នើសុំដក: ${quantity} ${selectedItem?.unit || 'គ្រឿង'})` 
+      });
+      return;
+    }
+
+    setLoading(true);
 
     const res = await recordStockOut({
       locationId,
@@ -102,13 +151,7 @@ export function StockOutView() {
               <select 
                 name="locationId" 
                 value={selectedLocId}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedLocId(val);
-                  if (val) {
-                    setSelectedLocationId(val);
-                  }
-                }}
+                onChange={(e) => setSelectedLocId(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" 
                 required
               >
@@ -134,6 +177,22 @@ export function StockOutView() {
                   </option>
                 ))}
               </select>
+
+              {/* Current Available Stock Indicator */}
+              {selectedItem && (
+                <div className={`mt-2 p-2.5 rounded-xl border text-xs flex items-center justify-between ${
+                  availableStock > 0 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                }`}>
+                  <span className="font-semibold">
+                    ស្តុកបច្ចុប្បន្ននៅ {selectedLocation?.code || 'ទីតាំងនេះ'}៖
+                  </span>
+                  <span className="font-mono font-black text-sm">
+                    {availableStock} {selectedItem.unit || 'គ្រឿង'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

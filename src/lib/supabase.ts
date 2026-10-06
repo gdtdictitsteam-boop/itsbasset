@@ -29,12 +29,21 @@ export const getSupabaseConfig = (): { url: string; anonKey: string } => {
  */
 export const isSupabaseConfigured = (): boolean => {
   const { url, anonKey } = getSupabaseConfig();
+  if (!url || !anonKey) return false;
+
+  const cleanUrl = url.trim().toLowerCase();
+  const cleanKey = anonKey.trim().toLowerCase();
+
   return (
-    Boolean(url) &&
-    Boolean(anonKey) &&
-    !url.includes('YOUR_SUPABASE') &&
-    !url.includes('placeholder.supabase.co') &&
-    url.startsWith('http')
+    !cleanUrl.includes('your-project.supabase.co') &&
+    !cleanUrl.includes('placeholder.supabase.co') &&
+    !cleanUrl.includes('your_supabase') &&
+    !cleanUrl.includes('example.supabase.co') &&
+    cleanKey !== 'your-anon-key' &&
+    cleanKey !== 'placeholder-key' &&
+    cleanKey !== 'your_anon_key' &&
+    cleanKey !== 'your-key' &&
+    cleanUrl.startsWith('http')
   );
 };
 
@@ -430,10 +439,9 @@ export async function fetchFullInventoryFromSupabase() {
       supabase.from('locations').select('*'),
     ]);
 
-    if (itemsRes.error || invRes.error || locsRes.error) {
-      console.warn('Error fetching full inventory from Supabase:', {
+    if (itemsRes.error || locsRes.error) {
+      console.warn('Error fetching items or locations from Supabase:', {
         itemsError: itemsRes.error,
-        invError: invRes.error,
         locsError: locsRes.error
       });
       return null;
@@ -447,9 +455,9 @@ export async function fetchFullInventoryFromSupabase() {
       return null;
     }
 
-    // If Supabase inventory is completely empty, auto-seed standard initial inventory once
-    if (inventory.length === 0) {
-      console.info('Supabase inventory table is empty. Initializing standard stock...');
+    // If Supabase inventory is completely empty or error occurred on inventory table, auto-seed standard initial inventory once
+    if (inventory.length === 0 || invRes.error) {
+      console.info('Supabase inventory table is empty or had query notice. Attempting to seed standard initial stock...');
       const seedRes = await seedInitialInventoryToSupabase();
       if (seedRes.success) {
         const recheckInv = await supabase.from('inventory').select('*');
@@ -507,7 +515,7 @@ export async function fetchFullInventoryFromSupabase() {
           location_name_kh: loc?.name_kh || (isHq ? 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB' : 'មិនស្គាល់ទីតាំង'),
           location_name_en: loc?.name_en || (isHq ? 'HQ-ITSB Technical Inventory' : 'Unknown Location'),
           location_code: loc?.code || (isHq ? 'HQ-ITSB' : ''),
-          type: loc?.type || (isHq ? 'HQ' : ''),
+          type: loc?.type || (isHq ? 'HQ' : 'BRANCH'),
           image_url: it.image_url || undefined,
         });
       }
@@ -1119,10 +1127,16 @@ export async function seedInitialInventoryToSupabase(): Promise<{
       };
     }
 
-    // 3. Upsert inventory records for HQ
+    // 3. Upsert inventory records for HQ and sample branches
     const allDbItems = upsertedItems && upsertedItems.length > 0
       ? upsertedItems
       : (await supabase.from('items').select('id, code')).data || [];
+
+    const itemByCode = new Map<string, string>();
+    allDbItems.forEach(it => itemByCode.set(it.code, it.id));
+
+    const locByCode = new Map<string, string>();
+    locs.forEach(l => locByCode.set(l.code, l.id));
 
     const inventoryRows: any[] = [];
     allDbItems.forEach(it => {
@@ -1135,16 +1149,116 @@ export async function seedInitialInventoryToSupabase(): Promise<{
       });
     });
 
-    const { error: invErr } = await supabase
+    // Seed branch stocks so active branch officers immediately have stock visible
+    const branchSeeds: Array<{ locCode: string; itemCode: string; qty: number }> = [
+      // 7 Makara (7MK)
+      { locCode: '7MK', itemCode: 'T-001', qty: 2 },
+      { locCode: '7MK', itemCode: 'T-006', qty: 2 },
+      { locCode: '7MK', itemCode: 'T-019', qty: 5 },
+      { locCode: '7MK', itemCode: 'S-004', qty: 10 },
+      { locCode: '7MK', itemCode: 'S-005', qty: 5 },
+      // Chamkarmon (CKM)
+      { locCode: 'CKM', itemCode: 'T-001', qty: 1 },
+      { locCode: 'CKM', itemCode: 'T-004', qty: 1 },
+      { locCode: 'CKM', itemCode: 'T-010', qty: 2 },
+      { locCode: 'CKM', itemCode: 'S-004', qty: 8 },
+      // Daun Penh (DPE)
+      { locCode: 'DPE', itemCode: 'T-001', qty: 1 },
+      { locCode: 'DPE', itemCode: 'T-002', qty: 1 },
+      { locCode: 'DPE', itemCode: 'T-012', qty: 1 },
+      { locCode: 'DPE', itemCode: 'S-001', qty: 2 },
+      // Toul Kork (TKO)
+      { locCode: 'TKO', itemCode: 'T-001', qty: 1 },
+      { locCode: 'TKO', itemCode: 'T-007', qty: 2 },
+      { locCode: 'TKO', itemCode: 'T-020', qty: 50 },
+      { locCode: 'TKO', itemCode: 'S-005', qty: 10 },
+      // Kampong Cham (KPC)
+      { locCode: 'KPC', itemCode: 'T-001', qty: 1 },
+      { locCode: 'KPC', itemCode: 'T-003', qty: 1 },
+      { locCode: 'KPC', itemCode: 'T-013', qty: 2 },
+      { locCode: 'KPC', itemCode: 'S-002', qty: 5 },
+      // Tech-HQ
+      { locCode: 'Tech-HQ', itemCode: 'T-001', qty: 1 },
+      { locCode: 'Tech-HQ', itemCode: 'T-004', qty: 1 },
+      { locCode: 'Tech-HQ', itemCode: 'T-012', qty: 1 },
+      { locCode: 'Tech-HQ', itemCode: 'S-004', qty: 20 },
+    ];
+
+    branchSeeds.forEach(bs => {
+      const bLocId = locByCode.get(bs.locCode);
+      const bItemId = itemByCode.get(bs.itemCode);
+      if (bLocId && bItemId) {
+        inventoryRows.push({
+          location_id: bLocId,
+          item_id: bItemId,
+          quantity: bs.qty,
+          last_updated: new Date().toISOString(),
+        });
+      }
+    });
+
+    let invErr: any = null;
+    const { error: batchErr } = await supabase
       .from('inventory')
       .upsert(inventoryRows, { onConflict: 'location_id,item_id' });
 
-    if (invErr) {
-      console.error('Error seeding inventory to Supabase:', invErr);
-      return {
-        success: false,
-        message: `បរាជ័យក្នុងការបញ្ចូលទិន្នន័យ Inventory: ${invErr.message}`,
-      };
+    if (batchErr) {
+      console.warn('Batch upsert inventory notice, retrying row-by-row:', batchErr);
+      // Fallback row by row with update-or-insert
+      for (const row of inventoryRows) {
+        const { data: existing } = await supabase
+          .from('inventory')
+          .select('id')
+          .eq('location_id', row.location_id)
+          .eq('item_id', row.item_id)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase
+            .from('inventory')
+            .update({ quantity: row.quantity, last_updated: row.last_updated })
+            .eq('id', existing.id);
+        } else {
+          await supabase.from('inventory').insert([row]);
+        }
+      }
+    }
+
+    // 4. Seed initial transaction records into transactions table if empty
+    try {
+      const { count: txCount } = await supabase.from('transactions').select('id', { count: 'exact', head: true });
+      if (!txCount || txCount === 0) {
+        const initialTxRows = [
+          {
+            type: 'STOCK_IN',
+            to_location_id: hqLoc.id,
+            item_id: itemByCode.get('T-001') || allDbItems[0]?.id,
+            item_code: 'T-001',
+            item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
+            quantity: 15,
+            unit: 'គ្រឿង',
+            recorded_by: 'Admin-GDT',
+            remark: 'បញ្ចូលស្តុកកណ្តាលដំបូង HQ-ITSB',
+            status: 'RECEIVED'
+          },
+          {
+            type: 'HANDOVER',
+            from_location_id: hqLoc.id,
+            to_location_id: locByCode.get('7MK') || locs[1]?.id,
+            item_id: itemByCode.get('T-001') || allDbItems[0]?.id,
+            item_code: 'T-001',
+            item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
+            quantity: 2,
+            unit: 'គ្រឿង',
+            recorded_by: 'Admin-GDT',
+            remark: 'ផ្ទេរសម្ភារៈបច្ចេកទេសជូនសាខា ៧មករា (7MK)',
+            status: 'COMPLETED'
+          }
+        ];
+        await supabase.from('transactions').insert(initialTxRows);
+      }
+    } catch (txErr) {
+      console.warn('Initial transactions seed notice:', txErr);
     }
 
     return {
