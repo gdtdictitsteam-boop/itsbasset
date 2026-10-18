@@ -5,7 +5,7 @@ import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryCon
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon, Building2,
-  Boxes, TrendingUp, RefreshCw, ShieldCheck, CheckCircle2, Lock
+  Boxes, TrendingUp, RefreshCw, ShieldCheck, CheckCircle2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ItemAvatar } from '../components/ItemAvatar';
@@ -223,18 +223,15 @@ export function DashboardView() {
         {isBranchView ? (
           <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">សាខាប្រចាំការ (Branch)</p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">សាខាប្រតិបត្តិការ (BRANCH)</p>
               <div className="p-1.5 rounded-lg bg-teal-50 text-teal-800">
                 <MapPin size={16} />
               </div>
             </div>
             <div className="flex items-end justify-between mt-2">
-              <h3 className="text-base font-bold text-slate-900 truncate max-w-[150px]" title={selectedLocation.name_kh}>
+              <h3 className="text-base font-bold text-slate-900 truncate max-w-[200px]" title={selectedLocation.name_kh}>
                 {selectedLocation.code || selectedLocation.name_kh}
               </h3>
-              <span className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                <Lock size={10} /> ចាក់សោ
-              </span>
             </div>
           </div>
         ) : (

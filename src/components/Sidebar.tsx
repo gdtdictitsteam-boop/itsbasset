@@ -13,8 +13,7 @@ import {
   SlidersHorizontal,
   Database,
   History,
-  MapPin,
-  Lock
+  MapPin
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -103,18 +102,12 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
       <div className="bg-[#E1F2EA] p-3.5 rounded-xl border border-[#C2E4D5] mb-6 shadow-2xs">
         <label className="text-[10px] font-bold text-[#2B6A52] uppercase flex items-center justify-between mb-1.5">
           <span>{isBranchUser ? 'សាខារបស់លោកអ្នក (BRANCH)' : 'LOCATION (ទីតាំងស្តុក)'}</span>
-          {isBranchUser ? (
-            <span className="flex items-center text-[10px] text-amber-800 font-bold bg-amber-100/80 px-1.5 py-0.5 rounded border border-amber-300">
-              <Lock size={10} className="mr-1 text-amber-700" /> ចាក់សោ
-            </span>
-          ) : (
-            <MapPin size={13} className="text-[#1E6047]" />
-          )}
+          <MapPin size={13} className="text-[#1E6047]" />
         </label>
 
         {isBranchUser ? (
           // Locked view for BranchUser: cannot change branch, cannot view other branches or HQ
-          <div className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-amber-300 rounded-lg p-2.5 flex items-center justify-between shadow-2xs">
+          <div className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-[#BDE0D0] rounded-lg p-2.5 flex items-center justify-between shadow-2xs">
             <span 
               className="truncate" 
               title={selectedLocation.id === 'ALL' || selectedLocation.code === 'ALL' 
@@ -125,7 +118,6 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
                 ? '[ALL] ទីតាំងស្តុកទាំងអស់' 
                 : `[${selectedLocation.code || selectedLocation.id}] ${selectedLocation.name_kh || selectedLocation.name_en}`}
             </span>
-            <Lock size={13} className="text-amber-700 shrink-0 ml-1.5" />
           </div>
         ) : (
           // Free selector for CentralAdmin: can choose any location or ALL

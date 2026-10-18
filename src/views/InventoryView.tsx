@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   Wrench, Package as PackageIcon, RefreshCw, 
   AlertTriangle, Boxes, ShieldAlert,
-  Layers, MapPin, Building2, CheckCircle2, Lock
+  Layers, MapPin, Building2, CheckCircle2
 } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
 
@@ -203,13 +203,13 @@ export function InventoryView() {
         {isBranchView ? (
           <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">សាខាប្រចាំការ</p>
-              <p className="text-base font-black text-slate-900 mt-1 truncate max-w-[130px]" title={selectedLocation.name_kh}>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">សាខាប្រតិបត្តិការ</p>
+              <p className="text-base font-black text-slate-900 mt-1 truncate max-w-[150px]" title={selectedLocation.name_kh}>
                 {selectedLocation.code || selectedLocation.name_kh}
               </p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700 border border-amber-200" title="ចាក់សោតាមសាខា">
-              <Lock size={18} />
+            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-800 border border-teal-200" title={selectedLocation.name_kh}>
+              <MapPin size={18} />
             </div>
           </div>
         ) : (
