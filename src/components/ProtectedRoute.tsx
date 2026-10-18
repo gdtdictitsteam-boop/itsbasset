@@ -11,8 +11,8 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
   const { user, userRole, loading } = useAuth();
 
-  // 1. Loading State during authentication verification
-  if (loading) {
+  // 1. Loading State during authentication verification (only if session not yet restored)
+  if (loading && !user) {
     return (
       <div className="min-h-screen bg-[#F4F7F6] flex flex-col items-center justify-center p-4 font-siemreap">
         <div className="bg-white p-8 rounded-3xl border border-slate-200/90 shadow-md text-center max-w-sm w-full space-y-4">

@@ -62,6 +62,16 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
   },
 ];
 
+export interface PersistedSession {
+  id: string;
+  email: string;
+  role: 'CentralAdmin' | 'BranchUser';
+  locationId?: string;
+  name: string;
+  authType: 'supabase' | 'officer';
+  timestamp: number;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -87,13 +97,154 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEMO_USER_STORAGE_KEY = 'gdt_inventory_demo_user';
-const USERS_LIST_STORAGE_KEY = 'gdt_inventory_user_profiles';
+export const GDT_AUTH_SESSION_KEY = 'gdt_inventory_auth_session';
+export const DEMO_USER_STORAGE_KEY = 'gdt_inventory_demo_user';
+export const USERS_LIST_STORAGE_KEY = 'gdt_inventory_user_profiles';
+
+/**
+ * Synchronously retrieve verified persistent session from localStorage on app boot/refresh
+ * Ensures zero session loss or flicker when the user presses F5
+ */
+function loadPersistedSession(): PersistedSession | null {
+  try {
+    // 1. Primary dedicated session token
+    const stored = localStorage.getItem(GDT_AUTH_SESSION_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && parsed.email) {
+        return parsed;
+      }
+    }
+
+    // 2. Fallback to legacy demo key if present
+    const storedDemo = localStorage.getItem(DEMO_USER_STORAGE_KEY);
+    if (storedDemo) {
+      const parsedDemo = JSON.parse(storedDemo);
+      if (parsedDemo && parsedDemo.email) {
+        const isAdmin = 
+          parsedDemo.role === 'CentralAdmin' || 
+          parsedDemo.role === 'Admin-GDT' ||
+          parsedDemo.email.toLowerCase().includes('admin') ||
+          parsedDemo.email.toLowerCase().includes('its') ||
+          parsedDemo.email.toLowerCase().includes('team');
+        return {
+          id: parsedDemo.id || 'officer-' + parsedDemo.email,
+          email: parsedDemo.email,
+          role: isAdmin ? 'CentralAdmin' : 'BranchUser',
+          name: parsedDemo.name || parsedDemo.email,
+          locationId: parsedDemo.locationId || (isAdmin ? '1' : '2'),
+          authType: 'officer',
+          timestamp: Date.now()
+        };
+      }
+    }
+
+    // 3. Fallback: inspect any Supabase client session tokens in localStorage (sb-*-auth-token)
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsedSb = JSON.parse(raw);
+          const sbUser = parsedSb?.user;
+          if (sbUser?.email) {
+            const isAdmin = 
+              sbUser.email.toLowerCase().includes('admin') || 
+              sbUser.email.toLowerCase().includes('its') ||
+              sbUser.email.toLowerCase().includes('dict') ||
+              sbUser.email.toLowerCase().includes('team') ||
+              sbUser.user_metadata?.role === 'CentralAdmin';
+            return {
+              id: sbUser.id,
+              email: sbUser.email,
+              role: isAdmin ? 'CentralAdmin' : 'BranchUser',
+              name: sbUser.user_metadata?.full_name || sbUser.email.split('@')[0],
+              locationId: sbUser.user_metadata?.location_id || (isAdmin ? '1' : '2'),
+              authType: 'supabase',
+              timestamp: Date.now()
+            };
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Notice reading initial auth session:', err);
+  }
+  return null;
+}
+
+/**
+ * Persist active session safely to localStorage
+ */
+function savePersistedSession(sess: PersistedSession) {
+  try {
+    localStorage.setItem(GDT_AUTH_SESSION_KEY, JSON.stringify(sess));
+    localStorage.setItem(DEMO_USER_STORAGE_KEY, JSON.stringify({
+      id: sess.id,
+      email: sess.email,
+      role: sess.role,
+      name: sess.name,
+      locationId: sess.locationId
+    }));
+  } catch (err) {
+    console.warn('Notice saving persisted session:', err);
+  }
+}
+
+/**
+ * Cleanly remove persistent session tokens
+ */
+function clearPersistedSession() {
+  try {
+    localStorage.removeItem(GDT_AUTH_SESSION_KEY);
+    localStorage.removeItem(DEMO_USER_STORAGE_KEY);
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (
+        key.startsWith('sb-') || 
+        key.includes('auth-token') || 
+        key.includes('supabase.auth') || 
+        key.includes('demo_user') || 
+        key.includes('gdt_auth')
+      )) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (err) {
+    console.warn('Notice purging persisted session tokens:', err);
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  // Synchronously restore active session on boot / F5 refresh
+  const [persistedSession, setPersistedSession] = useState<PersistedSession | null>(loadPersistedSession);
+
+  // Synchronous user state: ensures user is NOT null on initial render if session exists!
+  const [user, setUser] = useState<User | null>(() => {
+    const init = loadPersistedSession();
+    if (init) {
+      return {
+        id: init.id,
+        email: init.email,
+        user_metadata: {
+          full_name: init.name,
+          role: init.role,
+          location_id: init.locationId
+        },
+        app_metadata: {},
+        aud: 'authenticated',
+        created_at: new Date(init.timestamp || Date.now()).toISOString()
+      } as User;
+    }
+    return null;
+  });
+
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+
+  // If session is already restored synchronously, loading starts as false so UI renders instantly!
+  const [loading, setLoading] = useState<boolean>(() => !loadPersistedSession());
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   // Load user profiles list from storage or defaults
@@ -103,7 +254,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge any initial profiles that might not exist in stored list yet
           const existingEmails = new Set(parsed.map((p: UserProfile) => p.email.toLowerCase()));
           const missing = INITIAL_USER_PROFILES.filter(init => !existingEmails.has(init.email.toLowerCase()));
           return [...parsed, ...missing];
@@ -113,16 +263,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
     return INITIAL_USER_PROFILES;
-  });
-
-  // Demo user state (Must default to null so signed-out users stay on Login screen!)
-  const [demoUser, setDemoUser] = useState<{ email: string; role: string; name: string; locationId?: string; id?: string } | null>(() => {
-    try {
-      const stored = localStorage.getItem(DEMO_USER_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
   });
 
   const configured = isSupabaseConfigured();
@@ -149,6 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [configured]);
 
+  // Handle Supabase Auth Session verification & listener
   useEffect(() => {
     let isMounted = true;
 
@@ -157,49 +298,126 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 1. Check existing session from Supabase
+    // 1. Asynchronously verify active session from Supabase in background
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       if (!isMounted) return;
       if (currentSession?.user) {
         setSession(currentSession);
         setUser(currentSession.user);
-        setDemoUser(null);
+
+        // Synchronize and update persisted session record
+        const email = currentSession.user.email || '';
+        const isAdmin = 
+          email.toLowerCase().includes('admin') || 
+          email.toLowerCase().includes('its') || 
+          email.toLowerCase().includes('dict') || 
+          email.toLowerCase().includes('team') ||
+          currentSession.user.user_metadata?.role === 'CentralAdmin';
+
+        const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
+        const sessRecord: PersistedSession = {
+          id: currentSession.user.id,
+          email,
+          role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
+          name: matched?.full_name || currentSession.user.user_metadata?.full_name || email.split('@')[0],
+          locationId: matched?.location_id || currentSession.user.user_metadata?.location_id || (isAdmin ? '1' : '2'),
+          authType: 'supabase',
+          timestamp: Date.now()
+        };
+        setPersistedSession(sessRecord);
+        savePersistedSession(sessRecord);
       } else {
-        setSession(null);
-        setUser(null);
-        // Only keep demoUser if explicitly present in localStorage
-        const storedDemo = localStorage.getItem(DEMO_USER_STORAGE_KEY);
-        if (!storedDemo) {
-          setDemoUser(null);
+        // If Supabase session is null, DO NOT wipe persisted officer session!
+        // This ensures authenticated officers or offline users remain logged in across F5 refresh.
+        const existing = loadPersistedSession();
+        if (existing) {
+          setPersistedSession(existing);
+        } else {
+          setUser(null);
+          setSession(null);
+          setPersistedSession(null);
         }
       }
       setLoading(false);
     }).catch((err) => {
-      console.warn('Error fetching Supabase auth session:', err);
+      console.warn('Notice checking Supabase auth session:', err);
       if (isMounted) {
-        setSession(null);
-        setUser(null);
-        setDemoUser(null);
+        // Retain existing persisted session if valid
+        const existing = loadPersistedSession();
+        if (!existing) {
+          setUser(null);
+          setSession(null);
+        }
         setLoading(false);
       }
     });
 
-    // 2. Fetch users profiles
+    // 2. Fetch users profiles from Supabase DB
     fetchUsersList();
 
-    // 3. Listen to auth state changes
+    // 3. Listen to auth state changes safely
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (!isMounted) return;
-      if (event === 'SIGNED_OUT' || !newSession?.user) {
+
+      // Only purge credentials on explicit SIGNED_OUT event!
+      if (event === 'SIGNED_OUT') {
         setSession(null);
         setUser(null);
-        setDemoUser(null);
-        localStorage.removeItem(DEMO_USER_STORAGE_KEY);
-      } else if (newSession?.user) {
-        setSession(newSession);
-        setUser(newSession.user);
-        setDemoUser(null);
-        localStorage.removeItem(DEMO_USER_STORAGE_KEY);
+        setPersistedSession(null);
+        clearPersistedSession();
+        setLoading(false);
+        return;
+      }
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        if (newSession?.user) {
+          setSession(newSession);
+          setUser(newSession.user);
+          const email = newSession.user.email || '';
+          const isAdmin = 
+            email.toLowerCase().includes('admin') || 
+            email.toLowerCase().includes('its') ||
+            email.toLowerCase().includes('dict') ||
+            email.toLowerCase().includes('team') ||
+            newSession.user.user_metadata?.role === 'CentralAdmin';
+          const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
+          const sessRecord: PersistedSession = {
+            id: newSession.user.id,
+            email,
+            role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
+            name: matched?.full_name || newSession.user.user_metadata?.full_name || email.split('@')[0],
+            locationId: matched?.location_id || (isAdmin ? '1' : '2'),
+            authType: 'supabase',
+            timestamp: Date.now()
+          };
+          setPersistedSession(sessRecord);
+          savePersistedSession(sessRecord);
+        }
+      } else if (event === 'INITIAL_SESSION') {
+        if (newSession?.user) {
+          setSession(newSession);
+          setUser(newSession.user);
+          const email = newSession.user.email || '';
+          const isAdmin = 
+            email.toLowerCase().includes('admin') || 
+            email.toLowerCase().includes('its') ||
+            email.toLowerCase().includes('dict') ||
+            email.toLowerCase().includes('team') ||
+            newSession.user.user_metadata?.role === 'CentralAdmin';
+          const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
+          const sessRecord: PersistedSession = {
+            id: newSession.user.id,
+            email,
+            role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
+            name: matched?.full_name || newSession.user.user_metadata?.full_name || email.split('@')[0],
+            locationId: matched?.location_id || (isAdmin ? '1' : '2'),
+            authType: 'supabase',
+            timestamp: Date.now()
+          };
+          setPersistedSession(sessRecord);
+          savePersistedSession(sessRecord);
+        }
+        // NOTE: If newSession is null on INITIAL_SESSION, DO NOT CLEAR persistedSession!
       }
       setLoading(false);
     });
@@ -208,7 +426,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [configured, fetchUsersList]);
+  }, [configured, fetchUsersList, usersList]);
 
   // Save usersList to localStorage on changes
   useEffect(() => {
@@ -219,43 +437,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [usersList]);
 
-  // Sign in with Supabase Auth
+  // Sign in with Supabase Auth or verified officer credentials
   const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
     if (!configured) {
-      // Fallback demo signin
-      const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
+      // Offline / Local Demo Sign-in
+      const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
       if (matched) {
         signInDemo(matched.email, matched.role, matched.location_id || undefined);
       } else {
-        const defaultRole = email.includes('branch') ? 'BranchUser' : 'CentralAdmin';
-        signInDemo(email, defaultRole);
+        const defaultRole = cleanEmail.includes('branch') ? 'BranchUser' : 'CentralAdmin';
+        signInDemo(cleanEmail, defaultRole);
       }
       return { success: true };
     }
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // 1. Attempt Supabase Auth Password Login
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: cleanPassword,
       });
 
-      if (error) {
-        // Fallback for mock/offline officers or before running auth SQL script in Supabase
-        const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (matched) {
-          const expectedPwd = matched.password || 'GDT@2026';
-          if (password === expectedPwd || password === 'GDT@2026') {
-            signInDemo(matched.email, matched.role, matched.location_id || undefined);
-            return { success: true };
-          }
-        }
-        return { success: false, error: error.message };
+      if (!error && data?.user) {
+        const isAdmin = 
+          cleanEmail.includes('admin') || 
+          cleanEmail.includes('its') || 
+          cleanEmail.includes('dict') || 
+          cleanEmail.includes('team');
+        const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
+        const sessionRecord: PersistedSession = {
+          id: data.user.id,
+          email: data.user.email || cleanEmail,
+          role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
+          name: matched?.full_name || data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+          locationId: matched?.location_id || (isAdmin ? '1' : '2'),
+          authType: 'supabase',
+          timestamp: Date.now()
+        };
+
+        setPersistedSession(sessionRecord);
+        savePersistedSession(sessionRecord);
+        setUser(data.user);
+        setSession(data.session);
+        await fetchUsersList();
+        return { success: true };
       }
 
-      setDemoUser(null);
-      localStorage.removeItem(DEMO_USER_STORAGE_KEY);
-      await fetchUsersList();
-      return { success: true };
+      // 2. Fallback verification against officer profiles in Supabase / Local storage
+      const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
+      if (matched) {
+        const expectedPwd = matched.password || 'GDT@2026';
+        if (cleanPassword === expectedPwd || cleanPassword === 'GDT@2026') {
+          const sessionRecord: PersistedSession = {
+            id: matched.id,
+            email: matched.email,
+            role: (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser',
+            name: matched.full_name,
+            locationId: matched.location_id || (matched.role === 'CentralAdmin' ? '1' : '2'),
+            authType: 'officer',
+            timestamp: Date.now()
+          };
+
+          setPersistedSession(sessionRecord);
+          savePersistedSession(sessionRecord);
+          setUser({
+            id: sessionRecord.id,
+            email: sessionRecord.email,
+            user_metadata: {
+              full_name: sessionRecord.name,
+              role: sessionRecord.role,
+              location_id: sessionRecord.locationId
+            },
+            app_metadata: {},
+            aud: 'authenticated',
+            created_at: new Date().toISOString()
+          } as User);
+
+          return { success: true };
+        }
+      }
+
+      return { success: false, error: error?.message || 'អ៊ីមែល ឬ ពាក្យសម្ងាត់មិនត្រឹមត្រូវ!' };
     } catch (err: any) {
       return { success: false, error: err?.message || 'មានបញ្ហាបរាជ័យក្នុងការចូលប្រព័ន្ធ' };
     }
@@ -272,50 +537,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setUser(null);
       setSession(null);
-      setDemoUser(null);
-      try {
-        localStorage.removeItem(DEMO_USER_STORAGE_KEY);
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith('sb-') || key.includes('auth-token') || key.includes('supabase.auth') || key.includes('demo_user'))) {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
-      } catch (storageErr) {
-        console.warn('Notice clearing localStorage on signout:', storageErr);
-      }
+      setPersistedSession(null);
+      clearPersistedSession();
     }
   };
 
-  // Demo sign in for development & offline testing
+  // Demo sign in for development & role switching
   const signInDemo = (email: string = 'admin.its@tax.gov.kh', role: string = 'CentralAdmin', branchId?: string) => {
-    const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
-    const demo = {
-      id: matched?.id || 'demo-' + Date.now(),
-      email,
-      role: matched?.role || role,
+    const cleanEmail = email.trim().toLowerCase();
+    const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
+    const effectiveRole = ((matched?.role || role) === 'Admin-GDT' || (matched?.role || role) === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+    const effectiveLocation = matched?.location_id || branchId || (effectiveRole === 'CentralAdmin' ? '1' : '2');
+    
+    const sess: PersistedSession = {
+      id: matched?.id || 'officer-' + Date.now(),
+      email: matched?.email || email,
+      role: effectiveRole,
       name: matched?.full_name || email.split('@')[0].toUpperCase(),
-      locationId: matched?.location_id || branchId || (role === 'CentralAdmin' ? '1' : '2')
+      locationId: effectiveLocation,
+      authType: 'officer',
+      timestamp: Date.now()
     };
-    setDemoUser(demo);
-    localStorage.setItem(DEMO_USER_STORAGE_KEY, JSON.stringify(demo));
+
+    setPersistedSession(sess);
+    savePersistedSession(sess);
+    setUser({
+      id: sess.id,
+      email: sess.email,
+      user_metadata: {
+        full_name: sess.name,
+        role: sess.role,
+        location_id: sess.locationId
+      },
+      app_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString()
+    } as User);
   };
 
   // Switch active user easily (used by CentralAdmin to simulate or test roles)
   const switchActiveUser = (userId: string) => {
     const targetUser = usersList.find(u => u.id === userId);
     if (!targetUser) return;
-    const demo = {
+    const effectiveRole = (targetUser.role === 'Admin-GDT' || targetUser.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+    const sess: PersistedSession = {
       id: targetUser.id,
       email: targetUser.email,
-      role: targetUser.role,
+      role: effectiveRole,
       name: targetUser.full_name,
-      locationId: targetUser.location_id || (targetUser.role === 'CentralAdmin' ? '1' : '2')
+      locationId: targetUser.location_id || (effectiveRole === 'CentralAdmin' ? '1' : '2'),
+      authType: 'officer',
+      timestamp: Date.now()
     };
-    setDemoUser(demo);
-    localStorage.setItem(DEMO_USER_STORAGE_KEY, JSON.stringify(demo));
+
+    setPersistedSession(sess);
+    savePersistedSession(sess);
+    setUser({
+      id: sess.id,
+      email: sess.email,
+      user_metadata: {
+        full_name: sess.name,
+        role: sess.role,
+        location_id: sess.locationId
+      },
+      app_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString()
+    } as User);
   };
 
   // Update user profile (Name, Role, Location)
@@ -339,19 +627,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ignore
       }
 
-      // If active user is updated, update active state too
-      if (demoUser && demoUser.id === id) {
+      // If active user is updated, update active persisted session too
+      if (persistedSession && persistedSession.id === id) {
         const target = updatedList.find(u => u.id === id);
         if (target) {
-          const newDemo = {
+          const effectiveRole = (target.role === 'Admin-GDT' || target.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+          const newSess: PersistedSession = {
             id: target.id,
             email: target.email,
-            role: target.role,
+            role: effectiveRole,
             name: target.full_name,
-            locationId: target.location_id || undefined
+            locationId: target.location_id || (effectiveRole === 'CentralAdmin' ? '1' : '2'),
+            authType: persistedSession.authType,
+            timestamp: Date.now()
           };
-          setDemoUser(newDemo);
-          localStorage.setItem(DEMO_USER_STORAGE_KEY, JSON.stringify(newDemo));
+          setPersistedSession(newSess);
+          savePersistedSession(newSess);
         }
       }
 
@@ -443,8 +734,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Find effective current profile
-  const currentEmail = user?.email || demoUser?.email;
+  // Effective authenticated user resolution
+  const currentEmail = user?.email || persistedSession?.email || '';
   const isEmailAdmin = Boolean(
     currentEmail && (
       currentEmail.toLowerCase().includes('admin') ||
@@ -455,33 +746,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const matchedProfile = usersList.find(
-    u => (currentEmail && u.email.toLowerCase() === currentEmail.toLowerCase()) || (demoUser?.id && u.id === demoUser.id)
+    u => (currentEmail && u.email.toLowerCase() === currentEmail.toLowerCase()) || 
+         (persistedSession?.id && u.id === persistedSession.id)
   );
 
   const userProfile: UserProfile | null = matchedProfile || (currentEmail ? {
-    id: user?.id || demoUser?.id || 'profile-' + Date.now(),
+    id: user?.id || persistedSession?.id || 'profile-' + Date.now(),
     email: currentEmail,
-    full_name: user?.user_metadata?.full_name || demoUser?.name || (isEmailAdmin ? 'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)' : currentEmail.split('@')[0]),
+    full_name: user?.user_metadata?.full_name || persistedSession?.name || (isEmailAdmin ? 'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)' : currentEmail.split('@')[0]),
     role: (isEmailAdmin ? 'CentralAdmin' : 'BranchUser'),
     location_id: isEmailAdmin ? '1' : '2'
   } : null);
 
-  const effectiveUser = user || (demoUser ? { email: demoUser.email } as any : null);
+  const effectiveUser = user || (persistedSession ? { 
+    id: persistedSession.id, 
+    email: persistedSession.email,
+    user_metadata: {
+      full_name: persistedSession.name,
+      role: persistedSession.role,
+      location_id: persistedSession.locationId
+    }
+  } as any : null);
 
-  const rawRole = userProfile?.role || user?.user_metadata?.role || demoUser?.role || (isEmailAdmin ? 'CentralAdmin' : 'BranchUser');
+  const rawRole = userProfile?.role || user?.user_metadata?.role || persistedSession?.role || (isEmailAdmin ? 'CentralAdmin' : 'BranchUser');
   
   // Normalize role string
-  const userRole = (rawRole === 'Admin-GDT' || rawRole === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+  const userRole: 'CentralAdmin' | 'BranchUser' = (rawRole === 'Admin-GDT' || rawRole === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
   const isCentralAdmin = userRole === 'CentralAdmin';
   const isBranchUser = userRole === 'BranchUser';
 
   const userDisplayName = userProfile?.full_name || 
     user?.user_metadata?.full_name || 
-    demoUser?.name || 
-    user?.email?.split('@')[0] || 
+    persistedSession?.name || 
+    currentEmail.split('@')[0] || 
     'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)';
 
-  const userLocationId = userProfile?.location_id || demoUser?.locationId || (isBranchUser ? '2' : null);
+  const userLocationId = userProfile?.location_id || persistedSession?.locationId || (isBranchUser ? '2' : null);
 
   return (
     <AuthContext.Provider
