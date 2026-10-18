@@ -253,7 +253,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       const { data: dbLocs, error: locsErr } = await supabase
         .from('locations')
         .select('*')
-        .order('code', { ascending: true });
+        .order('type', { ascending: false })
+        .order('name_kh', { ascending: true });
 
       if (locsErr) {
         console.error('Supabase SELECT locations error:', locsErr);

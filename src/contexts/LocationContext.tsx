@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { mockLocations } from '../mockData';
 import { Location } from '../types';
 import { useAuth } from './AuthContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export const ALL_LOCATIONS_OPTION: Location = {
   id: 'ALL',
-  name_kh: 'ទីតាំងស្តុករួម (គ្រប់ទីតាំង)',
+  name_kh: 'ទីតាំងស្តុកទាំងអស់',
   name_en: 'All Combined Locations',
   type: 'ALL',
   code: 'ALL'
@@ -14,36 +15,28 @@ export const ALL_LOCATIONS_OPTION: Location = {
 /**
  * Standardized location display formatter across the application
  * Produces unified, consistent labels for Sidebar, StockIn, StockOut, Handover, NewItem, etc.
- * Example for ALL: "[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)"
- * Example for HQ: "[HQ-ITSB] ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB (ស្តុកកណ្តាល)"
- * Example for Branch: "[7MK] សាខាពន្ធដារខណ្ឌ៧មករា"
+ * Example for ALL: "[ALL] ទីតាំងស្តុកទាំងអស់"
+ * Example for HQ: "[HQ-ITSB] ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB"
+ * Example for Branch: "[PLN] សាខាពន្ធដារខេត្តប៉ៃលិន", "[7MK] សាខាពន្ធដារខណ្ឌ៧មករា"
  */
-export function formatLocationOption(loc: Location | null | undefined, language: 'kh' | 'en' = 'kh'): string {
+export function formatLocationOption(loc: Location | null | undefined, _language: 'kh' | 'en' = 'kh'): string {
   if (!loc) return '';
   if (loc.id === 'ALL' || loc.code === 'ALL') {
-    return language === 'kh' ? '[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)' : '[ALL] All Combined Locations';
+    return '[ALL] ទីតាំងស្តុកទាំងអស់';
   }
 
   const code = String(loc.code || loc.id || '').trim();
-  const isHq = loc.type === 'HQ' || code === 'HQ-ITSB';
-  let name = language === 'kh' ? (loc.name_kh || '') : (loc.name_en || loc.name_kh || '');
-  if (!name) name = code || 'Unknown';
+  let name = (loc.name_kh || loc.name_en || code).trim();
 
-  // Safe string cleaning without unescaped regex risk
-  let cleanName = name;
+  // If the string already starts with [code] or (code), clean it to avoid double prefix
   if (code) {
-    cleanName = cleanName
-      .replace(`(${code})`, '')
-      .replace(`[${code}]`, '')
-      .replace(code, '')
+    name = name
+      .replace(new RegExp(`^\\[${code}\\]\\s*`, 'i'), '')
+      .replace(new RegExp(`^\\(${code}\\)\\s*`, 'i'), '')
       .trim();
-    // remove leading/trailing punctuation if left behind
-    cleanName = cleanName.replace(/^[-:–\s]+|[-:–\s]+$/g, '').trim();
   }
-  if (!cleanName) cleanName = name;
 
-  const hqTag = isHq ? (language === 'kh' ? ' (ស្តុកកណ្តាល)' : ' (HQ Central)') : '';
-  return code ? `[${code}] ${cleanName}${hqTag}` : cleanName;
+  return code ? `[${code}] ${name}` : name;
 }
 
 /**
@@ -75,8 +68,30 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [selectedLocationId, setRawSelectedLocationId] = useState<string>('ALL');
   const [locationsList, setLocationsList] = useState<Location[]>(mockLocations);
 
+  // Directly fetch locations from Supabase Database sorted by type desc (HQ first) then name_kh asc
+  const fetchLocationsFromSupabase = useCallback(async () => {
+    try {
+      if (!isSupabaseConfigured()) return;
+      const { data, error } = await supabase
+        .from('locations')
+        .select('id, name_kh, code, type')
+        .order('type', { ascending: false })
+        .order('name_kh', { ascending: true });
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        setLocationsList(data as Location[]);
+      }
+    } catch (err) {
+      console.warn('Notice loading locations from Supabase in LocationProvider:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLocationsFromSupabase();
+  }, [fetchLocationsFromSupabase]);
+
   // Find user's assigned branch location if they are a BranchUser
-  const assignedBranchLocation: Location | null = React.useMemo(() => {
+  const assignedBranchLocation: Location | null = useMemo(() => {
     if (!userLocationId) {
       return locationsList.find(l => l.code === '7MK') || locationsList[1] || null;
     }
@@ -110,8 +125,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isBranchUser, isCentralAdmin, assignedBranchLocation]);
 
-  // Complete locations list available across the app (includes HQ and all branches for calculations)
-  const locations = React.useMemo(() => {
+  // Complete locations list available across the app (includes [ALL] and all locations)
+  const locations = useMemo(() => {
     return [ALL_LOCATIONS_OPTION, ...locationsList];
   }, [locationsList]);
 

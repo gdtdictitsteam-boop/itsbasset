@@ -135,8 +135,15 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
         {isBranchUser ? (
           // Locked view for BranchUser: cannot change branch, cannot view other branches or HQ
           <div className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-amber-300 rounded-lg p-2.5 flex items-center justify-between shadow-2xs">
-            <span className="truncate" title={formatLocationOption(selectedLocation, language)}>
-              {formatLocationOption(selectedLocation, language)}
+            <span 
+              className="truncate" 
+              title={selectedLocation.id === 'ALL' || selectedLocation.code === 'ALL' 
+                ? '[ALL] ទីតាំងស្តុកទាំងអស់' 
+                : `[${selectedLocation.code || selectedLocation.id}] ${selectedLocation.name_kh || selectedLocation.name_en}`}
+            >
+              {selectedLocation.id === 'ALL' || selectedLocation.code === 'ALL' 
+                ? '[ALL] ទីតាំងស្តុកទាំងអស់' 
+                : `[${selectedLocation.code || selectedLocation.id}] ${selectedLocation.name_kh || selectedLocation.name_en}`}
             </span>
             <Lock size={13} className="text-amber-700 shrink-0 ml-1.5" />
           </div>
@@ -149,7 +156,9 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
           >
             {locations.map((loc) => (
               <option key={loc.id} value={loc.id}>
-                {formatLocationOption(loc, language)}
+                {loc.id === 'ALL' || loc.code === 'ALL' 
+                  ? '[ALL] ទីតាំងស្តុកទាំងអស់' 
+                  : `[${loc.code || loc.id}] ${loc.name_kh || loc.name_en}`}
               </option>
             ))}
           </select>
