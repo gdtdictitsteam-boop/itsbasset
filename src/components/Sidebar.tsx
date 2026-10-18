@@ -14,8 +14,6 @@ import {
   Database,
   History,
   MapPin,
-  ShieldCheck,
-  Building2,
   Lock
 } from 'lucide-react';
 
@@ -101,24 +99,6 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
 
   return (
     <aside className="w-[266px] bg-[#F2F9F6] border-r border-[#CDE5DA] p-4 flex flex-col shrink-0 font-siemreap">
-      
-      {/* Current Active Role Badge */}
-      <div className={`p-2.5 rounded-xl border mb-4 text-xs font-bold flex items-center gap-2 ${
-        isCentralAdmin
-          ? 'bg-emerald-100/90 border-emerald-300 text-emerald-950 shadow-2xs'
-          : 'bg-amber-100/90 border-amber-300 text-amber-950 shadow-2xs'
-      }`}>
-        {isCentralAdmin ? (
-          <ShieldCheck size={18} className="text-emerald-800 shrink-0" />
-        ) : (
-          <Building2 size={18} className="text-amber-800 shrink-0" />
-        )}
-        <div className="flex-1 truncate">
-          <div className="text-[10px] uppercase font-mono opacity-75 leading-none">Access Level (កម្រិតសិទ្ធិ)</div>
-          <div className="text-xs font-black truncate">{userRole}</div>
-        </div>
-      </div>
-
       {/* Location Selector (Locked for BranchUser, Full select for CentralAdmin) */}
       <div className="bg-[#E1F2EA] p-3.5 rounded-xl border border-[#C2E4D5] mb-6 shadow-2xs">
         <label className="text-[10px] font-bold text-[#2B6A52] uppercase flex items-center justify-between mb-1.5">
