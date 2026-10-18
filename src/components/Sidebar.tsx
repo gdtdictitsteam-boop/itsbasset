@@ -110,13 +110,9 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
           <div className="w-full text-xs font-bold text-[#03291E] bg-[#F7FCFA] border border-[#BDE0D0] rounded-lg p-2.5 flex items-center justify-between shadow-2xs">
             <span 
               className="truncate" 
-              title={selectedLocation.id === 'ALL' || selectedLocation.code === 'ALL' 
-                ? '[ALL] ទីតាំងស្តុកទាំងអស់' 
-                : `[${selectedLocation.code || selectedLocation.id}] ${selectedLocation.name_kh || selectedLocation.name_en}`}
+              title={formatLocationOption(selectedLocation)}
             >
-              {selectedLocation.id === 'ALL' || selectedLocation.code === 'ALL' 
-                ? '[ALL] ទីតាំងស្តុកទាំងអស់' 
-                : `[${selectedLocation.code || selectedLocation.id}] ${selectedLocation.name_kh || selectedLocation.name_en}`}
+              {formatLocationOption(selectedLocation)}
             </span>
           </div>
         ) : (
@@ -128,9 +124,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
           >
             {locations.map((loc) => (
               <option key={loc.id} value={loc.id}>
-                {loc.id === 'ALL' || loc.code === 'ALL' 
-                  ? '[ALL] ទីតាំងស្តុកទាំងអស់' 
-                  : `[${loc.code || loc.id}] ${loc.name_kh || loc.name_en}`}
+                {formatLocationOption(loc)}
               </option>
             ))}
           </select>
