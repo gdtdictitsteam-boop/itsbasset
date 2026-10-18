@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { UserProfile } from '../types';
 import { 
   Settings, 
@@ -283,10 +284,18 @@ export function UserManagementModal() {
   const updateUserProfile = auth?.updateUserProfile;
   const createUserProfile = auth?.createUserProfile;
   const switchActiveUser = auth?.switchActiveUser;
+  const fetchUsersList = auth?.fetchUsersList;
   const userProfile = auth?.userProfile ?? null;
   const isCentralAdmin = Boolean(auth?.isCentralAdmin);
   const isBranchUser = Boolean(auth?.isBranchUser);
   const authLoading = Boolean(auth?.loading);
+
+  // Automatically refresh user list from Supabase whenever modal opens
+  useEffect(() => {
+    if (isSettingsOpen && typeof fetchUsersList === 'function') {
+      fetchUsersList();
+    }
+  }, [isSettingsOpen, fetchUsersList]);
 
   // Safe arrays
   const safeUsersList: UserProfile[] = useMemo(() => {
@@ -407,6 +416,163 @@ export function UserManagementModal() {
     setFormPassword(`GDT@${rand}`);
   };
 
+  // Actual UPDATE to Supabase Database (user_profiles) for CentralAdmin
+  const handleUpdateUser = async (updatedUser: {
+    id: string;
+    full_name: string;
+    email: string;
+    role: 'CentralAdmin' | 'BranchUser';
+    location_id: string;
+    password?: string;
+  }): Promise<boolean> => {
+    // 1. Strict Security Guard: Only CentralAdmin can perform update
+    if (!isCentralAdmin) {
+      alert('សិទ្ធិត្រូវបានបដិសេធ៖ មានតែគណនី CentralAdmin ប៉ុណ្ណោះដែលអាចកែប្រែព័ត៌មានមន្ត្រីបាន!');
+      return false;
+    }
+
+    // 2. Resolve target location info
+    const matchedBranch = safeBranches.find(
+      l => l.id === updatedUser.location_id || l.code === updatedUser.location_id
+    ) || (updatedUser.role === 'CentralAdmin' ? safeBranches.find(l => l.type === 'HQ' || l.code === 'HQ-ITSB') : null);
+
+    const targetBranchId = matchedBranch?.id || updatedUser.location_id;
+    const targetBranchName = matchedBranch?.name_kh || matchedBranch?.name_en || '';
+
+    // 3. Supabase Direct Update
+    if (isSupabaseConfigured()) {
+      try {
+        // Query to check available columns in public.user_profiles
+        const { data: colsCheck } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .limit(1);
+
+        const availableCols = colsCheck && colsCheck.length > 0 
+          ? new Set(Object.keys(colsCheck[0]))
+          : null;
+
+        // Construct update payload dynamically matching Table user_profiles Schema
+        const updatePayload: Record<string, any> = {
+          full_name: updatedUser.full_name,
+          role: updatedUser.role,
+          updated_at: new Date().toISOString()
+        };
+
+        if (availableCols) {
+          if (availableCols.has('location_id')) {
+            updatePayload.location_id = targetBranchId;
+          }
+          if (availableCols.has('branch_id')) {
+            updatePayload.branch_id = targetBranchId;
+          }
+          if (availableCols.has('branch_name')) {
+            updatePayload.branch_name = targetBranchName;
+          }
+          if (availableCols.has('email')) {
+            updatePayload.email = updatedUser.email.trim().toLowerCase();
+          }
+        } else {
+          // Standard canonical columns
+          updatePayload.location_id = targetBranchId;
+        }
+
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updatedUser.id);
+        
+        // Execute actual Supabase UPDATE
+        let query = supabase.from('user_profiles').update(updatePayload);
+        let res = isUuid 
+          ? await query.eq('id', updatedUser.id).select()
+          : await query.ilike('email', updatedUser.email.trim()).select();
+
+        let { data, error } = res;
+
+        // If error due to column mismatch (e.g. branch_id vs location_id), retry with safe base columns
+        if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
+          console.warn('Column mismatch detected in user_profiles. Retrying with safe base columns:', error.message);
+          const basePayload = {
+            full_name: updatedUser.full_name,
+            role: updatedUser.role,
+            location_id: targetBranchId,
+            updated_at: new Date().toISOString()
+          };
+          const retryRes = isUuid
+            ? await supabase.from('user_profiles').update(basePayload).eq('id', updatedUser.id).select()
+            : await supabase.from('user_profiles').update(basePayload).ilike('email', updatedUser.email.trim()).select();
+          data = retryRes.data;
+          error = retryRes.error;
+        }
+
+        // If update failed, check error and alert with clear reason
+        if (error) {
+          console.error('Supabase user_profiles UPDATE error:', error);
+          alert(`មិនអាចរក្សាទុកទិន្នន័យក្នុង Supabase Database បានទេ៖\n${error.message || JSON.stringify(error)}\n\n(មូលហេតុអាចមកពីជាប់ Row-Level Security (RLS) Policy ឬខុសឈ្មោះ Column ក្នុងតារាង user_profiles)`);
+          setErrorMessage(`កំហុស Supabase: ${error.message}`);
+          return false;
+        }
+
+        // If 0 rows were updated (e.g. profile doesn't exist in user_profiles yet), try upserting
+        if (!error && (!data || data.length === 0)) {
+          console.info('No existing record found to update. Upserting into user_profiles...');
+          const upsertRow: Record<string, any> = {
+            ...updatePayload,
+            email: updatedUser.email.trim().toLowerCase(),
+            ...(isUuid ? { id: updatedUser.id } : {})
+          };
+          const upsertRes = await supabase.from('user_profiles').upsert(upsertRow).select();
+          if (upsertRes.error) {
+            console.error('Supabase user_profiles UPSERT error:', upsertRes.error);
+            alert(`មិនអាចរក្សាទុកទិន្នន័យក្នុង Supabase Database បានទេ៖\n${upsertRes.error.message}\n\n(សូមពិនិត្យមើល RLS Policy ឬសិទ្ធិ CentralAdmin)`);
+            setErrorMessage(`កំហុស Supabase: ${upsertRes.error.message}`);
+            return false;
+          }
+        }
+
+        // If password was updated, update via admin_set_user_password RPC
+        if (updatedUser.password && updatedUser.password.trim()) {
+          try {
+            await supabase.rpc('admin_set_user_password', {
+              p_email: updatedUser.email,
+              p_password: updatedUser.password.trim(),
+              p_full_name: updatedUser.full_name,
+              p_role: updatedUser.role,
+              p_location_id: targetBranchId
+            });
+          } catch (rpcErr) {
+            console.warn('Notice calling admin_set_user_password:', rpcErr);
+          }
+        }
+      } catch (err: any) {
+        console.error('Unexpected exception during Supabase user update:', err);
+        alert(`មានបញ្ហាមិនរំពឹងទុកពេល UPDATE ក្នុង Supabase៖\n${err?.message || err}`);
+        setErrorMessage(err?.message || 'ប្រតិបត្តិការបរាជ័យ');
+        return false;
+      }
+    }
+
+    // 4. Update Local State and Context upon successful Supabase write
+    if (typeof updateUserProfile === 'function') {
+      await updateUserProfile(updatedUser.id, {
+        full_name: updatedUser.full_name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        location_id: targetBranchId,
+        ...(updatedUser.password ? { password: updatedUser.password } : {})
+      });
+    }
+
+    // 5. Re-fetch fresh users list from Supabase
+    if (typeof fetchUsersList === 'function') {
+      await fetchUsersList();
+    }
+
+    // 6. Close Edit Modal & Show Success Notification
+    setEditingUser(null);
+    const pwdMsg = updatedUser.password?.trim() ? ` និងបានកំណត់ពាក្យសម្ងាត់ថ្មី (${updatedUser.password.trim()})` : '';
+    setSuccessMessage(`បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${updatedUser.full_name}" ចូល Supabase Database ដោយជោគជ័យ!${pwdMsg}`);
+    return true;
+  };
+
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formFullName.trim()) {
@@ -449,28 +615,22 @@ export function UserManagementModal() {
         if (res?.success) {
           setSuccessMessage(`បានបង្កើតគណនីមន្ត្រីថ្មី "${formFullName}" ដោយជោគជ័យ! (Password: ${finalPwd})`);
           setIsCreatingNew(false);
+          if (typeof fetchUsersList === 'function') {
+            await fetchUsersList();
+          }
         } else {
           setErrorMessage(res?.error || 'មានបញ្ហាក្នុងការបង្កើតគណនី');
         }
-      } else if (editingUser && typeof updateUserProfile === 'function') {
-        const updatePayload: Partial<UserProfile> = {
+      } else if (editingUser) {
+        // Execute real Supabase UPDATE with error handling & alert
+        await handleUpdateUser({
+          id: editingUser.id,
           full_name: formFullName.trim(),
           email: formEmail.trim().toLowerCase(),
           role: formRole,
-          location_id: formLocationId
-        };
-        if (formPassword.trim()) {
-          updatePayload.password = formPassword.trim();
-        }
-
-        const res = await updateUserProfile(editingUser.id, updatePayload);
-        if (res?.success) {
-          const pwdMsg = formPassword.trim() ? ` និងបានកំណត់ពាក្យសម្ងាត់ថ្មី (${formPassword.trim()})` : '';
-          setSuccessMessage(`បានកែប្រែមន្ត្រី "${formFullName}" ដោយជោគជ័យ!${pwdMsg}`);
-          setEditingUser(null);
-        } else {
-          setErrorMessage(res?.error || 'មានបញ្ហាក្នុងការកែប្រែគណនី');
-        }
+          location_id: formLocationId,
+          password: formPassword.trim() || undefined
+        });
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'ប្រតិបត្តិការបរាជ័យ');

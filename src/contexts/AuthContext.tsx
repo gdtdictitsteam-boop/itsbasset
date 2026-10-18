@@ -838,18 +838,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Update Supabase if configured
       if (configured) {
-        const target = updatedList.find(u => u.id === id);
+        const target = updatedList.find(u => u.id === id || u.email === updates.email);
         if (target) {
-          const { error } = await supabase.from('user_profiles').upsert({
-            id: target.id,
-            email: target.email,
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.id);
+          const updateData: Record<string, any> = {
             full_name: target.full_name,
             role: target.role,
             location_id: target.location_id,
             updated_at: new Date().toISOString()
-          });
+          };
+
+          const query = supabase.from('user_profiles').update(updateData);
+          const { error } = isUuid 
+            ? await query.eq('id', target.id)
+            : await query.ilike('email', target.email.trim());
+
           if (error) {
-            console.warn('Notice updating user_profiles in Supabase:', error.message);
+            console.error('Notice updating user_profiles in Supabase:', error.message);
           }
 
           // If password was updated, also update in Supabase auth.users via RPC
