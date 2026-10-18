@@ -5,7 +5,7 @@ import { useLocationContext, formatLocationOption, getActiveWarehouseLocation } 
 import { useAuth } from '../contexts/AuthContext';
 import { 
   PlusSquare, Check, X, AlertTriangle, ArrowRight, Package, 
-  Building2, TrendingUp, ExternalLink, CheckCircle2, RefreshCw
+  Building2, TrendingUp, ExternalLink, CheckCircle2, RefreshCw, History
 } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
 
@@ -18,7 +18,8 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   const { user } = useAuth();
   const { items, locations, inventory, recordStockIn } = useInventoryContext();
   const { setSelectedLocationId, selectedLocation: globalSelectedLoc } = useLocationContext();
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
   const [notice, setNotice] = useState<{ 
     type: 'success' | 'error'; 
     message: string; 
@@ -33,6 +34,25 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedLocId, setSelectedLocId] = useState('');
   const [inputQuantity, setInputQuantity] = useState<number>(1);
+  const [officerName, setOfficerName] = useState(user?.fullName || 'Admin-GDT');
+  const [purpose, setPurpose] = useState('');
+
+  // Keep officerName in sync if user changes
+  useEffect(() => {
+    if (user?.fullName) {
+      setOfficerName(user.fullName);
+    }
+  }, [user?.fullName]);
+
+  // Auto-dismiss success alert after 15 seconds
+  useEffect(() => {
+    if (notice && notice.type === 'success') {
+      const timer = setTimeout(() => {
+        setNotice(null);
+      }, 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [notice]);
 
   // Sync default location with global location context (or fallback to HQ if ALL)
   useEffect(() => {
@@ -85,6 +105,8 @@ export function StockInView({ onNavigate }: StockInViewProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isSubmittedSuccess) return;
+
     if (!selectedItemId) {
       setNotice({ type: 'error', message: 'សូមជ្រើសរើសសម្ភារៈដែលត្រូវបញ្ចូលស្តុក!' });
       return;
@@ -98,36 +120,40 @@ export function StockInView({ onNavigate }: StockInViewProps) {
       return;
     }
 
-    setLoading(true);
+    setIsSubmitting(true);
     setNotice(null);
 
-    const form = e.target as HTMLFormElement;
-    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement).value;
-    const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement).value;
+    const savedItem = selectedItem;
+    const savedLocation = selectedLocation;
+    const savedQty = inputQuantity;
 
     const res = await recordStockIn({
       locationId: selectedLocId,
       itemId: selectedItemId,
       quantity: inputQuantity,
-      officerName: officerName || user?.fullName || 'Admin-GDT',
-      purpose: purpose || 'បញ្ចូលស្តុកថ្មី'
+      officerName: officerName.trim() || user?.fullName || 'Admin-GDT',
+      purpose: purpose.trim() || 'បញ្ចូលស្តុកថ្មី'
     });
 
-    setLoading(false);
+    setIsSubmitting(false);
 
     if (res.success) {
+      setIsSubmittedSuccess(true);
       setNotice({ 
         type: 'success', 
         message: res.message,
-        itemCode: selectedItem?.code,
-        itemName: selectedItem?.name_kh,
-        addedQty: inputQuantity,
-        newTotalQty: res.newQuantity ?? projectedLocStock,
-        unit: selectedItem?.unit || 'គ្រឿង',
-        locationName: selectedLocation?.name_kh || 'ស្តុកកណ្តាល HQ'
+        itemCode: savedItem?.code,
+        itemName: savedItem?.name_kh,
+        addedQty: savedQty,
+        newTotalQty: res.newQuantity ?? (currentLocStock + savedQty),
+        unit: savedItem?.unit || 'គ្រឿង',
+        locationName: savedLocation?.name_kh || 'ស្តុកកណ្តាល HQ'
       });
-      // Keep selected item & location so user can review or add again, but reset quantity to 1
-      setInputQuantity(1);
+
+      // Reset Form State immediately after successful save to prevent duplicate submission
+      setSelectedItemId(''); // Reset selected item to default/empty
+      setInputQuantity(1); // Reset quantity to default 1
+      setPurpose(''); // Clear reference / purpose to empty string
     } else {
       setNotice({ type: 'error', message: res.message });
     }
@@ -152,25 +178,40 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               </h3>
               <p className="text-xs opacity-90 mt-0.5 leading-relaxed">{notice.message}</p>
               {notice.type === 'success' && (
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotice(null);
+                      setIsSubmittedSuccess(false);
+                      setSelectedItemId('');
+                      setInputQuantity(1);
+                      setPurpose('');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <PlusSquare size={13} />
+                    <span>បញ្ចូលសម្ភារបន្តទៀត</span>
+                  </button>
+
                   {onNavigate && (
                     <>
                       <button
                         type="button"
                         onClick={() => onNavigate('inventory')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
                       >
                         <Package size={13} />
-                        <span>ពិនិត្យក្នុង "ស្តុកបច្ចុប្បន្ន"</span>
+                        <span>ស្តុកបច្ចុប្បន្ន (Inventory)</span>
                         <ArrowRight size={12} />
                       </button>
                       <button
                         type="button"
-                        onClick={() => onNavigate('dashboard')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-all shadow-2xs"
+                        onClick={() => onNavigate('auditTrail')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
                       >
-                        <TrendingUp size={13} />
-                        <span>ពិនិត្យ "ផ្ទាំងគ្រប់គ្រង"</span>
+                        <History size={13} />
+                        <span>ប្រវត្តិសវនកម្ម (Audit Trail)</span>
                       </button>
                     </>
                   )}
@@ -214,7 +255,10 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               <select 
                 name="itemId" 
                 value={selectedItemId}
-                onChange={(e) => setSelectedItemId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedItemId(e.target.value);
+                  setIsSubmittedSuccess(false);
+                }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required
               >
@@ -234,7 +278,10 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               <select 
                 name="locationId" 
                 value={selectedLocId}
-                onChange={(e) => setSelectedLocId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedLocId(e.target.value);
+                  setIsSubmittedSuccess(false);
+                }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required
               >
@@ -257,7 +304,10 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                   type="number" 
                   min="1" 
                   value={inputQuantity}
-                  onChange={(e) => setInputQuantity(Math.max(1, parseInt(e.target.value || '1', 10)))}
+                  onChange={(e) => {
+                    setInputQuantity(Math.max(1, parseInt(e.target.value || '1', 10)));
+                    setIsSubmittedSuccess(false);
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                   required 
                 />
@@ -325,7 +375,8 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               <input 
                 name="officerName" 
                 type="text" 
-                defaultValue={user?.fullName || 'Admin-GDT'} 
+                value={officerName}
+                onChange={(e) => setOfficerName(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required 
               />
@@ -337,7 +388,12 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               <textarea 
                 name="purpose" 
                 rows={5} 
-                defaultValue="បញ្ចូលស្តុកបន្ថែមប្រចាំការ តាមផែនការផ្គត់ផ្គង់" 
+                value={purpose}
+                onChange={(e) => {
+                  setPurpose(e.target.value);
+                  setIsSubmittedSuccess(false);
+                }}
+                placeholder="ឧទាហរណ៍៖ បញ្ចូលស្តុកបន្ថែមប្រចាំការ តាមផែនការផ្គត់ផ្គង់, វិក្កយបត្រ..."
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 resize-none shadow-2xs" 
                 required
               ></textarea>
@@ -366,22 +422,22 @@ export function StockInView({ onNavigate }: StockInViewProps) {
             <button 
               type="button"
               onClick={() => {
-                const form = document.getElementById('stock-in-form') as HTMLFormElement;
-                if (form) form.reset();
                 setSelectedItemId('');
                 setInputQuantity(1);
+                setPurpose('');
+                setIsSubmittedSuccess(false);
                 setNotice(null);
               }}
-              className="flex-1 sm:flex-none px-6 py-2.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 hover:bg-white transition-colors"
+              className="flex-1 sm:flex-none px-6 py-2.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 hover:bg-white transition-colors cursor-pointer"
             >
               បោះបង់ (Cancel)
             </button>
             <button 
               type="submit" 
-              disabled={loading}
-              className="flex-1 sm:flex-none px-8 py-2.5 bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-emerald-800 transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
+              disabled={isSubmitting || !selectedItemId || inputQuantity <= 0}
+              className="flex-1 sm:flex-none px-8 py-2.5 bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-emerald-800 transition-all transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2 cursor-pointer"
             >
-              {loading ? (
+              {isSubmitting ? (
                 <>
                   <RefreshCw size={16} className="animate-spin" />
                   <span>កំពុងបញ្ចូលស្តុក...</span>
