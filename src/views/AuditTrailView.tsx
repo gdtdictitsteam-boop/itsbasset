@@ -53,7 +53,7 @@ export function AuditTrailView() {
       try {
         const { data, error } = await supabase
           .from('transactions')
-          .select('*')
+          .select('*, remark')
           .order('date', { ascending: false });
 
         if (error) {
@@ -186,7 +186,7 @@ export function AuditTrailView() {
       'ស្ថានភាព (Status)',
       'មន្ត្រីកត់ត្រា (Recorded By)',
       'ឯកសារយោង (Reference)',
-      'កំណត់សម្គាល់ (Remark)'
+      'គោលបំណង (Remark)'
     ];
 
     const csvRows = [headers.join(',')];
@@ -196,7 +196,7 @@ export function AuditTrailView() {
       const docUrl = extractDocUrl(tx) || '';
       const fromLoc = resolveLocationName(tx.from_location, tx.from_location_id);
       const toLoc = resolveLocationName(tx.to_location, tx.to_location_id);
-      const cleanRemark = getCleanRemark(tx.remark) || tx.remark || '';
+      const remarkText = tx.remark || '-';
       const row = [
         `"${dateStr}"`,
         `"${tx.type}"`,
@@ -209,7 +209,7 @@ export function AuditTrailView() {
         `"${tx.status || 'RECEIVED'}"`,
         `"${(tx.recorded_by || '').replace(/"/g, '""')}"`,
         `"${docUrl ? docUrl.replace(/"/g, '""') : '-'}"`,
-        `"${cleanRemark.replace(/"/g, '""')}"`
+        `"${remarkText.replace(/"/g, '""')}"`
       ];
       csvRows.push(row.join(','));
     });
@@ -263,6 +263,7 @@ export function AuditTrailView() {
         <td style="padding: 8px; text-align: center;">${tx.status || 'RECEIVED'}</td>
         <td style="padding: 8px;">${tx.recorded_by || '-'}</td>
         <td style="padding: 8px; text-align: center;">${docUrl ? `<a href="${docUrl}" target="_blank" style="color: #047857; font-weight: bold; text-decoration: underline;">មើលឯកសារ</a>` : '-'}</td>
+        <td style="padding: 8px;">${tx.remark || '-'}</td>
       </tr>
     `;
     }).join('');
@@ -299,6 +300,7 @@ export function AuditTrailView() {
                 <th>ស្ថានភាព</th>
                 <th>មន្ត្រីកត់ត្រា</th>
                 <th>ឯកសារយោង</th>
+                <th>គោលបំណង</th>
               </tr>
             </thead>
             <tbody>
@@ -502,6 +504,9 @@ export function AuditTrailView() {
                   <th className="py-3 px-4 text-center">ស្ថានភាព</th>
                   <th className="py-3 px-4">មន្ត្រីកត់ត្រា</th>
                   <th className="py-3 px-4 text-center">ឯកសារយោង (Reference)</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    គោលបំណង
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-800">
@@ -544,16 +549,11 @@ export function AuditTrailView() {
                       <td className="py-3.5 px-4 text-slate-700 max-w-[160px] truncate" title={toLoc}>
                         {toLoc}
                       </td>
-                      <td className="py-3.5 px-4 space-y-0.5">
+                      <td className="py-3.5 px-4">
                         <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] text-slate-700 font-bold mr-1.5">
                           {tx.item_code}
                         </span>
                         <span className="font-bold text-slate-900">{tx.item_name_kh}</span>
-                        {cleanRemark ? (
-                          <div className="text-[11px] text-slate-500 font-normal truncate max-w-[240px]" title={cleanRemark}>
-                            {cleanRemark}
-                          </div>
-                        ) : null}
                       </td>
                       <td className="py-3.5 px-4 text-right font-black font-mono text-sm text-slate-900 whitespace-nowrap">
                         {tx.quantity} <span className="text-xs font-normal text-slate-500">{tx.unit}</span>
@@ -587,6 +587,9 @@ export function AuditTrailView() {
                         ) : (
                           <span className="text-slate-400 font-bold text-sm">-</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">
+                        {tx.remark || '-'}
                       </td>
                     </tr>
                   );
