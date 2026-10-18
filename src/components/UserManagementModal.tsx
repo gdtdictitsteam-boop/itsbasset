@@ -331,6 +331,7 @@ export function UserManagementModal() {
   // State for SQL script modal
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedOfficerSql, setCopiedOfficerSql] = useState(false);
 
   const handleClose = () => {
     if (typeof setIsSettingsOpen === 'function') {
@@ -380,7 +381,7 @@ export function UserManagementModal() {
     setFormEmail(user.email || '');
     setFormRole(user.role === 'CentralAdmin' ? 'CentralAdmin' : 'BranchUser');
     setFormLocationId(user.location_id || (user.role === 'CentralAdmin' ? '1' : '2'));
-    setFormPassword(user.password || ''); // Prefilled or empty for reset
+    setFormPassword(''); // Left empty by default: keep old password unless filled
     setShowPassword(false);
     setSuccessMessage(null);
     setErrorMessage(null);
@@ -459,6 +460,10 @@ export function UserManagementModal() {
           updated_at: new Date().toISOString()
         };
 
+        // Check if user requested password update
+        const hasNewPassword = Boolean(updatedUser.password && updatedUser.password.trim());
+        const newPassword = hasNewPassword ? updatedUser.password!.trim() : null;
+
         if (availableCols) {
           if (availableCols.has('location_id')) {
             updatePayload.location_id = targetBranchId;
@@ -471,6 +476,10 @@ export function UserManagementModal() {
           }
           if (availableCols.has('email')) {
             updatePayload.email = updatedUser.email.trim().toLowerCase();
+          }
+          // Method 2: If user_profiles table has a password column, update it directly
+          if (hasNewPassword && availableCols.has('password')) {
+            updatePayload.password = newPassword;
           }
         } else {
           // Standard canonical columns
@@ -490,7 +499,7 @@ export function UserManagementModal() {
         // If error due to column mismatch (e.g. branch_id vs location_id), retry with safe base columns
         if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
           console.warn('Column mismatch detected in user_profiles. Retrying with safe base columns:', error.message);
-          const basePayload = {
+          const basePayload: Record<string, any> = {
             full_name: updatedUser.full_name,
             role: updatedUser.role,
             location_id: targetBranchId,
@@ -528,18 +537,68 @@ export function UserManagementModal() {
           }
         }
 
-        // If password was updated, update via admin_set_user_password RPC
-        if (updatedUser.password && updatedUser.password.trim()) {
+        // Method 1: If password was filled, invoke Edge Function or RPC to update auth.users
+        if (hasNewPassword && newPassword) {
+          let authUpdated = false;
+
+          // 1. Try Supabase Edge Function: admin-update-user
           try {
-            await supabase.rpc('admin_set_user_password', {
-              p_email: updatedUser.email,
-              p_password: updatedUser.password.trim(),
-              p_full_name: updatedUser.full_name,
-              p_role: updatedUser.role,
-              p_location_id: targetBranchId
+            const { error: fnErr } = await supabase.functions.invoke('admin-update-user', {
+              body: {
+                userId: updatedUser.id,
+                email: updatedUser.email,
+                password: newPassword
+              }
             });
-          } catch (rpcErr) {
-            console.warn('Notice calling admin_set_user_password:', rpcErr);
+            if (!fnErr) {
+              authUpdated = true;
+              console.info('Password successfully updated via Supabase Edge Function (admin-update-user)');
+            }
+          } catch (fnErr) {
+            // Edge Function not deployed or unreachable
+          }
+
+          // 2. Try RPC: admin_set_user_password
+          if (!authUpdated) {
+            try {
+              const { error: rpcErr } = await supabase.rpc('admin_set_user_password', {
+                p_email: updatedUser.email,
+                p_password: newPassword,
+                p_full_name: updatedUser.full_name,
+                p_role: updatedUser.role,
+                p_location_id: targetBranchId
+              });
+              if (!rpcErr) {
+                authUpdated = true;
+                console.info('Password successfully updated via RPC admin_set_user_password');
+              } else {
+                console.warn('Notice from admin_set_user_password RPC:', rpcErr.message);
+              }
+            } catch (rpcErr) {
+              console.warn('Notice calling admin_set_user_password RPC:', rpcErr);
+            }
+          }
+
+          // 3. Try RPC: create_or_update_gdt_user
+          if (!authUpdated) {
+            try {
+              const locCode = matchedBranch?.code || 'HQ-ITSB';
+              const { error: rpc2Err } = await supabase.rpc('create_or_update_gdt_user', {
+                p_email: updatedUser.email,
+                p_password: newPassword,
+                p_full_name: updatedUser.full_name,
+                p_role: updatedUser.role,
+                p_location_code: locCode
+              });
+              if (!rpc2Err) {
+                authUpdated = true;
+                console.info('Password successfully updated via RPC create_or_update_gdt_user');
+              } else {
+                console.warn('Notice from create_or_update_gdt_user RPC:', rpc2Err.message);
+              }
+            } catch (rpc2Err) {
+              console.warn('Notice calling create_or_update_gdt_user RPC:', rpc2Err);
+            }
           }
         }
       } catch (err: any) {
@@ -915,7 +974,7 @@ export function UserManagementModal() {
                       </label>
 
                       {/* Quick action buttons for Password */}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                           type="button"
                           onClick={() => setFormPassword('GDT@2026')}
@@ -933,6 +992,22 @@ export function UserManagementModal() {
                         >
                           <Sparkles size={11} className="text-amber-600" />
                           <span>បង្កើតថ្មី</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pwd = formPassword.trim() || 'GDT@2026';
+                            const locCode = safeBranches.find(l => l.id === formLocationId)?.code || 'HQ-ITSB';
+                            const sql = `-- Run this in Supabase SQL Editor to set password for ${formEmail.trim() || 'officer'}:\nSELECT public.create_or_update_gdt_user(\n  '${formEmail.trim()}',\n  '${pwd}',\n  '${formFullName.trim()}',\n  '${formRole}',\n  '${locCode}'\n);`;
+                            navigator.clipboard.writeText(sql);
+                            setCopiedOfficerSql(true);
+                            setTimeout(() => setCopiedOfficerSql(false), 2500);
+                          }}
+                          className="text-[11px] text-[#03291E] font-bold hover:bg-white bg-white/70 px-2 py-1 rounded-lg cursor-pointer transition-colors border border-slate-300 flex items-center gap-1"
+                          title="ចម្លង SQL Script សម្រាប់យកទៅ Run ក្នុង Supabase SQL Editor"
+                        >
+                          {copiedOfficerSql ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} className="text-slate-600" />}
+                          <span>{copiedOfficerSql ? 'បានចម្លង SQL!' : 'Copy SQL'}</span>
                         </button>
                       </div>
                     </div>
