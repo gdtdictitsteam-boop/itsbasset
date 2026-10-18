@@ -143,12 +143,6 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
             ))}
           </select>
         )}
-
-        {isBranchUser && (
-          <p className="text-[10px] text-amber-900/80 font-medium mt-1.5 italic">
-            * គណនីមន្ត្រីសាខា ត្រូវបានកំណត់ឱ្យឃើញតែទិន្នន័យសាខានេះប៉ុណ្ណោះ
-          </p>
-        )}
       </div>
 
       {/* Menu Navigation */}
