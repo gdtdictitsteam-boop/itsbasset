@@ -46,6 +46,9 @@ export interface Transaction {
   item_id: string;
   quantity: number;
   remark?: string;
+  purpose?: string;
+  notes?: string;
+  document_url?: string;
   recorded_by: string;
   created_at: string;
 }

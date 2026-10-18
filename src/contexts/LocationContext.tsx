@@ -25,10 +25,15 @@ export function formatLocationOption(loc: Location | null | undefined, _language
     return '[ALL] ទីតាំងស្តុកទាំងអស់';
   }
 
-  const code = String(loc.code || loc.id || '').trim();
-  let name = (loc.name_kh || loc.name_en || code).trim();
+  // Extract clean code (ignore full UUID strings from being used as short codes)
+  const rawCode = String(loc.code || '').trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCode);
+  const code = (rawCode && !isUuid) ? rawCode.toUpperCase() : '';
 
-  // If the string already starts with [code] or (code), clean it to avoid double prefix
+  // Get primary name in Khmer; fallback to English or code or id if missing
+  let name = (loc.name_kh || loc.name_en || (!isUuid ? rawCode : '') || loc.id || '').trim();
+
+  // If the name already starts with [CODE] or (CODE), strip it to avoid duplicate brackets
   if (code) {
     name = name
       .replace(new RegExp(`^\\[${code}\\]\\s*`, 'i'), '')
@@ -36,6 +41,7 @@ export function formatLocationOption(loc: Location | null | undefined, _language
       .trim();
   }
 
+  // Format as [<code_in_uppercase>] <name_kh> or just <name_kh> if no code
   return code ? `[${code}] ${name}` : name;
 }
 
