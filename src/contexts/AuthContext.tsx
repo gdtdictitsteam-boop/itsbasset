@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { UserProfile } from '../types';
@@ -93,6 +93,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   signInDemo: (email?: string, role?: string, branchId?: string) => void;
+  verifyUserRoleDirectly: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -150,8 +151,8 @@ function loadPersistedSession(): PersistedSession | null {
           if (sbUser?.email) {
             const isAdmin = 
               sbUser.email.toLowerCase().includes('admin') || 
-              sbUser.email.toLowerCase().includes('its') ||
-              sbUser.email.toLowerCase().includes('dict') ||
+              sbUser.email.toLowerCase().includes('its') || 
+              sbUser.email.toLowerCase().includes('dict') || 
               sbUser.email.toLowerCase().includes('team') ||
               sbUser.user_metadata?.role === 'CentralAdmin';
             return {
@@ -243,9 +244,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [session, setSession] = useState<Session | null>(null);
 
+  // Authoritative user profile verified directly against Supabase database table `user_profiles`
+  const [dbVerifiedProfile, setDbVerifiedProfile] = useState<UserProfile | null>(null);
+
   // If session is already restored synchronously, loading starts as false so UI renders instantly!
   const [loading, setLoading] = useState<boolean>(() => !loadPersistedSession());
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [rawIsSettingsOpen, setRawIsSettingsOpen] = useState<boolean>(false);
 
   // Load user profiles list from storage or defaults
   const [usersList, setUsersList] = useState<UserProfile[]>(() => {
@@ -267,7 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const configured = isSupabaseConfigured();
 
-  // Fetch users from Supabase if connected
+  // Fetch users list from Supabase if connected
   const fetchUsersList = useCallback(async () => {
     if (!configured) return;
     try {
@@ -289,6 +293,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [configured]);
 
+  // Strictly verify user role directly from Supabase Database Table `user_profiles`
+  // Prevents any frontend role tampering or spoofing
+  const verifyUserRoleDirectly = useCallback(async () => {
+    if (!configured) return;
+    const targetId = user?.id || persistedSession?.id;
+    const targetEmail = user?.email || persistedSession?.email;
+    if (!targetId && !targetEmail) return;
+
+    try {
+      let matchedDb: any = null;
+
+      // 1. Query by User ID
+      if (targetId) {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('id, email, full_name, role, location_id')
+          .eq('id', targetId)
+          .maybeSingle();
+
+        if (!error && data) {
+          matchedDb = data;
+        }
+      }
+
+      // 2. Fallback query by Email if ID not matched
+      if (!matchedDb && targetEmail) {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('id, email, full_name, role, location_id')
+          .ilike('email', targetEmail.trim())
+          .maybeSingle();
+
+        if (!error && data) {
+          matchedDb = data;
+        }
+      }
+
+      if (matchedDb) {
+        const normalizedRole: 'CentralAdmin' | 'BranchUser' = 
+          (matchedDb.role === 'Admin-GDT' || matchedDb.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+        
+        const verified: UserProfile = {
+          id: matchedDb.id,
+          email: matchedDb.email,
+          full_name: matchedDb.full_name,
+          role: normalizedRole,
+          location_id: matchedDb.location_id
+        };
+
+        setDbVerifiedProfile(verified);
+
+        // Synchronize persisted session with database verified authority
+        setPersistedSession(prev => {
+          if (!prev) return prev;
+          const updated: PersistedSession = {
+            ...prev,
+            role: normalizedRole,
+            name: verified.full_name,
+            locationId: verified.location_id || prev.locationId
+          };
+          savePersistedSession(updated);
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.warn('Notice verifying role directly with Supabase user_profiles:', err);
+    }
+  }, [configured, user?.id, user?.email, persistedSession?.id, persistedSession?.email]);
+
   // Handle Supabase Auth Session verification & listener
   useEffect(() => {
     let isMounted = true;
@@ -299,28 +372,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // 1. Asynchronously verify active session from Supabase in background
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
       if (!isMounted) return;
       if (currentSession?.user) {
         setSession(currentSession);
         setUser(currentSession.user);
 
-        // Synchronize and update persisted session record
+        // Fetch authoritative role directly from user_profiles table in Supabase
         const email = currentSession.user.email || '';
-        const isAdmin = 
-          email.toLowerCase().includes('admin') || 
-          email.toLowerCase().includes('its') || 
-          email.toLowerCase().includes('dict') || 
-          email.toLowerCase().includes('team') ||
-          currentSession.user.user_metadata?.role === 'CentralAdmin';
+        let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
+        let verifiedName = currentSession.user.user_metadata?.full_name || email.split('@')[0];
+        let verifiedLoc = currentSession.user.user_metadata?.location_id || '1';
 
-        const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
+        try {
+          const { data: dbUser } = await supabase
+            .from('user_profiles')
+            .select('id, email, full_name, role, location_id')
+            .eq('id', currentSession.user.id)
+            .maybeSingle();
+
+          if (dbUser) {
+            verifiedRole = (dbUser.role === 'CentralAdmin' || dbUser.role === 'Admin-GDT') ? 'CentralAdmin' : 'BranchUser';
+            verifiedName = dbUser.full_name || verifiedName;
+            verifiedLoc = dbUser.location_id || verifiedLoc;
+            setDbVerifiedProfile(dbUser as UserProfile);
+          } else {
+            // Check by email
+            const { data: dbEmailUser } = await supabase
+              .from('user_profiles')
+              .select('id, email, full_name, role, location_id')
+              .ilike('email', email)
+              .maybeSingle();
+            if (dbEmailUser) {
+              verifiedRole = (dbEmailUser.role === 'CentralAdmin' || dbEmailUser.role === 'Admin-GDT') ? 'CentralAdmin' : 'BranchUser';
+              verifiedName = dbEmailUser.full_name || verifiedName;
+              verifiedLoc = dbEmailUser.location_id || verifiedLoc;
+              setDbVerifiedProfile(dbEmailUser as UserProfile);
+            }
+          }
+        } catch (dbErr) {
+          console.warn('Notice checking user profile in database:', dbErr);
+        }
+
         const sessRecord: PersistedSession = {
           id: currentSession.user.id,
           email,
-          role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
-          name: matched?.full_name || currentSession.user.user_metadata?.full_name || email.split('@')[0],
-          locationId: matched?.location_id || currentSession.user.user_metadata?.location_id || (isAdmin ? '1' : '2'),
+          role: verifiedRole,
+          name: verifiedName,
+          locationId: verifiedLoc,
           authType: 'supabase',
           timestamp: Date.now()
         };
@@ -328,7 +427,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         savePersistedSession(sessRecord);
       } else {
         // If Supabase session is null, DO NOT wipe persisted officer session!
-        // This ensures authenticated officers or offline users remain logged in across F5 refresh.
         const existing = loadPersistedSession();
         if (existing) {
           setPersistedSession(existing);
@@ -342,7 +440,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }).catch((err) => {
       console.warn('Notice checking Supabase auth session:', err);
       if (isMounted) {
-        // Retain existing persisted session if valid
         const existing = loadPersistedSession();
         if (!existing) {
           setUser(null);
@@ -356,7 +453,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchUsersList();
 
     // 3. Listen to auth state changes safely
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
 
       // Only purge credentials on explicit SIGNED_OUT event!
@@ -364,6 +461,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
         setUser(null);
         setPersistedSession(null);
+        setDbVerifiedProfile(null);
         clearPersistedSession();
         setLoading(false);
         return;
@@ -374,19 +472,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(newSession);
           setUser(newSession.user);
           const email = newSession.user.email || '';
-          const isAdmin = 
-            email.toLowerCase().includes('admin') || 
-            email.toLowerCase().includes('its') ||
-            email.toLowerCase().includes('dict') ||
-            email.toLowerCase().includes('team') ||
-            newSession.user.user_metadata?.role === 'CentralAdmin';
-          const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
+          
+          let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
+          let verifiedName = newSession.user.user_metadata?.full_name || email.split('@')[0];
+          let verifiedLoc = newSession.user.user_metadata?.location_id || '1';
+
+          try {
+            const { data: dbUser } = await supabase
+              .from('user_profiles')
+              .select('id, email, full_name, role, location_id')
+              .eq('id', newSession.user.id)
+              .maybeSingle();
+
+            if (dbUser) {
+              verifiedRole = (dbUser.role === 'CentralAdmin' || dbUser.role === 'Admin-GDT') ? 'CentralAdmin' : 'BranchUser';
+              verifiedName = dbUser.full_name || verifiedName;
+              verifiedLoc = dbUser.location_id || verifiedLoc;
+              setDbVerifiedProfile(dbUser as UserProfile);
+            }
+          } catch (dbErr) {
+            console.warn('Notice verifying auth change with database:', dbErr);
+          }
+
           const sessRecord: PersistedSession = {
             id: newSession.user.id,
             email,
-            role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
-            name: matched?.full_name || newSession.user.user_metadata?.full_name || email.split('@')[0],
-            locationId: matched?.location_id || (isAdmin ? '1' : '2'),
+            role: verifiedRole,
+            name: verifiedName,
+            locationId: verifiedLoc,
             authType: 'supabase',
             timestamp: Date.now()
           };
@@ -397,27 +510,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (newSession?.user) {
           setSession(newSession);
           setUser(newSession.user);
-          const email = newSession.user.email || '';
-          const isAdmin = 
-            email.toLowerCase().includes('admin') || 
-            email.toLowerCase().includes('its') ||
-            email.toLowerCase().includes('dict') ||
-            email.toLowerCase().includes('team') ||
-            newSession.user.user_metadata?.role === 'CentralAdmin';
-          const matched = usersList.find(u => u.email.toLowerCase() === email.toLowerCase());
-          const sessRecord: PersistedSession = {
-            id: newSession.user.id,
-            email,
-            role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
-            name: matched?.full_name || newSession.user.user_metadata?.full_name || email.split('@')[0],
-            locationId: matched?.location_id || (isAdmin ? '1' : '2'),
-            authType: 'supabase',
-            timestamp: Date.now()
-          };
-          setPersistedSession(sessRecord);
-          savePersistedSession(sessRecord);
         }
-        // NOTE: If newSession is null on INITIAL_SESSION, DO NOT CLEAR persistedSession!
       }
       setLoading(false);
     });
@@ -426,7 +519,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [configured, fetchUsersList, usersList]);
+  }, [configured, fetchUsersList]);
+
+  // Run database role verification whenever user changes
+  useEffect(() => {
+    verifyUserRoleDirectly();
+  }, [verifyUserRoleDirectly]);
 
   // Save usersList to localStorage on changes
   useEffect(() => {
@@ -436,6 +534,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
   }, [usersList]);
+
+  // Effective authenticated user resolution
+  const currentEmail = user?.email || persistedSession?.email || '';
+
+  const matchedProfile = usersList.find(
+    u => (currentEmail && u.email.toLowerCase() === currentEmail.toLowerCase()) || 
+         (persistedSession?.id && u.id === persistedSession.id)
+  );
+
+  // Authoritative Role: Direct from Supabase DB Table `user_profiles` > Matched Profile > Persistent Session
+  const authoritativeRoleString = 
+    dbVerifiedProfile?.role || 
+    matchedProfile?.role || 
+    user?.user_metadata?.role || 
+    persistedSession?.role || 
+    'BranchUser';
+
+  const userRole: 'CentralAdmin' | 'BranchUser' = 
+    (authoritativeRoleString === 'Admin-GDT' || authoritativeRoleString === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+  
+  const isCentralAdmin = userRole === 'CentralAdmin';
+  const isBranchUser = userRole === 'BranchUser';
+
+  // Security guard for Setting Modal: if user is not CentralAdmin, automatically close and block
+  useEffect(() => {
+    if (!isCentralAdmin && rawIsSettingsOpen) {
+      setRawIsSettingsOpen(false);
+    }
+  }, [isCentralAdmin, rawIsSettingsOpen]);
+
+  const setIsSettingsOpen = useCallback((open: boolean) => {
+    if (open && !isCentralAdmin) {
+      console.warn('Security Warning: Access Denied. User lacks CentralAdmin permission to open settings.');
+      return;
+    }
+    setRawIsSettingsOpen(open);
+  }, [isCentralAdmin]);
+
+  const userProfile: UserProfile | null = dbVerifiedProfile || matchedProfile || (currentEmail ? {
+    id: user?.id || persistedSession?.id || 'profile-' + Date.now(),
+    email: currentEmail,
+    full_name: user?.user_metadata?.full_name || persistedSession?.name || currentEmail.split('@')[0],
+    role: userRole,
+    location_id: isCentralAdmin ? '1' : '2'
+  } : null);
+
+  const effectiveUser = user || (persistedSession ? { 
+    id: persistedSession.id, 
+    email: persistedSession.email,
+    user_metadata: {
+      full_name: persistedSession.name,
+      role: userRole,
+      location_id: persistedSession.locationId
+    }
+  } as any : null);
+
+  const userDisplayName = 
+    dbVerifiedProfile?.full_name ||
+    userProfile?.full_name || 
+    user?.user_metadata?.full_name || 
+    persistedSession?.name || 
+    currentEmail.split('@')[0] || 
+    'មន្ត្រីរាជការ';
+
+  const userLocationId = 
+    dbVerifiedProfile?.location_id ||
+    userProfile?.location_id || 
+    persistedSession?.locationId || 
+    (isBranchUser ? '2' : null);
 
   // Sign in with Supabase Auth or verified officer credentials
   const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
@@ -462,18 +629,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!error && data?.user) {
-        const isAdmin = 
-          cleanEmail.includes('admin') || 
-          cleanEmail.includes('its') || 
-          cleanEmail.includes('dict') || 
-          cleanEmail.includes('team');
-        const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
+        // Query database table `user_profiles` directly for verified role
+        let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
+        let verifiedName = cleanEmail.split('@')[0];
+        let verifiedLoc = '1';
+
+        const { data: dbUser } = await supabase
+          .from('user_profiles')
+          .select('id, email, full_name, role, location_id')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        if (dbUser) {
+          verifiedRole = (dbUser.role === 'Admin-GDT' || dbUser.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+          verifiedName = dbUser.full_name || verifiedName;
+          verifiedLoc = dbUser.location_id || verifiedLoc;
+          setDbVerifiedProfile(dbUser as UserProfile);
+        } else {
+          const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
+          if (matched) {
+            verifiedRole = (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+            verifiedName = matched.full_name;
+            verifiedLoc = matched.location_id || '1';
+          }
+        }
+
         const sessionRecord: PersistedSession = {
           id: data.user.id,
           email: data.user.email || cleanEmail,
-          role: matched?.role || (isAdmin ? 'CentralAdmin' : 'BranchUser'),
-          name: matched?.full_name || data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
-          locationId: matched?.location_id || (isAdmin ? '1' : '2'),
+          role: verifiedRole,
+          name: verifiedName,
+          locationId: verifiedLoc,
           authType: 'supabase',
           timestamp: Date.now()
         };
@@ -486,17 +672,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      // 2. Fallback verification against officer profiles in Supabase / Local storage
+      // 2. Fallback verification against officer profiles in Supabase table / Local storage
       const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
       if (matched) {
         const expectedPwd = matched.password || 'GDT@2026';
         if (cleanPassword === expectedPwd || cleanPassword === 'GDT@2026') {
+          const effectiveRole: 'CentralAdmin' | 'BranchUser' = 
+            (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+
           const sessionRecord: PersistedSession = {
             id: matched.id,
             email: matched.email,
-            role: (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser',
+            role: effectiveRole,
             name: matched.full_name,
-            locationId: matched.location_id || (matched.role === 'CentralAdmin' ? '1' : '2'),
+            locationId: matched.location_id || (effectiveRole === 'CentralAdmin' ? '1' : '2'),
             authType: 'officer',
             timestamp: Date.now()
           };
@@ -538,6 +727,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setSession(null);
       setPersistedSession(null);
+      setDbVerifiedProfile(null);
       clearPersistedSession();
     }
   };
@@ -734,55 +924,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Effective authenticated user resolution
-  const currentEmail = user?.email || persistedSession?.email || '';
-  const isEmailAdmin = Boolean(
-    currentEmail && (
-      currentEmail.toLowerCase().includes('admin') ||
-      currentEmail.toLowerCase().includes('its') ||
-      currentEmail.toLowerCase().includes('dict') ||
-      currentEmail.toLowerCase().includes('team')
-    )
-  );
-
-  const matchedProfile = usersList.find(
-    u => (currentEmail && u.email.toLowerCase() === currentEmail.toLowerCase()) || 
-         (persistedSession?.id && u.id === persistedSession.id)
-  );
-
-  const userProfile: UserProfile | null = matchedProfile || (currentEmail ? {
-    id: user?.id || persistedSession?.id || 'profile-' + Date.now(),
-    email: currentEmail,
-    full_name: user?.user_metadata?.full_name || persistedSession?.name || (isEmailAdmin ? 'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)' : currentEmail.split('@')[0]),
-    role: (isEmailAdmin ? 'CentralAdmin' : 'BranchUser'),
-    location_id: isEmailAdmin ? '1' : '2'
-  } : null);
-
-  const effectiveUser = user || (persistedSession ? { 
-    id: persistedSession.id, 
-    email: persistedSession.email,
-    user_metadata: {
-      full_name: persistedSession.name,
-      role: persistedSession.role,
-      location_id: persistedSession.locationId
-    }
-  } as any : null);
-
-  const rawRole = userProfile?.role || user?.user_metadata?.role || persistedSession?.role || (isEmailAdmin ? 'CentralAdmin' : 'BranchUser');
-  
-  // Normalize role string
-  const userRole: 'CentralAdmin' | 'BranchUser' = (rawRole === 'Admin-GDT' || rawRole === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
-  const isCentralAdmin = userRole === 'CentralAdmin';
-  const isBranchUser = userRole === 'BranchUser';
-
-  const userDisplayName = userProfile?.full_name || 
-    user?.user_metadata?.full_name || 
-    persistedSession?.name || 
-    currentEmail.split('@')[0] || 
-    'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS)';
-
-  const userLocationId = userProfile?.location_id || persistedSession?.locationId || (isBranchUser ? '2' : null);
-
   return (
     <AuthContext.Provider
       value={{
@@ -796,7 +937,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isCentralAdmin,
         isBranchUser,
         isConfigured: configured,
-        isSettingsOpen,
+        isSettingsOpen: rawIsSettingsOpen,
         setIsSettingsOpen,
         usersList,
         fetchUsersList,
@@ -806,6 +947,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signOut,
         signInDemo,
+        verifyUserRoleDirectly,
       }}
     >
       {children}

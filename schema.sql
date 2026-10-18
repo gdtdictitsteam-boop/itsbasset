@@ -107,9 +107,19 @@ DROP POLICY IF EXISTS "Allow read user_profiles" ON public.user_profiles;
 CREATE POLICY "Allow read user_profiles" ON public.user_profiles FOR SELECT TO authenticated, anon USING (true);
 
 DROP POLICY IF EXISTS "CentralAdmin full access on user_profiles" ON public.user_profiles;
-CREATE POLICY "CentralAdmin full access on user_profiles"
+DROP POLICY IF EXISTS "CentralAdmin manage user_profiles" ON public.user_profiles;
+CREATE POLICY "CentralAdmin manage user_profiles"
 ON public.user_profiles FOR ALL TO authenticated, anon
-USING (true) WITH CHECK (true);
+USING (
+  public.is_central_admin() 
+  OR EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT'))
+  OR auth.jwt() ->> 'email' IN ('admin.its@tax.gov.kh', 'gdt.dict.its.team@gmail.com')
+)
+WITH CHECK (
+  public.is_central_admin() 
+  OR EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role IN ('CentralAdmin', 'Admin-GDT'))
+  OR auth.jwt() ->> 'email' IN ('admin.its@tax.gov.kh', 'gdt.dict.its.team@gmail.com')
+);
 
 -- Inventory Policies (Allow reading all locations so HQ and all branches are 100% visible and synchronized)
 DROP POLICY IF EXISTS "CentralAdmin full access on inventory" ON public.inventory;

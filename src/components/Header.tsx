@@ -27,7 +27,7 @@ export function Header() {
   const isDbConfigured = isSupabaseConfigured();
 
   const handleOpenSettings = () => {
-    if (typeof setIsSettingsOpen === 'function') {
+    if (isCentralAdmin && typeof setIsSettingsOpen === 'function') {
       setIsSettingsOpen(true);
     }
   };
@@ -102,19 +102,19 @@ export function Header() {
           </div>
         </div>
 
-        {/* Setting Button (⚙️) - Opens User Management Modal */}
-        <button
-          type="button"
-          onClick={handleOpenSettings}
-          className="p-2 hover:bg-[#03291E]/15 rounded-full transition-all text-[#03291E] relative group hover:scale-105 active:scale-95 cursor-pointer"
-          title="ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (Settings & RBAC)"
-          aria-label="Settings"
-        >
-          <Settings size={20} className="group-hover:rotate-45 transition-transform duration-300" />
-          {isCentralAdmin && (
+        {/* Setting Button (⚙️) - Only visible and accessible for CentralAdmin */}
+        {isCentralAdmin && (
+          <button
+            type="button"
+            onClick={handleOpenSettings}
+            className="p-2 hover:bg-[#03291E]/15 rounded-full transition-all text-[#03291E] relative group hover:scale-105 active:scale-95 cursor-pointer"
+            title="ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (Settings & RBAC)"
+            aria-label="Settings"
+          >
+            <Settings size={20} className="group-hover:rotate-45 transition-transform duration-300" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-700 rounded-full ring-2 ring-[#A3D8C2]" />
-          )}
-        </button>
+          </button>
+        )}
 
         {/* Logout Button */}
         <button

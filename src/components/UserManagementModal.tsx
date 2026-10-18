@@ -360,7 +360,8 @@ export function UserManagementModal() {
     });
   }, [safeUsersList, roleFilter, searchQuery]);
 
-  if (!isSettingsOpen) return null;
+  // Strictly forbid rendering if user is not CentralAdmin
+  if (!isSettingsOpen || !isCentralAdmin) return null;
 
   const handleStartEdit = (user: UserProfile) => {
     if (!user) return;
