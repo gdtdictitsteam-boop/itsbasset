@@ -11,7 +11,6 @@ import {
   PlusCircle, 
   MinusCircle, 
   SlidersHorizontal,
-  Database,
   History,
   MapPin
 } from 'lucide-react';
@@ -65,7 +64,6 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
       title: language === 'kh' ? 'ប្រព័ន្ធ' : 'System',
       items: [
         { id: 'auditTrail', icon: History, label: language === 'kh' ? 'ប្រវត្តិសវនកម្ម (Audit Trail)' : 'Audit Trail' },
-        { id: 'sql', icon: Database, label: t.sqlCode },
       ]
     }
   ];

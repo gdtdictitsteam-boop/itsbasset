@@ -18,7 +18,6 @@ import { StockInView } from './views/StockInView';
 import { StockOutView } from './views/StockOutView';
 import { HandoverView } from './views/HandoverView';
 import { AuditTrailView } from './views/AuditTrailView';
-import { SqlCodeView } from './views/SqlCodeView';
 import { NewItemView } from './views/NewItemView';
 import { AdjustmentView } from './views/AdjustmentView';
 import { useLanguage } from './contexts/LanguageContext';
@@ -28,9 +27,12 @@ function MainLayout() {
   const { t } = useLanguage();
   const { isBranchUser, isCentralAdmin } = useAuth();
 
-  // Enforce view restriction for BranchUser:
-  // BranchUser is allowed: "dashboard", "inventory", "stockOut", "adjustment", "auditTrail"
+  // Enforce view restriction for BranchUser and block removed 'sql' view for all roles:
   useEffect(() => {
+    if (currentView === 'sql' || currentView === 'sql-schema' || currentView === 'database') {
+      setCurrentView('dashboard');
+      return;
+    }
     if (isBranchUser && !['dashboard', 'inventory', 'stockOut', 'adjustment', 'auditTrail'].includes(currentView)) {
       setCurrentView('dashboard');
     }
@@ -55,7 +57,7 @@ function MainLayout() {
       }
     }
 
-    // Full access for CentralAdmin
+    // Full access for CentralAdmin (excluding removed SQL viewer)
     switch (currentView) {
       case 'dashboard':
         return <DashboardView />;
@@ -81,8 +83,6 @@ function MainLayout() {
         return <AdjustmentView />;
       case 'auditTrail':
         return <AuditTrailView />;
-      case 'sql':
-        return <SqlCodeView />;
       default:
         return <DashboardView />;
     }
