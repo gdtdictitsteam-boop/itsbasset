@@ -11,6 +11,7 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     role: 'CentralAdmin',
     location_id: '1', // HQ-ITSB
     password: 'GDT@2026',
+    display_password: 'GDT@2026',
   },
   {
     id: 'user-001',
@@ -19,6 +20,7 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     role: 'CentralAdmin',
     location_id: '1', // HQ-ITSB
     password: 'GDT@2026',
+    display_password: 'GDT@2026',
   },
   {
     id: 'user-002',
@@ -27,6 +29,7 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     role: 'BranchUser',
     location_id: '2', // 7MK (សាខាពន្ធដារខណ្ឌ៧មករា)
     password: 'GDT@2026',
+    display_password: 'GDT@2026',
   },
   {
     id: 'user-003',
@@ -35,6 +38,7 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     role: 'BranchUser',
     location_id: '3', // CKM (សាខាពន្ធដារខណ្ឌចំការមន)
     password: 'GDT@2026',
+    display_password: 'GDT@2026',
   },
   {
     id: 'user-004',
@@ -43,6 +47,7 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     role: 'BranchUser',
     location_id: '5', // DPE (សាខាពន្ធដារខណ្ឌដូនពេញ)
     password: 'GDT@2026',
+    display_password: 'GDT@2026',
   },
   {
     id: 'user-005',
@@ -51,6 +56,7 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     role: 'BranchUser',
     location_id: '6', // TKO (សាខាពន្ធដារខណ្ឌទួលគោក)
     password: 'GDT@2026',
+    display_password: 'GDT@2026',
   },
   {
     id: 'user-006',
@@ -59,6 +65,7 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     role: 'BranchUser',
     location_id: '24', // KPC (សាខាពន្ធដារខេត្តកំពង់ចាម)
     password: 'GDT@2026',
+    display_password: 'GDT@2026',
   },
 ];
 
@@ -271,7 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const configured = isSupabaseConfigured();
 
-  // Fetch users list from Supabase if connected
+  // Fetch users list from Supabase if connected (includes display_password)
   const fetchUsersList = useCallback(async () => {
     if (!configured) return;
     try {
@@ -281,9 +288,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .order('created_at', { ascending: true });
       
       if (!error && data && data.length > 0) {
-        setUsersList(data as UserProfile[]);
+        const mapped = (data as any[]).map((row) => ({
+          ...row,
+          display_password: row.display_password || row.password || 'GDT@2026',
+          password: row.display_password || row.password || 'GDT@2026',
+        })) as UserProfile[];
+        setUsersList(mapped);
         try {
-          localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(data));
+          localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(mapped));
         } catch {
           // ignore
         }
@@ -675,7 +687,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // 2. Fallback verification against officer profiles in Supabase table / Local storage
       const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
       if (matched) {
-        const expectedPwd = matched.password || 'GDT@2026';
+        const expectedPwd = matched.display_password || matched.password || 'GDT@2026';
         if (cleanPassword === expectedPwd || cleanPassword === 'GDT@2026') {
           const effectiveRole: 'CentralAdmin' | 'BranchUser' = 
             (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
@@ -841,10 +853,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const target = updatedList.find(u => u.id === id || u.email === updates.email);
         if (target) {
           const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.id);
+          const newPwd = updates.display_password || updates.password;
           const updateData: Record<string, any> = {
             full_name: target.full_name,
             role: target.role,
             location_id: target.location_id,
+            ...(newPwd ? { display_password: newPwd } : {}),
             updated_at: new Date().toISOString()
           };
 
@@ -858,11 +872,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // If password was updated, also update in Supabase auth.users via RPC
-          if (updates.password) {
+          if (newPwd) {
             try {
               await supabase.rpc('admin_set_user_password', {
                 p_email: target.email,
-                p_password: updates.password,
+                p_password: newPwd,
                 p_full_name: target.full_name,
                 p_role: target.role,
                 p_location_id: target.location_id
@@ -884,8 +898,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const createUserProfile = async (profileData: Omit<UserProfile, 'id'>): Promise<{ success: boolean; error?: string }> => {
     try {
       const newId = 'user-' + Date.now();
+      const effectivePwd = profileData.display_password || profileData.password || 'GDT@2026';
       const newProfile: UserProfile = {
         ...profileData,
+        password: effectivePwd,
+        display_password: effectivePwd,
         id: newId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -905,14 +922,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: newProfile.email,
           full_name: newProfile.full_name,
           role: newProfile.role,
-          location_id: newProfile.location_id
+          location_id: newProfile.location_id,
+          display_password: effectivePwd
         }]);
 
-        if (profileData.password) {
+        if (effectivePwd) {
           try {
             await supabase.rpc('admin_set_user_password', {
               p_email: newProfile.email,
-              p_password: profileData.password,
+              p_password: effectivePwd,
               p_full_name: newProfile.full_name,
               p_role: newProfile.role,
               p_location_id: newProfile.location_id

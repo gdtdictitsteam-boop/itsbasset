@@ -143,14 +143,18 @@ BEGIN
         NOW()
     );
 
-    -- Ensure public.user_profiles exists and is in sync
-    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, created_at)
+    -- Ensure display_password column exists in public.user_profiles
+    ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS display_password TEXT DEFAULT 'GDT@2026';
+
+    -- Ensure public.user_profiles exists and is in sync (including display_password)
+    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, display_password, created_at)
     VALUES (
         v_user_id,
         lower(p_email),
         p_full_name,
         p_role,
         v_location_id,
+        p_password,
         NOW()
     )
     ON CONFLICT (id) DO UPDATE
@@ -158,7 +162,8 @@ BEGIN
         email = EXCLUDED.email,
         full_name = EXCLUDED.full_name,
         role = EXCLUDED.role,
-        location_id = EXCLUDED.location_id;
+        location_id = EXCLUDED.location_id,
+        display_password = EXCLUDED.display_password;
 
     RETURN v_user_id;
 END;
@@ -464,6 +469,11 @@ export function UserManagementModal() {
         const hasNewPassword = Boolean(updatedUser.password && updatedUser.password.trim());
         const newPassword = hasNewPassword ? updatedUser.password!.trim() : null;
 
+        // If a new password was entered, include display_password: newPassword in user_profiles update
+        if (hasNewPassword && newPassword) {
+          updatePayload.display_password = newPassword;
+        }
+
         if (availableCols) {
           if (availableCols.has('location_id')) {
             updatePayload.location_id = targetBranchId;
@@ -477,8 +487,8 @@ export function UserManagementModal() {
           if (availableCols.has('email')) {
             updatePayload.email = updatedUser.email.trim().toLowerCase();
           }
-          // Method 2: If user_profiles table has a password column, update it directly
-          if (hasNewPassword && availableCols.has('password')) {
+          // Method 2: If user_profiles table also has a password column, update it directly
+          if (hasNewPassword && newPassword && availableCols.has('password')) {
             updatePayload.password = newPassword;
           }
         } else {
@@ -503,6 +513,7 @@ export function UserManagementModal() {
             full_name: updatedUser.full_name,
             role: updatedUser.role,
             location_id: targetBranchId,
+            ...(hasNewPassword && newPassword && !error.message?.includes('display_password') ? { display_password: newPassword } : {}),
             updated_at: new Date().toISOString()
           };
           const retryRes = isUuid
@@ -611,16 +622,17 @@ export function UserManagementModal() {
 
     // 4. Update Local State and Context upon successful Supabase write
     if (typeof updateUserProfile === 'function') {
+      const cleanNewPwd = updatedUser.password?.trim();
       await updateUserProfile(updatedUser.id, {
         full_name: updatedUser.full_name,
         email: updatedUser.email,
         role: updatedUser.role,
         location_id: targetBranchId,
-        ...(updatedUser.password ? { password: updatedUser.password } : {})
+        ...(cleanNewPwd ? { password: cleanNewPwd, display_password: cleanNewPwd } : {})
       });
     }
 
-    // 5. Re-fetch fresh users list from Supabase
+    // 5. Re-fetch fresh users list from Supabase immediately so the table displays the new display_password
     if (typeof fetchUsersList === 'function') {
       await fetchUsersList();
     }
@@ -669,7 +681,8 @@ export function UserManagementModal() {
           email: formEmail.trim().toLowerCase(),
           role: formRole,
           location_id: formLocationId,
-          password: finalPwd
+          password: finalPwd,
+          display_password: finalPwd
         });
         if (res?.success) {
           setSuccessMessage(`បានបង្កើតគណនីមន្ត្រីថ្មី "${formFullName}" ដោយជោគជ័យ! (Password: ${finalPwd})`);
@@ -1130,14 +1143,14 @@ export function UserManagementModal() {
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((officer, idx) => {
-                      if (!officer) return null;
+                    filteredUsers.map((user, idx) => {
+                      if (!user) return null;
+                      const officer = user;
                       const isCurrentActive = Boolean(
                         (userProfile?.id && officer?.id && userProfile.id === officer.id) || 
                         (userProfile?.email && officer?.email && userProfile.email.toLowerCase() === officer.email.toLowerCase())
                       );
                       const initialChar = officer.full_name?.charAt(0) || officer.email?.charAt(0) || 'U';
-                      const effectivePassword = officer.password || 'GDT@2026';
 
                       return (
                         <tr 
@@ -1186,13 +1199,9 @@ export function UserManagementModal() {
                               </span>
                             </div>
                           </td>
-                          <td className="py-2.5 px-3 text-center font-mono">
-                            <span 
-                              className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200"
-                              title={`Password សម្រាប់ Login: ${effectivePassword}`}
-                            >
-                              <Lock size={10} className="mr-1 text-slate-400" />
-                              {effectivePassword}
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-gray-100 text-gray-700 border border-gray-200">
+                              🔒 {user.display_password || 'GDT@2026'}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 text-center">
@@ -1211,13 +1220,16 @@ export function UserManagementModal() {
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  const customPwd = prompt(`កំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រី "${officer.full_name}":`, 'GDT@2026');
+                                  const customPwd = prompt(`កំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រី "${officer.full_name}":`, user.display_password || 'GDT@2026');
                                   if (customPwd !== null && customPwd.trim().length >= 6) {
-                                    if (typeof updateUserProfile === 'function') {
-                                      await updateUserProfile(officer.id, { password: customPwd.trim() });
-                                      setSuccessMessage(`បានកំណត់ពាក្យសម្ងាត់មន្ត្រី "${officer.full_name}" ទៅជា "${customPwd.trim()}" រួចរាល់!`);
-                                      setTimeout(() => setSuccessMessage(null), 4000);
-                                    }
+                                    await handleUpdateUser({
+                                      id: officer.id,
+                                      full_name: officer.full_name,
+                                      email: officer.email,
+                                      role: officer.role,
+                                      location_id: officer.location_id || (officer.role === 'CentralAdmin' ? '1' : '2'),
+                                      password: customPwd.trim()
+                                    });
                                   } else if (customPwd !== null) {
                                     setErrorMessage('ពាក្យសម្ងាត់ត្រូវតែមានយ៉ាងតិច ៦ តួអក្សរ!');
                                     setTimeout(() => setErrorMessage(null), 3000);
