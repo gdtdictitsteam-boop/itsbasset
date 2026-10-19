@@ -58,8 +58,8 @@ export function LoginView() {
       return;
     }
 
-    // 2. Input Sanitization
-    const sanitizedEmail = sanitizeInput(email);
+    // 2. Clean Email & Password
+    const sanitizedEmail = sanitizeInput(email).toLowerCase();
     const sanitizedPassword = password.trim();
 
     // 3. Validation Rules
@@ -86,7 +86,7 @@ export function LoginView() {
     setIsSubmitting(true);
 
     try {
-      // 4. Submit to Supabase Authentication
+      // 4. Submit to Supabase Authentication (supabase.auth.signInWithPassword)
       const result = await signIn(sanitizedEmail, sanitizedPassword);
 
       if (result.success) {

@@ -441,198 +441,146 @@ export function UserManagementModal() {
     setFormPassword(`GDT@${rand}`);
   };
 
-  // Actual UPDATE to Supabase Database (user_profiles & admin_secure_set_password RPC) for CentralAdmin
-  const handleUpdateUser = async (editUser: {
-    id: string;
-    full_name: string;
-    email: string;
+  // Helper to invoke admin_manage_officer RPC with automatic parameter signature adaptation
+  const invokeAdminManageOfficerRpc = async (params: {
+    targetId?: string;
+    targetEmail: string;
+    fullName: string;
     role: 'CentralAdmin' | 'BranchUser';
-    location_id: string;
-    password?: string;
-  }): Promise<boolean> => {
-    // 1. Strict Security Guard: Only CentralAdmin can perform update
-    if (!isCentralAdmin) {
-      alert('សិទ្ធិត្រូវបានបដិសេធ៖ មានតែគណនី CentralAdmin ប៉ុណ្ណោះដែលអាចកែប្រែព័ត៌មានមន្ត្រីបាន!');
-      return false;
-    }
+    locationId: string;
+    rawLocationId: string;
+    newPassword: string | null;
+    callerAdminEmail: string;
+  }) => {
+    const isUuidLoc = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.locationId);
 
-    const newPassword = editUser.password;
+    // 1. Primary RPC call matching admin_manage_officer signature
+    const primaryPayload: Record<string, any> = {
+      target_email: params.targetEmail,
+      new_full_name: params.fullName,
+      new_role: params.role,
+      new_location_id: params.locationId,
+      new_password: params.newPassword,
+      caller_admin_email: params.callerAdminEmail,
+    };
 
-    // 2. Validate password length before executing updates if a new password was provided
-    if (newPassword && newPassword.trim() !== '') {
-      if (newPassword.trim().length < 8) {
-        alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
-        setErrorMessage('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
-        return false;
-      }
-    }
+    let { data: res, error: rpcErr } = await supabase.rpc('admin_manage_officer', primaryPayload);
 
-    // 3. Resolve target location info
-    const matchedBranch = safeBranches.find(
-      l => l.id === editUser.location_id || l.code === editUser.location_id
-    ) || (editUser.role === 'CentralAdmin' ? safeBranches.find(l => l.type === 'HQ' || l.code === 'HQ-ITSB') : null);
+    // 2. If PostgREST reports PGRST202 (parameter name mismatch), dynamically adapt from hint or try known signatures
+    if (rpcErr && (rpcErr.code === 'PGRST202' || rpcErr.message?.includes('Could not find the function'))) {
+      const hintText = `${rpcErr.hint || ''} ${rpcErr.message || ''} ${rpcErr.details || ''}`;
+      const match = hintText.match(/admin_manage_officer\(([^)]*)\)/i);
 
-    const targetBranchId = matchedBranch?.id || editUser.location_id;
-    const targetBranchName = matchedBranch?.name_kh || matchedBranch?.name_en || '';
+      if (match && match[1]) {
+        const paramNames = match[1]
+          .split(',')
+          .map((s) => s.trim().split(/\s+/)[0].replace(/^public\./, ''))
+          .filter(Boolean);
 
-    const hasNewPassword = Boolean(newPassword && newPassword.trim() !== '');
-    const isDefault = hasNewPassword ? newPassword!.trim() === 'GDT@2026' : undefined;
-    const nowIso = new Date().toISOString();
-
-    // 4. Supabase Direct Update & Secure Password RPC
-    if (isSupabaseConfigured()) {
-      try {
-        // Query to check available columns in public.user_profiles
-        const { data: colsCheck } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .limit(1);
-
-        const availableCols = colsCheck && colsCheck.length > 0 
-          ? new Set(Object.keys(colsCheck[0]))
-          : null;
-
-        // Construct update payload dynamically matching Table user_profiles Schema (never store plaintext password)
-        const updatePayload: Record<string, any> = {
-          full_name: editUser.full_name,
-          role: editUser.role,
-          updated_at: nowIso
-        };
-
-        if (availableCols) {
-          if (availableCols.has('location_id')) {
-            updatePayload.location_id = targetBranchId;
-          }
-          if (availableCols.has('branch_id')) {
-            updatePayload.branch_id = targetBranchId;
-          }
-          if (availableCols.has('branch_name')) {
-            updatePayload.branch_name = targetBranchName;
-          }
-          if (availableCols.has('email')) {
-            updatePayload.email = editUser.email.trim().toLowerCase();
-          }
-        } else {
-          // Standard canonical columns
-          updatePayload.location_id = targetBranchId;
-        }
-
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(editUser.id);
-        
-        // Execute actual Supabase UPDATE for profile fields (full_name, role, branch)
-        let query = supabase.from('user_profiles').update(updatePayload);
-        let res = isUuid 
-          ? await query.eq('id', editUser.id).select()
-          : await query.ilike('email', editUser.email.trim()).select();
-
-        let { data, error } = res;
-
-        // If error due to column mismatch (e.g. branch_id vs location_id), retry with safe base columns
-        if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
-          console.warn('Column mismatch detected in user_profiles. Retrying with safe base columns:', error.message);
-          const basePayload: Record<string, any> = {
-            full_name: editUser.full_name,
-            role: editUser.role,
-            location_id: targetBranchId,
-            updated_at: nowIso
-          };
-          const retryRes = isUuid
-            ? await supabase.from('user_profiles').update(basePayload).eq('id', editUser.id).select()
-            : await supabase.from('user_profiles').update(basePayload).ilike('email', editUser.email.trim()).select();
-          data = retryRes.data;
-          error = retryRes.error;
-        }
-
-        // If update failed, check error and alert with clear reason
-        if (error) {
-          console.error('Supabase user_profiles UPDATE error:', error);
-          alert(`មិនអាចរក្សាទុកទិន្នន័យក្នុង Supabase Database បានទេ៖\n${error.message || JSON.stringify(error)}\n\n(មូលហេតុអាចមកពីជាប់ Row-Level Security (RLS) Policy ឬខុសឈ្មោះ Column ក្នុងតារាង user_profiles)`);
-          setErrorMessage(`កំហុស Supabase: ${error.message}`);
-          return false;
-        }
-
-        // If 0 rows were updated (e.g. profile doesn't exist in user_profiles yet), try upserting
-        if (!error && (!data || data.length === 0)) {
-          console.info('No existing record found to update. Upserting into user_profiles...');
-          const upsertRow: Record<string, any> = {
-            ...updatePayload,
-            email: editUser.email.trim().toLowerCase(),
-            ...(isUuid ? { id: editUser.id } : {})
-          };
-          const upsertRes = await supabase.from('user_profiles').upsert(upsertRow).select();
-          if (upsertRes.error) {
-            console.error('Supabase user_profiles UPSERT error:', upsertRes.error);
-            alert(`មិនអាចរក្សាទុកទិន្នន័យក្នុង Supabase Database បានទេ៖\n${upsertRes.error.message}\n\n(សូមពិនិត្យមើល RLS Policy ឬសិទ្ធិ CentralAdmin)`);
-            setErrorMessage(`កំហុស Supabase: ${upsertRes.error.message}`);
-            return false;
-          }
-        }
-
-        // 5. ISO 27001 / OWASP Secure Password Update via RPC: admin_secure_set_password
-        if (newPassword && newPassword.trim() !== '') {
-          if (newPassword.trim().length < 8) {
-            alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
-            return false;
-          }
-
-          const { data: res, error: rpcErr } = await supabase.rpc('admin_secure_set_password', {
-            target_email: editUser.email,
-            new_password: newPassword.trim(),
-            caller_admin_email: currentUser?.email
-          });
-
-          if (rpcErr || (res && !res.success)) {
-            alert('កំហុស៖ ' + (rpcErr?.message || res?.message));
-            setErrorMessage('កំហុស៖ ' + (rpcErr?.message || res?.message));
-            return false;
-          }
-
-          alert('បានកែប្រែពាក្យសម្ងាត់ និងធ្វើសមកាលកម្មចូល Supabase Auth ជោគជ័យ!');
-        }
-      } catch (err: any) {
-        console.error('Unexpected exception during Supabase user update:', err);
-        alert(`មានបញ្ហាមិនរំពឹងទុកពេល UPDATE ក្នុង Supabase៖\n${err?.message || err}`);
-        setErrorMessage(err?.message || 'ប្រតិបត្តិការបរាជ័យ');
-        return false;
-      }
-    }
-
-    // 6. Immediately Update Local State of that User (is_default_password, password_updated_at) and Clear Input Password
-    if (typeof updateUserProfile === 'function') {
-      await updateUserProfile(editUser.id, {
-        full_name: editUser.full_name,
-        email: editUser.email,
-        role: editUser.role,
-        location_id: targetBranchId,
-        ...(hasNewPassword && typeof isDefault === 'boolean'
-          ? {
-              is_default_password: isDefault,
-              password_updated_at: nowIso
+        if (paramNames.length > 0) {
+          const dynamicPayload: Record<string, any> = {};
+          for (const pName of paramNames) {
+            const lower = pName.toLowerCase();
+            if (lower.includes('caller') || lower.includes('admin')) {
+              dynamicPayload[pName] = params.callerAdminEmail;
+            } else if (lower.includes('email')) {
+              dynamicPayload[pName] = params.targetEmail;
+            } else if (lower.includes('name')) {
+              dynamicPayload[pName] = params.fullName;
+            } else if (lower.includes('role')) {
+              dynamicPayload[pName] = params.role;
+            } else if (lower.includes('loc') || lower.includes('branch')) {
+              dynamicPayload[pName] = params.locationId;
+            } else if (lower.includes('pass') || lower.includes('pwd')) {
+              dynamicPayload[pName] = params.newPassword;
+            } else if (lower.includes('id')) {
+              dynamicPayload[pName] = params.targetId || null;
             }
-          : {})
+          }
+          const retryHint = await supabase.rpc('admin_manage_officer', dynamicPayload);
+          res = retryHint.data;
+          rpcErr = retryHint.error;
+        }
+      }
+
+      // Fallback candidate signatures if still PGRST202
+      const fallbackPayloads: Array<Record<string, any>> = [
+        {
+          target_email: params.targetEmail,
+          full_name: params.fullName,
+          role: params.role,
+          location_id: params.locationId,
+          new_password: params.newPassword,
+          caller_admin_email: params.callerAdminEmail,
+        },
+        {
+          target_email: params.targetEmail,
+          new_full_name: params.fullName,
+          new_role: params.role,
+          new_password: params.newPassword,
+          caller_admin_email: params.callerAdminEmail,
+        },
+        {
+          p_email: params.targetEmail,
+          p_full_name: params.fullName,
+          p_role: params.role,
+          p_location_id: params.locationId,
+          p_password: params.newPassword,
+          caller_admin_email: params.callerAdminEmail,
+        },
+      ];
+
+      for (const candidate of fallbackPayloads) {
+        if (!rpcErr || (rpcErr.code !== 'PGRST202' && !rpcErr.message?.includes('Could not find the function'))) {
+          break;
+        }
+        const retryRes = await supabase.rpc('admin_manage_officer', candidate);
+        res = retryRes.data;
+        rpcErr = retryRes.error;
+      }
+    }
+
+    // 3. If error due to non-UUID location_id in a UUID parameter, resolve from locations table or pass null
+    if (rpcErr && rpcErr.message?.toLowerCase().includes('uuid') && !isUuidLoc) {
+      let resolvedUuid: string | null = null;
+      const { data: locRows } = await supabase.from('locations').select('id, code, type');
+      if (locRows && locRows.length > 0) {
+        const codeMap: Record<string, string> = {
+          '1': 'HQ-ITSB',
+          '2': '7MK',
+          '3': 'CKM',
+          '4': 'DKO',
+          '5': 'DPE',
+          '6': 'TKO',
+          '24': 'KPC',
+        };
+        const targetCode = codeMap[params.rawLocationId] || params.rawLocationId;
+        const foundLoc =
+          locRows.find((l: any) => l.id === params.rawLocationId || l.code === targetCode) ||
+          (params.role === 'CentralAdmin' ? locRows.find((l: any) => l.type === 'HQ' || l.code === 'HQ-ITSB') : locRows[0]);
+        resolvedUuid = foundLoc?.id || null;
+      }
+
+      const retryUuid = await supabase.rpc('admin_manage_officer', {
+        ...primaryPayload,
+        new_location_id: resolvedUuid,
       });
+      res = retryUuid.data;
+      rpcErr = retryUuid.error;
     }
 
-    // Clear password input state immediately
-    setFormPassword('');
-
-    // 7. Re-fetch fresh users list from Supabase
-    if (typeof fetchUsersList === 'function') {
-      await fetchUsersList();
-    }
-
-    // 8. Close Edit Modal & Show Success Notification
-    setEditingUser(null);
-    if (hasNewPassword) {
-      setSuccessMessage('បានកំណត់ពាក្យសម្ងាត់ថ្មីជោគជ័យ!');
-    } else {
-      setSuccessMessage(`បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${editUser.full_name}" ចូល Supabase Database ដោយជោគជ័យ!`);
-    }
-    return true;
+    return { data: res, error: rpcErr };
   };
 
-  const handleSaveForm = async (e: React.FormEvent) => {
+  // Unified Save Handler calling RPC `admin_manage_officer`
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isCentralAdmin) {
+      alert('សិទ្ធិត្រូវបានបដិសេធ៖ មានតែគណនី CentralAdmin ប៉ុណ្ណោះដែលអាចកែប្រែព័ត៌មានមន្ត្រីបាន!');
+      return;
+    }
+
     if (!formFullName.trim()) {
       setErrorMessage('សូមបញ្ចូលឈ្មោះមន្ត្រី (Please enter officer full name)');
       return;
@@ -642,18 +590,15 @@ export function UserManagementModal() {
       return;
     }
 
-    // Password validation (Minimum 8 characters per ISO 27001 / OWASP)
-    if (isCreatingNew) {
-      if (!formPassword.trim()) {
-        setErrorMessage('សូមកំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រីថ្មី');
-        return;
-      }
-      if (formPassword.trim().length < 8) {
-        alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
-        setErrorMessage('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
-        return;
-      }
-    } else if (editingUser && formPassword.trim() !== '' && formPassword.trim().length < 8) {
+    const trimmedPassword = formPassword.trim();
+    const hasNewPassword = trimmedPassword !== '';
+
+    if (isCreatingNew && !hasNewPassword) {
+      setErrorMessage('សូមកំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រីថ្មី');
+      return;
+    }
+
+    if (hasNewPassword && trimmedPassword.length < 8) {
       alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
       setErrorMessage('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
       return;
@@ -663,46 +608,100 @@ export function UserManagementModal() {
     setErrorMessage(null);
 
     try {
-      if (isCreatingNew && typeof createUserProfile === 'function') {
-        const finalPwd = formPassword.trim() || 'GDT@2026';
-        const isDefaultPwd = finalPwd === 'GDT@2026';
-        const res = await createUserProfile({
-          full_name: formFullName.trim(),
-          email: formEmail.trim().toLowerCase(),
+      const codeMap: Record<string, string> = {
+        '1': 'HQ-ITSB',
+        '2': '7MK',
+        '3': 'CKM',
+        '4': 'DKO',
+        '5': 'DPE',
+        '6': 'TKO',
+        '24': 'KPC',
+      };
+      const targetCode = codeMap[String(formLocationId)] || formLocationId;
+      const matchedBranch =
+        safeBranches.find(
+          (l) => l.id === formLocationId || l.code === formLocationId || l.code === targetCode
+        ) ||
+        (formRole === 'CentralAdmin'
+          ? safeBranches.find((l) => l.type === 'HQ' || l.code === 'HQ-ITSB')
+          : null);
+
+      const targetBranchId = matchedBranch?.id || formLocationId;
+      const targetEmail = (editingUser ? editingUser.email : formEmail).trim().toLowerCase();
+      const callerAdminEmail =
+        currentUser?.email || userProfile?.email || 'gdt.dict.its.team@gmail.com';
+      const nowIso = new Date().toISOString();
+      const isDefaultPwd = hasNewPassword ? trimmedPassword === 'GDT@2026' : undefined;
+
+      if (isSupabaseConfigured()) {
+        const { data: res, error: rpcErr } = await invokeAdminManageOfficerRpc({
+          targetId: editingUser?.id,
+          targetEmail,
+          fullName: formFullName.trim(),
           role: formRole,
-          location_id: formLocationId,
-          password: finalPwd,
-          is_default_password: isDefaultPwd,
-          password_updated_at: new Date().toISOString()
+          locationId: targetBranchId,
+          rawLocationId: formLocationId,
+          newPassword: hasNewPassword ? trimmedPassword : null,
+          callerAdminEmail,
         });
-        if (res?.success) {
-          setFormPassword('');
-          setSuccessMessage(`បានបង្កើតគណនីមន្ត្រីថ្មី "${formFullName}" ដោយជោគជ័យ!`);
-          setIsCreatingNew(false);
-          if (typeof fetchUsersList === 'function') {
-            await fetchUsersList();
-          }
-        } else {
-          setErrorMessage(res?.error || 'មានបញ្ហាក្នុងការបង្កើតគណនី');
+
+        if (rpcErr || (res && res.success === false)) {
+          const errMsg = rpcErr?.message || res?.message || 'មិនអាចរក្សាទុកទិន្នន័យបានទេ';
+          alert('កំហុស៖ ' + errMsg);
+          setErrorMessage('កំហុស៖ ' + errMsg);
+          return;
         }
-      } else if (editingUser) {
-        // Execute real Supabase UPDATE with error handling & alert
-        await handleUpdateUser({
-          id: editingUser.id,
+
+        alert(res?.message || 'បានរក្សាទុកទិន្នន័យមន្ត្រី និងធ្វើសមកាលកម្មចូល Supabase ជោគជ័យ!');
+      }
+
+      if (isCreatingNew && typeof createUserProfile === 'function') {
+        const finalPwd = trimmedPassword || 'GDT@2026';
+        await createUserProfile({
+          full_name: formFullName.trim(),
+          email: targetEmail,
+          role: formRole,
+          location_id: targetBranchId,
+          is_default_password: finalPwd === 'GDT@2026',
+          password_updated_at: nowIso,
+        });
+      } else if (editingUser && typeof updateUserProfile === 'function') {
+        await updateUserProfile(editingUser.id, {
           full_name: formFullName.trim(),
           email: formEmail.trim().toLowerCase(),
           role: formRole,
-          location_id: formLocationId,
-          password: formPassword.trim() || undefined
+          location_id: targetBranchId,
+          ...(hasNewPassword && typeof isDefaultPwd === 'boolean'
+            ? {
+                is_default_password: isDefaultPwd,
+                password_updated_at: nowIso,
+              }
+            : {}),
         });
       }
+
+      // Clear password field, refresh officer list from Supabase, and close edit form
+      setFormPassword('');
+      if (typeof fetchUsersList === 'function') {
+        await fetchUsersList();
+      }
+      setEditingUser(null);
+      setIsCreatingNew(false);
+      setSuccessMessage(
+        hasNewPassword
+          ? 'បានកែប្រែព័ត៌មាន និងកំណត់ពាក្យសម្ងាត់ថ្មីជោគជ័យ!'
+          : `បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${formFullName.trim()}" ជោគជ័យ!`
+      );
     } catch (err: any) {
+      alert('កំហុស៖ ' + (err?.message || 'ប្រតិបត្តិការបរាជ័យ'));
       setErrorMessage(err?.message || 'ប្រតិបត្តិការបរាជ័យ');
     } finally {
       setIsSaving(false);
       setTimeout(() => setSuccessMessage(null), 5000);
     }
   };
+
+  const handleSaveForm = handleSaveUser;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(SUPABASE_AUTH_USERS_SQL);

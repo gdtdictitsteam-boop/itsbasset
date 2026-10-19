@@ -490,11 +490,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           let verifiedLoc = newSession.user.user_metadata?.location_id || '1';
 
           try {
-            const { data: dbUser } = await supabase
+            let { data: dbUser } = await supabase
               .from('user_profiles')
-              .select('id, email, full_name, role, location_id')
+              .select('id, email, full_name, role, location_id, is_default_password, password_updated_at')
               .eq('id', newSession.user.id)
               .maybeSingle();
+
+            if (!dbUser && email) {
+              const { data: dbEmailUser } = await supabase
+                .from('user_profiles')
+                .select('id, email, full_name, role, location_id, is_default_password, password_updated_at')
+                .ilike('email', email.trim())
+                .maybeSingle();
+              dbUser = dbEmailUser;
+            }
 
             if (dbUser) {
               verifiedRole = (dbUser.role === 'CentralAdmin' || dbUser.role === 'Admin-GDT') ? 'CentralAdmin' : 'BranchUser';
@@ -616,7 +625,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistedSession?.locationId || 
     (isBranchUser ? '2' : null);
 
-  // Sign in with Supabase Auth or verified officer credentials
+  // Sign in with Supabase Auth (supabase.auth.signInWithPassword) and load user_profiles
   const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
@@ -634,94 +643,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // 1. Attempt Supabase Auth Password Login
+      // 1. Authenticate via Supabase Auth
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
       });
 
-      if (!error && data?.user) {
-        // Query database table `user_profiles` directly for verified role
-        let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
-        let verifiedName = cleanEmail.split('@')[0];
-        let verifiedLoc = '1';
+      if (error || !data?.user) {
+        return {
+          success: false,
+          error: error?.message || 'អ៊ីមែល ឬ ពាក្យសម្ងាត់មិនត្រឹមត្រូវ!',
+        };
+      }
 
-        const { data: dbUser } = await supabase
+      // 2. Query database table `user_profiles` directly for verified role and branch
+      let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
+      let verifiedName = data.user.user_metadata?.full_name || cleanEmail.split('@')[0];
+      let verifiedLoc = data.user.user_metadata?.location_id || '1';
+
+      let { data: dbUser } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .ilike('email', cleanEmail)
+        .maybeSingle();
+
+      if (!dbUser) {
+        const { data: dbById } = await supabase
           .from('user_profiles')
-          .select('id, email, full_name, role, location_id')
+          .select('*')
           .eq('id', data.user.id)
           .maybeSingle();
-
-        if (dbUser) {
-          verifiedRole = (dbUser.role === 'Admin-GDT' || dbUser.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
-          verifiedName = dbUser.full_name || verifiedName;
-          verifiedLoc = dbUser.location_id || verifiedLoc;
-          setDbVerifiedProfile(dbUser as UserProfile);
-        } else {
-          const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-          if (matched) {
-            verifiedRole = (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
-            verifiedName = matched.full_name;
-            verifiedLoc = matched.location_id || '1';
-          }
-        }
-
-        const sessionRecord: PersistedSession = {
-          id: data.user.id,
-          email: data.user.email || cleanEmail,
-          role: verifiedRole,
-          name: verifiedName,
-          locationId: verifiedLoc,
-          authType: 'supabase',
-          timestamp: Date.now()
-        };
-
-        setPersistedSession(sessionRecord);
-        savePersistedSession(sessionRecord);
-        setUser(data.user);
-        setSession(data.session);
-        await fetchUsersList();
-        return { success: true };
+        dbUser = dbById;
       }
 
-      // 2. Fallback verification against officer profiles only when account is not yet synced in Supabase Auth
-      const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-      if (matched && error?.message && !error.message.toLowerCase().includes('invalid login credentials')) {
-        const expectedPwd = matched.display_password || matched.password;
-        if (expectedPwd && cleanPassword === expectedPwd) {
-          const effectiveRole: 'CentralAdmin' | 'BranchUser' = 
-            (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
-
-          const sessionRecord: PersistedSession = {
-            id: matched.id,
-            email: matched.email,
-            role: effectiveRole,
-            name: matched.full_name,
-            locationId: matched.location_id || (effectiveRole === 'CentralAdmin' ? '1' : '2'),
-            authType: 'officer',
-            timestamp: Date.now()
-          };
-
-          setPersistedSession(sessionRecord);
-          savePersistedSession(sessionRecord);
-          setUser({
-            id: sessionRecord.id,
-            email: sessionRecord.email,
-            user_metadata: {
-              full_name: sessionRecord.name,
-              role: sessionRecord.role,
-              location_id: sessionRecord.locationId
-            },
-            app_metadata: {},
-            aud: 'authenticated',
-            created_at: new Date().toISOString()
-          } as User);
-
-          return { success: true };
+      if (dbUser) {
+        verifiedRole = (dbUser.role === 'Admin-GDT' || dbUser.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+        verifiedName = dbUser.full_name || verifiedName;
+        verifiedLoc = dbUser.location_id || verifiedLoc;
+        setDbVerifiedProfile(dbUser as UserProfile);
+      } else {
+        const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
+        if (matched) {
+          verifiedRole = (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
+          verifiedName = matched.full_name;
+          verifiedLoc = matched.location_id || '1';
         }
       }
 
-      return { success: false, error: error?.message || 'អ៊ីមែល ឬ ពាក្យសម្ងាត់មិនត្រឹមត្រូវ!' };
+      const sessionRecord: PersistedSession = {
+        id: data.user.id,
+        email: data.user.email || cleanEmail,
+        role: verifiedRole,
+        name: verifiedName,
+        locationId: verifiedLoc,
+        authType: 'supabase',
+        timestamp: Date.now()
+      };
+
+      setPersistedSession(sessionRecord);
+      savePersistedSession(sessionRecord);
+      setUser(data.user);
+      setSession(data.session);
+      await fetchUsersList();
+      return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'មានបញ្ហាបរាជ័យក្នុងការចូលប្រព័ន្ធ' };
     }
