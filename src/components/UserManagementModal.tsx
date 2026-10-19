@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -335,6 +335,10 @@ export function UserManagementModal() {
   const [formPassword, setFormPassword] = useState('GDT@2026');
   const [showPassword, setShowPassword] = useState(false);
 
+  // Refs for scrolling to edit form and focusing password input
+  const editFormRef = useRef<HTMLDivElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+
   // State for SQL script modal
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
@@ -380,7 +384,7 @@ export function UserManagementModal() {
   // Strictly forbid rendering if user is not CentralAdmin
   if (!isSettingsOpen || !isCentralAdmin) return null;
 
-  const handleStartEdit = (user: UserProfile) => {
+  const handleStartEdit = (user: UserProfile, focusPassword = false) => {
     if (!user) return;
     setEditingUser(user);
     setIsCreatingNew(false);
@@ -392,6 +396,17 @@ export function UserManagementModal() {
     setShowPassword(false);
     setSuccessMessage(null);
     setErrorMessage(null);
+
+    setTimeout(() => {
+      editFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (focusPassword) {
+        passwordInputRef.current?.focus();
+      }
+    }, 50);
+  };
+
+  const handleEditUser = (user: UserProfile, focusPassword = false) => {
+    handleStartEdit(user, focusPassword);
   };
 
   const handleStartCreate = () => {
@@ -718,7 +733,7 @@ export function UserManagementModal() {
       onClick={handleClose}
     >
       <div 
-        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -834,7 +849,7 @@ export function UserManagementModal() {
           
           {/* Edit / Create Form Modal if active */}
           {(editingUser || isCreatingNew) ? (
-            <div className="bg-slate-50 p-5 rounded-2xl border-2 border-[#1E6047]/20 shadow-xs mb-4 animate-in fade-in">
+            <div ref={editFormRef} className="bg-slate-50 p-5 rounded-2xl border-2 border-[#1E6047]/20 shadow-xs mb-4 animate-in fade-in">
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-[#1E6047] text-white rounded-lg">
@@ -1003,6 +1018,7 @@ export function UserManagementModal() {
 
                     <div className="relative">
                       <input
+                        ref={passwordInputRef}
                         type={showPassword ? 'text' : 'password'}
                         required={isCreatingNew}
                         value={formPassword}
@@ -1098,7 +1114,7 @@ export function UserManagementModal() {
             </div>
           ) : (
             /* Officers Table */
-            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+            <div className="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
@@ -1107,8 +1123,8 @@ export function UserManagementModal() {
                     <th className="py-2.5 px-3">គណនី / Email</th>
                     <th className="py-2.5 px-3 text-center">តួនាទី (Role)</th>
                     <th className="py-2.5 px-3">សាខាប្រចាំការ</th>
-                    <th className="py-2.5 px-3 text-center">Password</th>
-                    <th className="py-2.5 px-3 text-center w-36">សកម្មភាព</th>
+                    <th className="py-2.5 px-3 text-center whitespace-nowrap">Password</th>
+                    <th className="py-2.5 px-3 text-center whitespace-nowrap">សកម្មភាព</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -1175,47 +1191,42 @@ export function UserManagementModal() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                          <td className="px-3 py-2.5 whitespace-nowrap text-sm text-center">
                             {user.is_default_password === false ? (
-                              <span
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-help"
+                              <button
+                                type="button"
+                                onClick={() => handleEditUser(user, true)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer hover:opacity-80 transition"
                                 title={
                                   user.password_updated_at
-                                    ? `កាលបរិច្ឆេទប្តូរចុងក្រោយ: ${new Date(user.password_updated_at).toLocaleString('km-KH')}`
-                                    : 'ពាក្យសម្ងាត់ត្រូវបានដាក់កូដសម្ងាត់ដោយសុវត្ថិភាព (Encrypted)'
+                                    ? `កាលបរិច្ឆេទប្តូរចុងក្រោយ: ${new Date(user.password_updated_at).toLocaleString('km-KH')} (ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី)`
+                                    : 'ពាក្យសម្ងាត់ត្រូវបានដាក់កូដសម្ងាត់ដោយសុវត្ថិភាព (ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី)'
                                 }
                               >
                                 🔒 •••••••• (Encrypted)
-                              </span>
+                              </button>
                             ) : (
-                              <span
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
-                                title="ពាក្យសម្ងាត់លំនាំដើម (ត្រូវប្តូរដើម្បីសុវត្ថិភាព)"
+                              <button
+                                type="button"
+                                onClick={() => handleEditUser(user, true)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 cursor-pointer hover:opacity-80 transition"
+                                title="ពាក្យសម្ងាត់លំនាំដើម (ចុចដើម្បីប្តូរពាក្យសម្ងាត់ថ្មី)"
                               >
                                 ⚠️ Default (ត្រូវប្តូរ)
-                              </span>
+                              </button>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {/* Edit Button */}
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                              {/* Edit Button (✏️ កែប្រែ) */}
                               <button
                                 type="button"
-                                onClick={() => handleStartEdit(officer)}
-                                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                                title="កែប្រែព័ត៌មាន និង Password (Edit)"
+                                onClick={() => handleEditUser(officer)}
+                                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                                title="កែប្រែព័ត៌មានមន្ត្រី និងកំណត់ពាក្យសម្ងាត់ថ្មី (Edit)"
                               >
-                                <Edit3 size={15} />
-                              </button>
-
-                              {/* Quick Open Reset Password Form Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleStartEdit(officer)}
-                                className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                                title="Reset / កំណត់ពាក្យសម្ងាត់មន្ត្រីនេះ"
-                              >
-                                <KeyRound size={14} />
+                                <span>✏️</span>
+                                <span>កែប្រែ</span>
                               </button>
 
                               {/* Quick Switch / Simulate Account Button */}
@@ -1228,15 +1239,15 @@ export function UserManagementModal() {
                                     setTimeout(() => setSuccessMessage(null), 3500);
                                   }
                                 }}
-                                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0 border ${
                                   isCurrentActive 
-                                    ? 'text-emerald-700 bg-emerald-100/60' 
-                                    : 'text-slate-500 hover:text-blue-700 hover:bg-blue-50'
+                                    ? 'text-emerald-700 bg-emerald-100/60 border-emerald-300' 
+                                    : 'text-slate-600 bg-slate-50 hover:text-blue-700 hover:bg-blue-50 border-slate-200'
                                 }`}
                                 title="សាកល្បងសិទ្ធិប្រើប្រាស់ជាគណនីនេះ (Simulate/Switch)"
                               >
                                 <ArrowRightLeft size={13} />
-                                <span className="text-[10px] hidden sm:inline">ប្តូរប្រើ</span>
+                                <span className="text-[11px]">ប្តូរប្រើ</span>
                               </button>
                             </div>
                           </td>
