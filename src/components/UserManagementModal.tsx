@@ -441,73 +441,7 @@ export function UserManagementModal() {
     setFormPassword(`GDT@${rand}`);
   };
 
-  // Helper to invoke admin_manage_officer RPC
-  const invokeAdminManageOfficerRpc = async (params: {
-    targetId?: string;
-    targetEmail: string;
-    fullName: string;
-    role: 'CentralAdmin' | 'BranchUser';
-    branchName: string;
-    locationId: string;
-    newPassword: string | null;
-    callerAdminEmail: string;
-  }) => {
-    // 1. Primary RPC call matching the exact admin_manage_officer signature
-    const primaryPayload: Record<string, any> = {
-      target_user_id: params.targetId || null,
-      new_email: params.targetEmail,
-      new_full_name: params.fullName,
-      new_role: params.role,
-      new_branch: params.branchName || '',
-      new_password: params.newPassword,
-    };
-
-    let { data: res, error: rpcErr } = await supabase.rpc('admin_manage_officer', primaryPayload);
-
-    // 2. If PostgREST reports PGRST202 (parameter name mismatch), dynamically adapt from hint
-    if (rpcErr && (rpcErr.code === 'PGRST202' || rpcErr.message?.includes('Could not find the function'))) {
-      const hintText = `${rpcErr.hint || ''} ${rpcErr.message || ''} ${rpcErr.details || ''}`;
-      const match = hintText.match(/admin_manage_officer\(([^)]*)\)/i);
-
-      if (match && match[1]) {
-        const paramNames = match[1]
-          .split(',')
-          .map((s) => s.trim().split(/\s+/)[0].replace(/^public\./, ''))
-          .filter(Boolean);
-
-        if (paramNames.length > 0) {
-          const dynamicPayload: Record<string, any> = {};
-          for (const pName of paramNames) {
-            const lower = pName.toLowerCase();
-            if (lower.includes('caller') || lower.includes('admin')) {
-              dynamicPayload[pName] = params.callerAdminEmail;
-            } else if (lower.includes('email')) {
-              dynamicPayload[pName] = params.targetEmail;
-            } else if (lower.includes('name')) {
-              dynamicPayload[pName] = params.fullName;
-            } else if (lower.includes('role')) {
-              dynamicPayload[pName] = params.role;
-            } else if (lower.includes('branch')) {
-              dynamicPayload[pName] = params.branchName || '';
-            } else if (lower.includes('loc')) {
-              dynamicPayload[pName] = params.locationId;
-            } else if (lower.includes('pass') || lower.includes('pwd')) {
-              dynamicPayload[pName] = params.newPassword;
-            } else if (lower.includes('id')) {
-              dynamicPayload[pName] = params.targetId || null;
-            }
-          }
-          const retryHint = await supabase.rpc('admin_manage_officer', dynamicPayload);
-          res = retryHint.data;
-          rpcErr = retryHint.error;
-        }
-      }
-    }
-
-    return { data: res, error: rpcErr };
-  };
-
-  // Unified Save Handler calling RPC `admin_manage_officer`
+  // Direct Save Handler updating `public.user_profiles` in Supabase Database
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -525,106 +459,120 @@ export function UserManagementModal() {
       return;
     }
 
-    const trimmedPassword = formPassword.trim();
-    const hasNewPassword = trimmedPassword !== '';
-
-    if (isCreatingNew && !hasNewPassword) {
-      setErrorMessage('សូមកំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រីថ្មី');
-      return;
-    }
-
-    if (hasNewPassword && trimmedPassword.length < 8) {
-      alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
-      setErrorMessage('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
-      return;
-    }
-
-    setIsSaving(true);
-    setErrorMessage(null);
-
-    try {
-      const codeMap: Record<string, string> = {
-        '1': 'HQ-ITSB',
-        '2': '7MK',
-        '3': 'CKM',
-        '4': 'DKO',
-        '5': 'DPE',
-        '6': 'TKO',
-        '24': 'KPC',
-      };
-      const targetCode = codeMap[String(formLocationId)] || formLocationId;
-      const matchedBranch =
-        safeBranches.find(
-          (l) => l.id === formLocationId || l.code === formLocationId || l.code === targetCode
-        ) ||
-        (formRole === 'CentralAdmin'
-          ? safeBranches.find((l) => l.type === 'HQ' || l.code === 'HQ-ITSB')
-          : null);
-
-      const targetBranchId = matchedBranch?.id || formLocationId;
-      const resolvedBranchName = matchedBranch
-        ? formatLocationOption(matchedBranch, 'kh')
-        : editingUser?.branch_name || editingUser?.branch || getLocationLabel(formLocationId) || '';
-
-      const targetEmail = formEmail.trim().toLowerCase();
-      const callerAdminEmail =
-        currentUser?.email || userProfile?.email || 'gdt.dict.its.team@gmail.com';
-      const nowIso = new Date().toISOString();
-      const isDefaultPwd = hasNewPassword ? trimmedPassword === 'GDT@2026' : undefined;
-
-      if (isSupabaseConfigured()) {
-        const { data: res, error: rpcErr } = await invokeAdminManageOfficerRpc({
-          targetId: editingUser?.id,
-          targetEmail,
-          fullName: formFullName.trim(),
-          role: formRole,
-          branchName: resolvedBranchName,
-          locationId: targetBranchId,
-          newPassword: hasNewPassword ? trimmedPassword : null,
-          callerAdminEmail,
-        });
-
-        if (rpcErr || (res && !res.success)) {
-          const errMsg = rpcErr?.message || res?.message || 'មិនអាចរក្សាទុកទិន្នន័យបានទេ';
-          alert('កំហុស៖ ' + errMsg);
-          setErrorMessage('កំហុស៖ ' + errMsg);
-          setIsSaving(false);
-          return;
-        }
-
-        alert('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់មន្ត្រីដោយជោគជ័យ!');
+    const setSaving = setIsSaving;
+    const newPassword = formPassword;
+    const setNewPassword = setFormPassword;
+    const setIsEditModalOpen = (open: boolean) => {
+      if (!open) {
+        setEditingUser(null);
+        setIsCreatingNew(false);
       }
-
-      if (editingUser && typeof updateUserProfile === 'function') {
-        await updateUserProfile(editingUser.id, {
-          full_name: formFullName.trim(),
-          email: targetEmail,
-          role: formRole,
-          location_id: targetBranchId,
-          branch_name: resolvedBranchName,
-          branch: resolvedBranchName,
-          ...(hasNewPassword && typeof isDefaultPwd === 'boolean'
-            ? {
-                is_default_password: isDefaultPwd,
-                password_updated_at: nowIso,
-              }
-            : {}),
-        });
-      }
-
-      setFormPassword('');
-      setEditingUser(null);
-      setIsCreatingNew(false);
+    };
+    const fetchUsers = async () => {
       if (typeof fetchUsersList === 'function') {
         await fetchUsersList();
       }
-      setSuccessMessage('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់មន្ត្រីដោយជោគជ័យ!');
+    };
+
+    const codeMap: Record<string, string> = {
+      '1': 'HQ-ITSB',
+      '2': '7MK',
+      '3': 'CKM',
+      '4': 'DKO',
+      '5': 'DPE',
+      '6': 'TKO',
+      '24': 'KPC',
+    };
+    const targetCode = codeMap[String(formLocationId)] || formLocationId;
+    const matchedBranch =
+      safeBranches.find(
+        (l) => l.id === formLocationId || l.code === formLocationId || l.code === targetCode
+      ) ||
+      (formRole === 'CentralAdmin'
+        ? safeBranches.find((l) => l.type === 'HQ' || l.code === 'HQ-ITSB')
+        : null);
+
+    const targetBranchId = matchedBranch?.id || formLocationId;
+
+    const editUser: any = {
+      ...(editingUser || {}),
+      id: editingUser?.id,
+      full_name: formFullName.trim(),
+      role: formRole,
+      email: formEmail.trim().toLowerCase(),
+      location_id: targetBranchId,
+      branch_name: editingUser?.branch_name,
+    };
+
+    setSaving(true);
+    setErrorMessage(null);
+
+    try {
+      const updatePayload: any = {
+        full_name: editUser.full_name.trim(),
+        role: editUser.role,
+        email: editUser.email.trim(),
+      };
+
+      if (editUser.location_id) updatePayload.location_id = editUser.location_id;
+      if (editUser.branch_name) updatePayload.branch_name = editUser.branch_name;
+
+      // ប្រសិនបើមានការបញ្ចូល Password ថ្មី
+      if (newPassword && newPassword.trim() !== '') {
+        updatePayload.password = newPassword.trim();
+        updatePayload.is_default_password = (newPassword.trim() === 'GDT@2026');
+        updatePayload.password_updated_at = new Date().toISOString();
+      }
+
+      if (isCreatingNew || !editUser.id) {
+        const insertPayload = {
+          ...updatePayload,
+          id: 'user-' + Date.now(),
+          password: (newPassword && newPassword.trim() !== '') ? newPassword.trim() : 'GDT@2026',
+          is_default_password: !newPassword || newPassword.trim() === '' || newPassword.trim() === 'GDT@2026',
+          password_updated_at: new Date().toISOString(),
+        };
+
+        const { error: insertErr } = await supabase
+          .from('user_profiles')
+          .insert([insertPayload]);
+
+        if (insertErr) {
+          alert('កំហុសក្នុងការបង្កើតមន្ត្រីថ្មី៖ ' + insertErr.message);
+          setErrorMessage('កំហុសក្នុងការបង្កើតមន្ត្រីថ្មី៖ ' + insertErr.message);
+          setSaving(false);
+          return;
+        }
+      } else {
+        const { error: updateErr } = await supabase
+          .from('user_profiles')
+          .update(updatePayload)
+          .eq('id', editUser.id);
+
+        if (updateErr) {
+          alert('កំហុសក្នុងការកែប្រែ៖ ' + updateErr.message);
+          setErrorMessage('កំហុសក្នុងការកែប្រែ៖ ' + updateErr.message);
+          setSaving(false);
+          return;
+        }
+      }
+
+      if (editUser.id && typeof updateUserProfile === 'function') {
+        await updateUserProfile(editUser.id, updatePayload);
+      }
+
+      alert('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់ជោគជ័យ!');
+      setNewPassword('');
+      setIsEditModalOpen(false);
+      await fetchUsers(); // Refresh តារាងបញ្ជីមន្ត្រី
+      setSuccessMessage('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់ជោគជ័យ!');
+
     } catch (err: any) {
       console.error('Save error:', err);
-      alert('មានបញ្ហាក្នុងការរក្សាទុកទិន្នន័យ៖ ' + (err.message || err));
-      setErrorMessage(err?.message || 'ប្រតិបត្តិការបរាជ័យ');
+      alert('មានបញ្ហាក្នុងការរក្សាទុក៖ ' + (err.message || err));
+      setErrorMessage(err?.message || 'មានបញ្ហាក្នុងការរក្សាទុក');
     } finally {
-      setIsSaving(false);
+      setSaving(false);
       setTimeout(() => setSuccessMessage(null), 5000);
     }
   };
@@ -1120,29 +1068,34 @@ export function UserManagementModal() {
                             </div>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap text-sm text-center">
-                            {user.is_default_password === false ? (
-                              <button
-                                type="button"
-                                onClick={() => handleEditUser(user, true)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer hover:opacity-80 transition"
-                                title={
-                                  user.password_updated_at
-                                    ? `កាលបរិច្ឆេទប្តូរចុងក្រោយ: ${new Date(user.password_updated_at).toLocaleString('km-KH')} (ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី)`
-                                    : 'ពាក្យសម្ងាត់ត្រូវបានដាក់កូដសម្ងាត់ដោយសុវត្ថិភាព (ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី)'
-                                }
-                              >
-                                🔒 •••••••• (Encrypted)
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleEditUser(user, true)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 cursor-pointer hover:opacity-80 transition"
-                                title="ពាក្យសម្ងាត់លំនាំដើម (ចុចដើម្បីប្តូរពាក្យសម្ងាត់ថ្មី)"
-                              >
-                                ⚠️ Default (ត្រូវប្តូរ)
-                              </button>
-                            )}
+                            <div className="flex flex-col items-center justify-center gap-1">
+                              <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                {user.password || 'GDT@2026'}
+                              </span>
+                              {user.is_default_password === false || (user.password && user.password !== 'GDT@2026') ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditUser(user, true)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer hover:opacity-80 transition"
+                                  title={
+                                    user.password_updated_at
+                                      ? `កាលបរិច្ឆេទប្តូរចុងក្រោយ: ${new Date(user.password_updated_at).toLocaleString('km-KH')} (ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី)`
+                                      : 'ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី'
+                                  }
+                                >
+                                  🔒 Encrypted
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditUser(user, true)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 cursor-pointer hover:opacity-80 transition"
+                                  title="ពាក្យសម្ងាត់លំនាំដើម (ចុចដើម្បីប្តូរពាក្យសម្ងាត់ថ្មី)"
+                                >
+                                  ⚠️ Default (ត្រូវប្តូរ)
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">

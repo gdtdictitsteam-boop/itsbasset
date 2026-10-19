@@ -61,68 +61,56 @@ export function LoginView({
     e.preventDefault();
     setError('');
     setSuccessMessage(null);
-    setLoading(true);
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
     if (!cleanEmail || !cleanPassword) {
-      setError('សូមបញ្ចូលអ៊ីមែល និងពាក្យសម្ងាត់ឱ្យបានគ្រប់គ្រាន់!');
-      setLoading(false);
-      return; // ⛔ បញ្ឈប់ដាច់ខាត
+      setError('សូមបញ្ចូលអាសយដ្ឋានអ៊ីមែល និងពាក្យសម្ងាត់!');
+      return;
     }
 
+    setLoading(true);
+
     try {
-      // ១. ផ្ទៀងផ្ទាត់ជាមួយ Supabase Auth ផ្លូវការ (Strict Verification - Zero Fallback Bypass)
-      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password: cleanPassword,
-      });
-
-      // ២. បើមាន Error ឬគ្មាន User/Session ត្រូវបញ្ឈប់ភ្លាមៗ (Strict Security Gate)
-      if (authErr || !authData?.user || !authData?.session) {
-        console.error('Supabase Auth Failed:', authErr);
-        await supabase.auth.signOut();
-        setError('អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ! សូមពិនិត្យម្តងទៀត។');
-        setLoading(false);
-        return; // ⛔ បញ្ឈប់ដាច់ខាត ហាមបន្តទៅមុខ!
-      }
-
-      // ៣. ទាល់តែ Auth ជោគជ័យ ១០០% ទើបទាញយក Profile ពី user_profiles
-      const { data: profile, error: profileErr } = await supabase
+      // ១. Query ស្វែងរកមន្ត្រីពី public.user_profiles តាម Email
+      const { data: user, error: fetchErr } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('email', cleanEmail)
+        .ilike('email', cleanEmail)
         .maybeSingle();
 
-      if (profileErr) {
-        console.warn('Profile fetch warning:', profileErr);
+      if (fetchErr) {
+        console.error('Fetch error:', fetchErr);
+        setError('មានបញ្ហាបច្ចេកទេសក្នុងការតភ្ជាប់ Database!');
+        setLoading(false);
+        return;
       }
 
-      // ៤. បង្កើត User Object សម្រាប់តែគណនីដែលបានឆ្លងកាត់ Supabase Auth ជោគជ័យប៉ុណ្ណោះ
-      const verifiedUser = {
-        ...(profile || {}),
-        id: authData.user.id,
-        email: authData.user.email || cleanEmail,
-        full_name: profile?.full_name || authData.user.user_metadata?.full_name || 'មន្ត្រីរដ្ឋបាល',
-        role: profile?.role || authData.user.user_metadata?.role || 'CentralAdmin',
-        location_id: profile?.location_id || authData.user.user_metadata?.location_id || '1',
-      };
+      if (!user) {
+        setError('រកមិនឃើញអាសយដ្ឋានអ៊ីមែលនេះក្នុងប្រព័ន្ធឡើយ!');
+        setLoading(false);
+        return;
+      }
 
-      // ៥. បញ្ជូនចូល Dashboard តាម State ដើមរបស់ App
+      // ២. ផ្ទៀងផ្ទាត់ Password ផ្ទាល់ពី Table
+      const validPassword = user.password || 'GDT@2026';
+      if (cleanPassword !== validPassword) {
+        setError('ពាក្យសម្ងាត់មិនត្រឹមត្រូវឡើយ!');
+        setLoading(false);
+        return; // បញ្ឈប់ភ្លាម ហាមអនុញ្ញាតឱ្យចូល
+      }
+
+      // ៣. បើត្រឹមត្រូវ អនុញ្ញាតឱ្យចូល Dashboard
       if (typeof onLoginSuccess === 'function') {
-        onLoginSuccess(verifiedUser);
+        onLoginSuccess(user);
       } else if (typeof setUser === 'function') {
-        setUser(verifiedUser);
+        setUser(user);
       }
+
     } catch (err: any) {
-      console.error('Catch Exception on Login:', err);
-      const msg =
-        typeof err?.message === 'string' && err.message.trim() !== '' && err.message.trim() !== '{}'
-          ? err.message
-          : 'អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ ឬមានបញ្ហាក្នុងការភ្ជាប់ប្រព័ន្ធ!';
-      setError(msg);
-      return;
+      console.error('Login Exception:', err);
+      setError(err?.message || 'មានបញ្ហាបច្ចេកទេសក្នុងការចូលប្រព័ន្ធ');
     } finally {
       setLoading(false);
     }
@@ -182,7 +170,7 @@ export function LoginView({
               </div>
               <p className="opacity-80 mt-0.5 text-[11px]">
                 {isConfigured 
-                  ? 'ប្រព័ន្ធត្រូវបានតភ្ជាប់ជាមួយ Supabase Authentication' 
+                  ? 'ប្រព័ន្ធត្រូវបានតភ្ជាប់ជាមួយ Supabase Database (user_profiles)' 
                   : 'ពុំទាន់មាន .env key - អាចជ្រើសរើស Quick Demo Role ខាងក្រោមដើម្បីសាកល្បង RBAC'}
               </p>
             </div>
@@ -192,7 +180,7 @@ export function LoginView({
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm flex items-center gap-2">
               <span>⚠️</span>
-              <span>{typeof error === 'string' ? error : String((error as any)?.message || 'កំហុសក្នុងការចូលប្រព័ន្ធ')}</span>
+              <span>{typeof error === 'string' ? error : (error as any)?.message}</span>
             </div>
           )}
 

@@ -280,7 +280,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const configured = isSupabaseConfigured();
 
-  // Fetch users list from Supabase if connected (includes is_default_password, password_updated_at)
+  // Fetch users list from Supabase if connected (includes password, is_default_password, password_updated_at)
   const fetchUsersList = useCallback(async () => {
     if (!configured) return;
     try {
@@ -292,7 +292,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!error && data && data.length > 0) {
         const mapped = (data as any[]).map((row) => ({
           ...row,
-          is_default_password: typeof row.is_default_password === 'boolean' ? row.is_default_password : true,
+          password: row.password || 'GDT@2026',
+          is_default_password:
+            typeof row.is_default_password === 'boolean'
+              ? row.is_default_password
+              : (!row.password || row.password === 'GDT@2026'),
           password_updated_at: row.password_updated_at || null,
         })) as UserProfile[];
         setUsersList(mapped);
@@ -376,167 +380,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [configured, user?.id, user?.email, persistedSession?.id, persistedSession?.email]);
 
-  // Handle Supabase Auth Session verification & listener
+  // Handle session restoration & user_profiles synchronization
   useEffect(() => {
-    let isMounted = true;
-
-    if (!configured) {
-      setLoading(false);
-      return;
+    const existing = loadPersistedSession();
+    if (existing) {
+      setPersistedSession(existing);
     }
-
-    // 1. Asynchronously verify active session from Supabase in background
-    supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
-      if (!isMounted) return;
-      if (currentSession?.user) {
-        setSession(currentSession);
-        setUser(currentSession.user);
-
-        // Fetch authoritative role directly from user_profiles table in Supabase
-        const email = currentSession.user.email || '';
-        let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'CentralAdmin';
-        let verifiedName = currentSession.user.user_metadata?.full_name || 'រដ្ឋបាល បុគ្គលិក';
-        let verifiedLoc = currentSession.user.user_metadata?.location_id || '1';
-
-        try {
-          const { data: dbUser } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', currentSession.user.id)
-            .maybeSingle();
-
-          if (dbUser) {
-            verifiedRole = dbUser.role === 'BranchUser' ? 'BranchUser' : 'CentralAdmin';
-            verifiedName = dbUser.full_name || verifiedName;
-            verifiedLoc = dbUser.location_id || dbUser.branch_name || dbUser.branch || verifiedLoc;
-            setDbVerifiedProfile(dbUser as UserProfile);
-          } else {
-            // Check by email
-            const { data: dbEmailUser } = await supabase
-              .from('user_profiles')
-              .select('*')
-              .eq('email', email.trim().toLowerCase())
-              .maybeSingle();
-            if (dbEmailUser) {
-              verifiedRole = dbEmailUser.role === 'BranchUser' ? 'BranchUser' : 'CentralAdmin';
-              verifiedName = dbEmailUser.full_name || verifiedName;
-              verifiedLoc = dbEmailUser.location_id || dbEmailUser.branch_name || dbEmailUser.branch || verifiedLoc;
-              setDbVerifiedProfile(dbEmailUser as UserProfile);
-            }
-          }
-        } catch (dbErr) {
-          console.warn('Notice checking user profile in database:', dbErr);
-        }
-
-        const sessRecord: PersistedSession = {
-          id: currentSession.user.id,
-          email,
-          role: verifiedRole,
-          name: verifiedName,
-          locationId: String(verifiedLoc || '1'),
-          authType: 'supabase',
-          timestamp: Date.now()
-        };
-        setPersistedSession(sessRecord);
-        savePersistedSession(sessRecord);
-      } else {
-        // If Supabase session is null, DO NOT wipe persisted officer session!
-        const existing = loadPersistedSession();
-        if (existing) {
-          setPersistedSession(existing);
-        } else {
-          setUser(null);
-          setSession(null);
-          setPersistedSession(null);
-        }
-      }
-      setLoading(false);
-    }).catch((err) => {
-      console.warn('Notice checking Supabase auth session:', err);
-      if (isMounted) {
-        const existing = loadPersistedSession();
-        if (!existing) {
-          setUser(null);
-          setSession(null);
-        }
-        setLoading(false);
-      }
-    });
-
-    // 2. Fetch users profiles from Supabase DB
-    fetchUsersList();
-
-    // 3. Listen to auth state changes safely
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!isMounted) return;
-
-      if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setLoading(false);
-        return;
-      }
-
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        if (newSession?.user) {
-          setSession(newSession);
-          setUser(newSession.user);
-          const email = newSession.user.email || '';
-          
-          let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'CentralAdmin';
-          let verifiedName = newSession.user.user_metadata?.full_name || 'រដ្ឋបាល បុគ្គលិក';
-          let verifiedLoc = newSession.user.user_metadata?.location_id || '1';
-
-          try {
-            let { data: dbUser } = await supabase
-              .from('user_profiles')
-              .select('*')
-              .eq('id', newSession.user.id)
-              .maybeSingle();
-
-            if (!dbUser && email) {
-              const { data: dbEmailUser } = await supabase
-                .from('user_profiles')
-                .select('*')
-                .eq('email', email.trim().toLowerCase())
-                .maybeSingle();
-              dbUser = dbEmailUser;
-            }
-
-            if (dbUser) {
-              verifiedRole = dbUser.role === 'BranchUser' ? 'BranchUser' : 'CentralAdmin';
-              verifiedName = dbUser.full_name || verifiedName;
-              verifiedLoc = dbUser.location_id || dbUser.branch_name || dbUser.branch || verifiedLoc;
-              setDbVerifiedProfile(dbUser as UserProfile);
-            }
-          } catch (dbErr) {
-            console.warn('Notice verifying auth change with database:', dbErr);
-          }
-
-          const sessRecord: PersistedSession = {
-            id: newSession.user.id,
-            email,
-            role: verifiedRole,
-            name: verifiedName,
-            locationId: String(verifiedLoc || '1'),
-            authType: 'supabase',
-            timestamp: Date.now()
-          };
-          setPersistedSession(sessRecord);
-          savePersistedSession(sessRecord);
-        }
-      } else if (event === 'INITIAL_SESSION') {
-        if (newSession?.user) {
-          setSession(newSession);
-          setUser(newSession.user);
-        }
-      }
-      setLoading(false);
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
+    if (configured) {
+      fetchUsersList();
+    }
+    setLoading(false);
   }, [configured, fetchUsersList]);
 
   // Run database role verification whenever user changes
@@ -622,7 +475,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistedSession?.locationId || 
     (isBranchUser ? '2' : null);
 
-  // Sign in with Supabase Auth (supabase.auth.signInWithPassword) and load user_profiles
+  // Sign in directly against public.user_profiles in Supabase Database
   const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
@@ -630,95 +483,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!cleanEmail || !cleanPassword) {
       return {
         success: false,
-        error: 'សូមបញ្ចូលអ៊ីមែល និងពាក្យសម្ងាត់ឱ្យបានគ្រប់គ្រាន់!',
+        error: 'សូមបញ្ចូលអាសយដ្ឋានអ៊ីមែល និងពាក្យសម្ងាត់!',
       };
     }
 
     try {
-      // 1. Authenticate strictly via Supabase Auth (Zero Fallback Bypass)
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password: cleanPassword,
-      });
-
-      if (error || !data?.user || !data?.session) {
-        await supabase.auth.signOut();
-        return {
-          success: false,
-          error: 'អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ! សូមពិនិត្យម្តងទៀត។',
-        };
-      }
-
-      // 2. Query database table `user_profiles` directly for verified role and branch
-      let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
-      let verifiedName = data.user.user_metadata?.full_name || cleanEmail.split('@')[0];
-      let verifiedLoc = data.user.user_metadata?.location_id || '1';
-
-      let { data: dbUser } = await supabase
+      const { data: dbUser, error: fetchErr } = await supabase
         .from('user_profiles')
         .select('*')
         .ilike('email', cleanEmail)
         .maybeSingle();
 
+      if (fetchErr) {
+        return {
+          success: false,
+          error: 'មានបញ្ហាបច្ចេកទេសក្នុងការតភ្ជាប់ Database!',
+        };
+      }
+
       if (!dbUser) {
-        const { data: dbById } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .maybeSingle();
-        dbUser = dbById;
+        return {
+          success: false,
+          error: 'រកមិនឃើញអាសយដ្ឋានអ៊ីមែលនេះក្នុងប្រព័ន្ធឡើយ!',
+        };
       }
 
-      if (dbUser) {
-        verifiedRole = (dbUser.role === 'Admin-GDT' || dbUser.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
-        verifiedName = dbUser.full_name || verifiedName;
-        verifiedLoc = dbUser.location_id || verifiedLoc;
-        setDbVerifiedProfile(dbUser as UserProfile);
-      } else {
-        const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-        if (matched) {
-          verifiedRole = (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
-          verifiedName = matched.full_name;
-          verifiedLoc = matched.location_id || '1';
-        }
+      const validPassword = dbUser.password || 'GDT@2026';
+      if (cleanPassword !== validPassword) {
+        return {
+          success: false,
+          error: 'ពាក្យសម្ងាត់មិនត្រឹមត្រូវឡើយ!',
+        };
       }
 
-      const sessionRecord: PersistedSession = {
-        id: data.user.id,
-        email: data.user.email || cleanEmail,
-        role: verifiedRole,
-        name: verifiedName,
-        locationId: verifiedLoc,
-        authType: 'supabase',
-        timestamp: Date.now()
-      };
-
-      setPersistedSession(sessionRecord);
-      savePersistedSession(sessionRecord);
-      setUser(data.user);
-      setSession(data.session);
-      await fetchUsersList();
+      onLoginSuccess(dbUser);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'មានបញ្ហាបរាជ័យក្នុងការចូលប្រព័ន្ធ' };
+      return { success: false, error: err?.message || 'មានបញ្ហាបច្ចេកទេសក្នុងការចូលប្រព័ន្ធ' };
     }
   };
 
   // Sign out - completely purge session, state, and localStorage tokens
   const signOut = async () => {
-    try {
-      if (configured) {
-        await supabase.auth.signOut();
-      }
-    } catch (err) {
-      console.warn('Supabase signout notice:', err);
-    } finally {
-      setUser(null);
-      setSession(null);
-      setPersistedSession(null);
-      setDbVerifiedProfile(null);
-      clearPersistedSession();
-    }
+    setUser(null);
+    setSession(null);
+    setPersistedSession(null);
+    setDbVerifiedProfile(null);
+    clearPersistedSession();
   };
 
   // Demo sign in for development & role switching
@@ -785,7 +596,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } as User);
   };
 
-  // Update user profile (Name, Role, Location)
+  // Update user profile (Name, Role, Location, Password)
   const updateUserProfile = async (id: string, updates: Partial<UserProfile>): Promise<{ success: boolean; error?: string }> => {
     try {
       const updatedList = usersList.map(u => {
@@ -825,49 +636,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Update Supabase if configured
-      if (configured) {
-        const target = updatedList.find(u => u.id === id || u.email === updates.email);
-        if (target) {
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.id);
-          const updateData: Record<string, any> = {
-            full_name: target.full_name,
-            role: target.role,
-            location_id: target.location_id,
-            ...(typeof updates.is_default_password === 'boolean' ? { is_default_password: updates.is_default_password } : {}),
-            ...(updates.password_updated_at ? { password_updated_at: updates.password_updated_at } : {}),
-            updated_at: new Date().toISOString()
-          };
-
-          const query = supabase.from('user_profiles').update(updateData);
-          const { error } = isUuid 
-            ? await query.eq('id', target.id)
-            : await query.ilike('email', target.email.trim());
-
-          if (error) {
-            console.error('Notice updating user_profiles in Supabase:', error.message);
-          }
-        }
-      }
-
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to update user profile' };
     }
   };
 
-  // Create new user profile
+  // Create new user profile directly in public.user_profiles
   const createUserProfile = async (profileData: Omit<UserProfile, 'id'>): Promise<{ success: boolean; error?: string }> => {
     try {
       const newId = 'user-' + Date.now();
-      const rawPwd = (profileData.password || '').trim();
+      const rawPwd = (profileData.password || '').trim() || 'GDT@2026';
       const isDefaultPwd = typeof profileData.is_default_password === 'boolean' 
         ? profileData.is_default_password 
-        : (!rawPwd || rawPwd === 'GDT@2026');
+        : (rawPwd === 'GDT@2026');
       const nowIso = new Date().toISOString();
 
       const newProfile: UserProfile = {
         ...profileData,
+        password: rawPwd,
         is_default_password: isDefaultPwd,
         password_updated_at: nowIso,
         id: newId,
@@ -884,27 +671,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (configured) {
-        const { data: insertedRows } = await supabase.from('user_profiles').insert([{
+        await supabase.from('user_profiles').insert([{
           id: newId,
           email: newProfile.email,
           full_name: newProfile.full_name,
           role: newProfile.role,
           location_id: newProfile.location_id,
+          password: rawPwd,
           is_default_password: isDefaultPwd,
           password_updated_at: nowIso
-        }]).select();
-
-        if (rawPwd) {
-          try {
-            await supabase.rpc('admin_secure_set_password', {
-              target_email: newProfile.email,
-              new_password: rawPwd,
-              caller_admin_email: currentEmail || userProfile?.email
-            });
-          } catch (rpcErr) {
-            console.warn('Notice calling admin_secure_set_password on create:', rpcErr);
-          }
-        }
+        }]);
       }
 
       return { success: true };
@@ -944,7 +720,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: effectiveRole,
       name: effectiveName,
       locationId: String(effectiveLoc),
-      authType: 'supabase',
+      authType: 'officer',
       timestamp: Date.now(),
     };
 
@@ -956,6 +732,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       location_id: String(effectiveLoc),
       branch_name: finalUser.branch_name || finalUser.branch,
       branch: finalUser.branch || finalUser.branch_name,
+      password: finalUser.password || 'GDT@2026',
       is_default_password: finalUser.is_default_password,
       password_updated_at: finalUser.password_updated_at,
     };
