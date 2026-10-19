@@ -924,7 +924,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await supabase.rpc('admin_secure_set_password', {
               target_user_id: targetUserId,
               new_password: rawPwd,
-              is_default: isDefaultPwd
+              is_default: isDefaultPwd,
+              caller_admin_email: currentEmail || userProfile?.email
             });
           } catch (rpcErr) {
             console.warn('Notice calling admin_secure_set_password on create:', rpcErr);

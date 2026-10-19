@@ -176,7 +176,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.admin_secure_set_password(
     target_user_id UUID,
     new_password TEXT,
-    is_default BOOLEAN DEFAULT false
+    is_default BOOLEAN DEFAULT false,
+    caller_admin_email TEXT DEFAULT NULL
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -293,6 +294,7 @@ export function UserManagementModal() {
   const switchActiveUser = auth?.switchActiveUser;
   const fetchUsersList = auth?.fetchUsersList;
   const userProfile = auth?.userProfile ?? null;
+  const currentUser = userProfile || auth?.user || null;
   const isCentralAdmin = Boolean(auth?.isCentralAdmin);
   const isBranchUser = Boolean(auth?.isBranchUser);
   const authLoading = Boolean(auth?.loading);
@@ -573,11 +575,11 @@ export function UserManagementModal() {
             return false;
           }
 
-          const isDefaultPwd = newPassword.trim() === 'GDT@2026';
           const { error: pwdError } = await supabase.rpc('admin_secure_set_password', {
             target_user_id: editUser.id,
             new_password: newPassword.trim(),
-            is_default: isDefaultPwd
+            is_default: newPassword.trim() === 'GDT@2026',
+            caller_admin_email: currentUser?.email // បញ្ជូន Email របស់ Admin បច្ចុប្បន្ន
           });
 
           if (pwdError) {
@@ -621,12 +623,11 @@ export function UserManagementModal() {
 
     // 8. Close Edit Modal & Show Success Notification
     setEditingUser(null);
-    const pwdMsg = hasNewPassword
-      ? isDefault
-        ? ' និងបានកំណត់ពាក្យសម្ងាត់ទៅជា Default (ត្រូវប្តូរ)'
-        : ' និងបានដាក់កូដសម្ងាត់ពាក្យសម្ងាត់ថ្មីដោយសុវត្ថិភាព (Encrypted)'
-      : '';
-    setSuccessMessage(`បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${editUser.full_name}" ចូល Supabase Database ដោយជោគជ័យ!${pwdMsg}`);
+    if (hasNewPassword) {
+      setSuccessMessage('បានកំណត់ពាក្យសម្ងាត់ថ្មីជោគជ័យ!');
+    } else {
+      setSuccessMessage(`បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${editUser.full_name}" ចូល Supabase Database ដោយជោគជ័យ!`);
+    }
     return true;
   };
 
