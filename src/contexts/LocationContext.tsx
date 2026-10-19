@@ -65,14 +65,18 @@ interface LocationContextType {
   setLocationsList: (locs: Location[]) => void;
   isLocationLocked: boolean;
   assignedBranchLocation: Location | null;
+  resetLocationFilter: () => void;
 }
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
 export function LocationProvider({ children }: { children: React.ReactNode }) {
-  const { isBranchUser, isCentralAdmin, userLocationId } = useAuth();
+  const { user, isBranchUser, isCentralAdmin, userLocationId } = useAuth();
   const [selectedLocationId, setRawSelectedLocationId] = useState<string>('ALL');
   const [locationsList, setLocationsList] = useState<Location[]>(mockLocations);
+
+  // Track authentication transitions (login, logout, role switch) to reset location filter state
+  const lastAuthTokenRef = React.useRef<string | null>(null);
 
   // Directly fetch locations from Supabase Database sorted by type desc (HQ first) then name_kh asc
   const fetchLocationsFromSupabase = useCallback(async () => {
@@ -96,8 +100,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     fetchLocationsFromSupabase();
   }, [fetchLocationsFromSupabase]);
 
-  // Find user's assigned branch location if they are a BranchUser
+  // Find user's assigned branch location ONLY if they are an active BranchUser
   const assignedBranchLocation: Location | null = useMemo(() => {
+    if (!isBranchUser) return null;
     if (!userLocationId) {
       return locationsList.find(l => l.code === '7MK') || locationsList[1] || null;
     }
@@ -122,21 +127,43 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       (l.code && targetCode.toUpperCase().includes(String(l.code).toUpperCase())) ||
       (l.code && String(l.code).toUpperCase() === targetCode.toUpperCase())
     ) || locationsList.find(l => l.code === '7MK') || locationsList[1] || null;
-  }, [userLocationId, locationsList]);
-
-  // When user is BranchUser, automatically lock selected location to their assigned branch
-  useEffect(() => {
-    if (isBranchUser && assignedBranchLocation) {
-      setRawSelectedLocationId(assignedBranchLocation.id);
-    } else if (isCentralAdmin && selectedLocationId !== 'ALL' && !locationsList.some(l => l.id === selectedLocationId)) {
-      setRawSelectedLocationId('ALL');
-    }
-  }, [isBranchUser, isCentralAdmin, assignedBranchLocation]);
+  }, [isBranchUser, userLocationId, locationsList]);
 
   // Complete locations list available across the app (includes [ALL] and all locations)
   const locations = useMemo(() => {
     return [ALL_LOCATIONS_OPTION, ...locationsList];
   }, [locationsList]);
+
+  // Explicit helper to reset location filter according to current user role
+  const resetLocationFilter = useCallback(() => {
+    if (isBranchUser && assignedBranchLocation) {
+      setRawSelectedLocationId(assignedBranchLocation.id);
+    } else {
+      setRawSelectedLocationId('ALL');
+    }
+  }, [isBranchUser, assignedBranchLocation]);
+
+  // Immediately synchronize location filter whenever user logs in, switches role, or signs out
+  useEffect(() => {
+    const currentAuthToken = user ? `${user.id || user.email}-${isCentralAdmin ? 'admin' : 'branch'}` : 'guest';
+    const isAuthChanged = lastAuthTokenRef.current !== currentAuthToken;
+    lastAuthTokenRef.current = currentAuthToken;
+
+    if (isBranchUser) {
+      // BranchUser is strictly locked to their branch
+      if (assignedBranchLocation) {
+        setRawSelectedLocationId(assignedBranchLocation.id);
+      }
+    } else if (isCentralAdmin) {
+      // CentralAdmin: on sign in or user switch or if current ID is invalid/stale, reset immediately to 'ALL'
+      if (isAuthChanged || selectedLocationId === '' || (selectedLocationId !== 'ALL' && !locationsList.some(l => l.id === selectedLocationId))) {
+        setRawSelectedLocationId('ALL');
+      }
+    } else {
+      // Unauthenticated / guest state
+      setRawSelectedLocationId('ALL');
+    }
+  }, [user?.id, user?.email, isBranchUser, isCentralAdmin, assignedBranchLocation, locationsList]);
 
   // Guarded location setter: prevents BranchUser from switching to other locations
   const setSelectedLocationId = (id: string) => {
@@ -153,11 +180,18 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   // Determine current active Location object
   const currentEffectiveId = String((isBranchUser && assignedBranchLocation ? assignedBranchLocation.id : selectedLocationId) || 'ALL');
 
-  const selectedLocation = locations.find(l => 
-    String(l.id) === currentEffectiveId || 
-    String(l.code) === currentEffectiveId ||
-    (l.code && currentEffectiveId.includes(String(l.code)))
-  ) || (isBranchUser && assignedBranchLocation ? assignedBranchLocation : ALL_LOCATIONS_OPTION);
+  const selectedLocation = useMemo(() => {
+    if (!isBranchUser && (currentEffectiveId === 'ALL' || currentEffectiveId === '')) {
+      return ALL_LOCATIONS_OPTION;
+    }
+    if (isBranchUser && assignedBranchLocation) {
+      return assignedBranchLocation;
+    }
+    return locations.find(l => 
+      String(l.id) === currentEffectiveId || 
+      String(l.code).toUpperCase() === currentEffectiveId.toUpperCase()
+    ) || (locations.find(l => l.code && currentEffectiveId.includes(String(l.code)))) || ALL_LOCATIONS_OPTION;
+  }, [currentEffectiveId, isBranchUser, assignedBranchLocation, locations]);
 
   return (
     <LocationContext.Provider value={{ 
@@ -168,7 +202,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       allLocationsList: locationsList,
       setLocationsList,
       isLocationLocked: isBranchUser,
-      assignedBranchLocation
+      assignedBranchLocation,
+      resetLocationFilter
     }}>
       {children}
     </LocationContext.Provider>

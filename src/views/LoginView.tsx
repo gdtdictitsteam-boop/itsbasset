@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLocationContext } from '../contexts/LocationContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { ShieldCheck, Lock, Mail, Eye, EyeOff, KeyRound, CheckCircle2, Database, Info, RefreshCw, UserCheck, Building2 } from 'lucide-react';
@@ -27,6 +28,7 @@ export function LoginView({
   setUser?: (user: any) => void;
 } = {}) {
   const { signInDemo, isConfigured, onLoginSuccess: ctxOnLoginSuccess, setUser: ctxSetUser } = useAuth();
+  const locationCtx = useLocationContext();
   const { t, language } = useLanguage();
 
   const onLoginSuccess = propOnLoginSuccess || ctxOnLoginSuccess;
@@ -102,6 +104,12 @@ export function LoginView({
       }
 
       // ៣. បើត្រឹមត្រូវ អនុញ្ញាតឱ្យចូល Dashboard
+      const roleStr = user.role || user.user_metadata?.role || '';
+      const isUserBranch = roleStr === 'BranchUser';
+      if (!isUserBranch && locationCtx?.resetLocationFilter) {
+        locationCtx.resetLocationFilter();
+      }
+
       if (typeof onLoginSuccess === 'function') {
         onLoginSuccess(user);
       } else if (typeof setUser === 'function') {
@@ -118,6 +126,9 @@ export function LoginView({
 
   const handleQuickDemoLogin = (emailVal: string, roleVal: string) => {
     setError('');
+    if (roleVal === 'CentralAdmin' && locationCtx?.resetLocationFilter) {
+      locationCtx.resetLocationFilter();
+    }
     setSuccessMessage(`ចូលប្រើប្រាស់ជាប្រភេទ ${roleVal} ជោគជ័យ!`);
     setTimeout(() => {
       signInDemo(emailVal, roleVal);

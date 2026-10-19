@@ -420,13 +420,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     matchedProfile?.role || 
     user?.user_metadata?.role || 
     persistedSession?.role || 
-    'BranchUser';
+    '';
 
   const userRole: 'CentralAdmin' | 'BranchUser' = 
     (authoritativeRoleString === 'Admin-GDT' || authoritativeRoleString === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
   
-  const isCentralAdmin = userRole === 'CentralAdmin';
-  const isBranchUser = userRole === 'BranchUser';
+  const isCentralAdmin = Boolean((user || persistedSession) && userRole === 'CentralAdmin');
+  const isBranchUser = Boolean((user || persistedSession) && userRole === 'BranchUser');
 
   // Security guard for Setting Modal: if user is not CentralAdmin, automatically close and block
   useEffect(() => {
