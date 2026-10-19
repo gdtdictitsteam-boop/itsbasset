@@ -631,9 +631,6 @@ export function UserManagementModal() {
                   {isCentralAdmin ? 'CentralAdmin (សិទ្ធិពេញលេញ)' : 'BranchUser (មន្ត្រីសាខា)'}
                 </span>
               </div>
-              <p className="text-xs text-[#A3D8C2]/80 mt-0.5">
-                កំណត់ឈ្មោះ, Role, សាខាប្រចាំការ និងកំណត់ Password សម្រាប់ Login ចូល Supabase Auth
-              </p>
             </div>
           </div>
 
@@ -649,15 +646,8 @@ export function UserManagementModal() {
           </div>
         </div>
 
-        {/* Info Banner for RBAC & Passwords */}
-        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-[#1E6047] shrink-0">
-          <div className="flex items-center gap-2">
-            <Lock size={15} className="text-[#1E6047] shrink-0" />
-            <span>
-              <strong>គោលការណ៍សិទ្ធិ (RBAC) & Password៖</strong> គណនីទាំងអស់ប្រើ Default Password <strong>GDT@2026</strong> សម្រាប់ Login តេស្តភ្លាមៗ។
-            </span>
-          </div>
-
+        {/* Info Banner for RBAC Role Counts */}
+        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-6 py-2.5 flex flex-wrap items-center justify-end gap-3 text-xs text-[#1E6047] shrink-0">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
               <ShieldCheck size={12} className="mr-1" /> CentralAdmin: {centralAdminCount}
@@ -1088,7 +1078,7 @@ export function UserManagementModal() {
         {/* Footer */}
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex items-center justify-between text-xs text-slate-500 shrink-0">
           <div>
-            មន្ត្រីសរុប៖ <strong>{safeUsersList.length}</strong> នាក់ (Default Password: <strong>GDT@2026</strong>)
+            មន្ត្រីសរុប៖ <strong>{safeUsersList.length}</strong> នាក់
           </div>
           <div className="flex items-center gap-2">
             <button
