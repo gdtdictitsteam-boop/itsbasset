@@ -684,11 +684,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      // 2. Fallback verification against officer profiles in Supabase table / Local storage
+      // 2. Fallback verification against officer profiles only when account is not yet synced in Supabase Auth
       const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-      if (matched) {
-        const expectedPwd = matched.display_password || matched.password || 'GDT@2026';
-        if (cleanPassword === expectedPwd || cleanPassword === 'GDT@2026') {
+      if (matched && error?.message && !error.message.toLowerCase().includes('invalid login credentials')) {
+        const expectedPwd = matched.display_password || matched.password;
+        if (expectedPwd && cleanPassword === expectedPwd) {
           const effectiveRole: 'CentralAdmin' | 'BranchUser' = 
             (matched.role === 'Admin-GDT' || matched.role === 'CentralAdmin') ? 'CentralAdmin' : 'BranchUser';
 
@@ -917,14 +917,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           password_updated_at: nowIso
         }]).select();
 
-        const targetUserId = insertedRows?.[0]?.id || newId;
-
         if (rawPwd) {
           try {
             await supabase.rpc('admin_secure_set_password', {
-              target_user_id: targetUserId,
+              target_email: newProfile.email,
               new_password: rawPwd,
-              is_default: isDefaultPwd,
               caller_admin_email: currentEmail || userProfile?.email
             });
           } catch (rpcErr) {

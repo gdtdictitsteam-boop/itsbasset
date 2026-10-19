@@ -575,19 +575,19 @@ export function UserManagementModal() {
             return false;
           }
 
-          const { error: pwdError } = await supabase.rpc('admin_secure_set_password', {
-            target_user_id: editUser.id,
+          const { data: res, error: rpcErr } = await supabase.rpc('admin_secure_set_password', {
+            target_email: editUser.email,
             new_password: newPassword.trim(),
-            is_default: newPassword.trim() === 'GDT@2026',
-            caller_admin_email: currentUser?.email // បញ្ជូន Email របស់ Admin បច្ចុប្បន្ន
+            caller_admin_email: currentUser?.email
           });
 
-          if (pwdError) {
-            console.error('Password Update Error:', pwdError);
-            alert('កំហុសក្នុងការកំណត់ពាក្យសម្ងាត់៖ ' + pwdError.message);
-            setErrorMessage('កំហុសក្នុងការកំណត់ពាក្យសម្ងាត់៖ ' + pwdError.message);
+          if (rpcErr || (res && !res.success)) {
+            alert('កំហុស៖ ' + (rpcErr?.message || res?.message));
+            setErrorMessage('កំហុស៖ ' + (rpcErr?.message || res?.message));
             return false;
           }
+
+          alert('បានកែប្រែពាក្យសម្ងាត់ និងធ្វើសមកាលកម្មចូល Supabase Auth ជោគជ័យ!');
         }
       } catch (err: any) {
         console.error('Unexpected exception during Supabase user update:', err);
