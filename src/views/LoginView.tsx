@@ -66,33 +66,29 @@ export function LoginView({
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    if (!cleanEmail) {
-      setError('សូមបញ្ចូលអាសយដ្ឋាន អ៊ីមែល (Email address)');
+    if (!cleanEmail || !cleanPassword) {
+      setError('សូមបញ្ចូលអ៊ីមែល និងពាក្យសម្ងាត់ឱ្យបានគ្រប់គ្រាន់!');
       setLoading(false);
-      return;
-    }
-
-    if (!cleanPassword) {
-      setError('សូមបញ្ចូលពាក្យសម្ងាត់ (Password)');
-      setLoading(false);
-      return;
+      return; // ⛔ បញ្ឈប់ដាច់ខាត
     }
 
     try {
-      if (!isConfigured) {
-        const defaultRole = cleanEmail.includes('branch') ? 'BranchUser' : 'CentralAdmin';
-        signInDemo(cleanEmail, defaultRole);
-        setLoading(false);
-        return;
-      }
-
-      // ១. ផ្ទៀងផ្ទាត់ជាមួយ Supabase Auth
+      // ១. ផ្ទៀងផ្ទាត់ជាមួយ Supabase Auth ផ្លូវការ (Strict Verification - Zero Fallback Bypass)
       const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
       });
 
-      // ២. ទាញយក Profile ពី user_profiles តាម Email ឬ ID
+      // ២. បើមាន Error ឬគ្មាន User/Session ត្រូវបញ្ឈប់ភ្លាមៗ (Strict Security Gate)
+      if (authErr || !authData?.user || !authData?.session) {
+        console.error('Supabase Auth Failed:', authErr);
+        await supabase.auth.signOut();
+        setError('អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ! សូមពិនិត្យម្តងទៀត។');
+        setLoading(false);
+        return; // ⛔ បញ្ឈប់ដាច់ខាត ហាមបន្តទៅមុខ!
+      }
+
+      // ៣. ទាល់តែ Auth ជោគជ័យ ១០០% ទើបទាញយក Profile ពី user_profiles
       const { data: profile, error: profileErr } = await supabase
         .from('user_profiles')
         .select('*')
@@ -103,77 +99,30 @@ export function LoginView({
         console.warn('Profile fetch warning:', profileErr);
       }
 
-      if (authErr) {
-        console.error('Auth Sign-In Error:', authErr);
-        const rawErrMsg =
-          typeof authErr.message === 'string' && authErr.message.trim() !== '{}'
-            ? authErr.message.trim()
-            : '';
-
-        // If GoTrue returned an empty object {} / schema error on a SQL-managed officer account that exists in user_profiles, allow login with their profile
-        const isSchemaOrEmptyAuthErr =
-          !rawErrMsg ||
-          rawErrMsg.includes('Database error') ||
-          rawErrMsg.includes('unexpected_failure') ||
-          (profile &&
-            ((profile.display_password && profile.display_password === cleanPassword) ||
-              (profile.password && profile.password === cleanPassword)));
-
-        if (profile && isSchemaOrEmptyAuthErr) {
-          const activeUser = {
-            ...profile,
-            id: profile.id || 'user-' + Date.now(),
-            email: profile.email || cleanEmail,
-            full_name: profile?.full_name || 'រដ្ឋបាល បុគ្គលិក',
-            role: profile?.role || 'CentralAdmin',
-            location_id: profile?.location_id,
-          };
-
-          if (typeof onLoginSuccess === 'function') {
-            onLoginSuccess(activeUser);
-          } else if (typeof setUser === 'function') {
-            setUser(activeUser);
-          }
-          setLoading(false);
-          return;
-        }
-
-        setError(rawErrMsg || 'អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ!');
-        setLoading(false);
-        return;
-      }
-
-      if (!authData?.user) {
-        setError('មិនអាចទាញយកទិន្នន័យគណនីបានឡើយ!');
-        setLoading(false);
-        return;
-      }
-
-      // ប្រសិនបើរក Profile ឃើញ ឬមិនឃើញ ក៏បង្កើត User Object ត្រឹមត្រូវមួយកុំឱ្យ Crash
-      const activeUser = {
-        ...profile,
+      // ៤. បង្កើត User Object សម្រាប់តែគណនីដែលបានឆ្លងកាត់ Supabase Auth ជោគជ័យប៉ុណ្ណោះ
+      const verifiedUser = {
+        ...(profile || {}),
         id: authData.user.id,
         email: authData.user.email || cleanEmail,
-        full_name: profile?.full_name || authData.user.user_metadata?.full_name || 'រដ្ឋបាល បុគ្គលិក',
-        role: profile?.role || 'CentralAdmin',
-        location_id: profile?.location_id,
+        full_name: profile?.full_name || authData.user.user_metadata?.full_name || 'មន្ត្រីរដ្ឋបាល',
+        role: profile?.role || authData.user.user_metadata?.role || 'CentralAdmin',
+        location_id: profile?.location_id || authData.user.user_metadata?.location_id || '1',
       };
 
-      // ៣. បញ្ជូនចូល Dashboard តាម State ដើមរបស់ App
+      // ៥. បញ្ជូនចូល Dashboard តាម State ដើមរបស់ App
       if (typeof onLoginSuccess === 'function') {
-        onLoginSuccess(activeUser);
+        onLoginSuccess(verifiedUser);
       } else if (typeof setUser === 'function') {
-        setUser(activeUser);
+        setUser(verifiedUser);
       }
     } catch (err: any) {
       console.error('Catch Exception on Login:', err);
       const msg =
         typeof err?.message === 'string' && err.message.trim() !== '' && err.message.trim() !== '{}'
           ? err.message
-          : typeof err === 'string' && err.trim() !== '' && err.trim() !== '{}'
-          ? err
-          : 'មានបញ្ហាបច្ចេកទេសក្នុងការចូលប្រព័ន្ធ';
+          : 'អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ ឬមានបញ្ហាក្នុងការភ្ជាប់ប្រព័ន្ធ!';
       setError(msg);
+      return;
     } finally {
       setLoading(false);
     }

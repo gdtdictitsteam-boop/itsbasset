@@ -627,29 +627,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    if (!configured) {
-      // Offline / Local Demo Sign-in
-      const matched = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-      if (matched) {
-        signInDemo(matched.email, matched.role, matched.location_id || undefined);
-      } else {
-        const defaultRole = cleanEmail.includes('branch') ? 'BranchUser' : 'CentralAdmin';
-        signInDemo(cleanEmail, defaultRole);
-      }
-      return { success: true };
+    if (!cleanEmail || !cleanPassword) {
+      return {
+        success: false,
+        error: 'សូមបញ្ចូលអ៊ីមែល និងពាក្យសម្ងាត់ឱ្យបានគ្រប់គ្រាន់!',
+      };
     }
 
     try {
-      // 1. Authenticate via Supabase Auth
+      // 1. Authenticate strictly via Supabase Auth (Zero Fallback Bypass)
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
       });
 
-      if (error || !data?.user) {
+      if (error || !data?.user || !data?.session) {
+        await supabase.auth.signOut();
         return {
           success: false,
-          error: error?.message || 'អ៊ីមែល ឬ ពាក្យសម្ងាត់មិនត្រឹមត្រូវ!',
+          error: 'អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ! សូមពិនិត្យម្តងទៀត។',
         };
       }
 
