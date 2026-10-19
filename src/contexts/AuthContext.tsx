@@ -10,8 +10,8 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     full_name: 'ក្រុមការងារបច្ចេកវិទ្យាព័ត៌មាន (GDT ITS Team)',
     role: 'CentralAdmin',
     location_id: '1', // HQ-ITSB
-    password: 'GDT@2026',
-    display_password: 'GDT@2026',
+    is_default_password: true,
+    password_updated_at: null,
   },
   {
     id: 'user-001',
@@ -19,8 +19,8 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     full_name: 'មន្ត្រីកណ្តាល ITSB (រដ្ឋបាល)',
     role: 'CentralAdmin',
     location_id: '1', // HQ-ITSB
-    password: 'GDT@2026',
-    display_password: 'GDT@2026',
+    is_default_password: true,
+    password_updated_at: null,
   },
   {
     id: 'user-002',
@@ -28,8 +28,8 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     full_name: 'លោក សុខ ចាន់ថន (មន្ត្រី ៧មករា)',
     role: 'BranchUser',
     location_id: '2', // 7MK (សាខាពន្ធដារខណ្ឌ៧មករា)
-    password: 'GDT@2026',
-    display_password: 'GDT@2026',
+    is_default_password: true,
+    password_updated_at: null,
   },
   {
     id: 'user-003',
@@ -37,8 +37,8 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     full_name: 'កញ្ញា គង់ សុជាតា (មន្ត្រី ចំការមន)',
     role: 'BranchUser',
     location_id: '3', // CKM (សាខាពន្ធដារខណ្ឌចំការមន)
-    password: 'GDT@2026',
-    display_password: 'GDT@2026',
+    is_default_password: true,
+    password_updated_at: null,
   },
   {
     id: 'user-004',
@@ -46,8 +46,8 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     full_name: 'លោក វ៉ាន់ សុភ័ក្ត្រ (មន្ត្រី ដូនពេញ)',
     role: 'BranchUser',
     location_id: '5', // DPE (សាខាពន្ធដារខណ្ឌដូនពេញ)
-    password: 'GDT@2026',
-    display_password: 'GDT@2026',
+    is_default_password: true,
+    password_updated_at: null,
   },
   {
     id: 'user-005',
@@ -55,8 +55,8 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     full_name: 'លោក ហេង វិបុល (មន្ត្រី ទួលគោក)',
     role: 'BranchUser',
     location_id: '6', // TKO (សាខាពន្ធដារខណ្ឌទួលគោក)
-    password: 'GDT@2026',
-    display_password: 'GDT@2026',
+    is_default_password: true,
+    password_updated_at: null,
   },
   {
     id: 'user-006',
@@ -64,8 +64,8 @@ export const INITIAL_USER_PROFILES: UserProfile[] = [
     full_name: 'លោក ជ័យ វិចិត្រ (មន្ត្រី កំពង់ចាម)',
     role: 'BranchUser',
     location_id: '24', // KPC (សាខាពន្ធដារខេត្តកំពង់ចាម)
-    password: 'GDT@2026',
-    display_password: 'GDT@2026',
+    is_default_password: true,
+    password_updated_at: null,
   },
 ];
 
@@ -278,7 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const configured = isSupabaseConfigured();
 
-  // Fetch users list from Supabase if connected (includes display_password)
+  // Fetch users list from Supabase if connected (includes is_default_password, password_updated_at)
   const fetchUsersList = useCallback(async () => {
     if (!configured) return;
     try {
@@ -290,8 +290,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!error && data && data.length > 0) {
         const mapped = (data as any[]).map((row) => ({
           ...row,
-          display_password: row.display_password || row.password || 'GDT@2026',
-          password: row.display_password || row.password || 'GDT@2026',
+          is_default_password: typeof row.is_default_password === 'boolean' ? row.is_default_password : true,
+          password_updated_at: row.password_updated_at || null,
         })) as UserProfile[];
         setUsersList(mapped);
         try {
@@ -853,12 +853,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const target = updatedList.find(u => u.id === id || u.email === updates.email);
         if (target) {
           const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.id);
-          const newPwd = updates.display_password || updates.password;
           const updateData: Record<string, any> = {
             full_name: target.full_name,
             role: target.role,
             location_id: target.location_id,
-            ...(newPwd ? { display_password: newPwd } : {}),
+            ...(typeof updates.is_default_password === 'boolean' ? { is_default_password: updates.is_default_password } : {}),
+            ...(updates.password_updated_at ? { password_updated_at: updates.password_updated_at } : {}),
             updated_at: new Date().toISOString()
           };
 
@@ -869,21 +869,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (error) {
             console.error('Notice updating user_profiles in Supabase:', error.message);
-          }
-
-          // If password was updated, also update in Supabase auth.users via RPC
-          if (newPwd) {
-            try {
-              await supabase.rpc('admin_set_user_password', {
-                p_email: target.email,
-                p_password: newPwd,
-                p_full_name: target.full_name,
-                p_role: target.role,
-                p_location_id: target.location_id
-              });
-            } catch (rpcErr) {
-              console.warn('Notice calling admin_set_user_password RPC:', rpcErr);
-            }
           }
         }
       }
@@ -898,14 +883,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const createUserProfile = async (profileData: Omit<UserProfile, 'id'>): Promise<{ success: boolean; error?: string }> => {
     try {
       const newId = 'user-' + Date.now();
-      const effectivePwd = profileData.display_password || profileData.password || 'GDT@2026';
+      const rawPwd = (profileData.password || '').trim();
+      const isDefaultPwd = typeof profileData.is_default_password === 'boolean' 
+        ? profileData.is_default_password 
+        : (!rawPwd || rawPwd === 'GDT@2026');
+      const nowIso = new Date().toISOString();
+
       const newProfile: UserProfile = {
         ...profileData,
-        password: effectivePwd,
-        display_password: effectivePwd,
+        is_default_password: isDefaultPwd,
+        password_updated_at: nowIso,
         id: newId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: nowIso,
+        updated_at: nowIso
       };
 
       const updatedList = [newProfile, ...usersList];
@@ -917,26 +907,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (configured) {
-        await supabase.from('user_profiles').insert([{
+        const { data: insertedRows } = await supabase.from('user_profiles').insert([{
           id: newId,
           email: newProfile.email,
           full_name: newProfile.full_name,
           role: newProfile.role,
           location_id: newProfile.location_id,
-          display_password: effectivePwd
-        }]);
+          is_default_password: isDefaultPwd,
+          password_updated_at: nowIso
+        }]).select();
 
-        if (effectivePwd) {
+        const targetUserId = insertedRows?.[0]?.id || newId;
+
+        if (rawPwd) {
           try {
-            await supabase.rpc('admin_set_user_password', {
-              p_email: newProfile.email,
-              p_password: effectivePwd,
-              p_full_name: newProfile.full_name,
-              p_role: newProfile.role,
-              p_location_id: newProfile.location_id
+            await supabase.rpc('admin_secure_set_password', {
+              target_user_id: targetUserId,
+              new_password: rawPwd,
+              is_default: isDefaultPwd
             });
           } catch (rpcErr) {
-            console.warn('Notice calling admin_set_user_password on create:', rpcErr);
+            console.warn('Notice calling admin_secure_set_password on create:', rpcErr);
           }
         }
       }

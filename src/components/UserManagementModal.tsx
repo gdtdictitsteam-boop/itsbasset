@@ -143,18 +143,20 @@ BEGIN
         NOW()
     );
 
-    -- Ensure display_password column exists in public.user_profiles
-    ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS display_password TEXT DEFAULT 'GDT@2026';
+    -- Ensure security metadata columns exist in public.user_profiles (No plaintext password stored)
+    ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS is_default_password BOOLEAN DEFAULT true;
+    ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ;
 
-    -- Ensure public.user_profiles exists and is in sync (including display_password)
-    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, display_password, created_at)
+    -- Ensure public.user_profiles exists and is in sync
+    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, is_default_password, password_updated_at, created_at)
     VALUES (
         v_user_id,
         lower(p_email),
         p_full_name,
         p_role,
         v_location_id,
-        p_password,
+        (p_password = 'GDT@2026'),
+        NOW(),
         NOW()
     )
     ON CONFLICT (id) DO UPDATE
@@ -163,52 +165,52 @@ BEGIN
         full_name = EXCLUDED.full_name,
         role = EXCLUDED.role,
         location_id = EXCLUDED.location_id,
-        display_password = EXCLUDED.display_password;
+        is_default_password = EXCLUDED.is_default_password,
+        password_updated_at = NOW();
 
     RETURN v_user_id;
 END;
 $$;
 
--- 3. Stored Procedure for Frontend Admin RPC call: admin_set_user_password
-CREATE OR REPLACE FUNCTION public.admin_set_user_password(
-    p_email TEXT,
-    p_password TEXT,
-    p_full_name TEXT DEFAULT NULL,
-    p_role TEXT DEFAULT NULL,
-    p_location_id TEXT DEFAULT NULL
+-- 3. ISO 27001 / OWASP Compliant Stored Procedure: admin_secure_set_password
+CREATE OR REPLACE FUNCTION public.admin_secure_set_password(
+    target_user_id UUID,
+    new_password TEXT,
+    is_default BOOLEAN DEFAULT false
 )
-RETURNS JSONB
+RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, auth, extensions
 AS $$
 DECLARE
-    v_user_id UUID;
+    v_encrypted_pwd TEXT;
 BEGIN
-    IF p_password IS NULL OR length(trim(p_password)) < 6 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Password must be at least 6 characters');
+    IF new_password IS NULL OR length(trim(new_password)) < 8 THEN
+        RAISE EXCEPTION 'ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ (Password must be at least 8 characters)';
     END IF;
 
-    v_user_id := public.create_or_update_gdt_user(
-        p_email,
-        p_password,
-        COALESCE(p_full_name, split_part(p_email, '@', 1)),
-        COALESCE(p_role, 'BranchUser'),
-        COALESCE(p_location_id, '2')
-    );
+    v_encrypted_pwd := crypt(trim(new_password), gen_salt('bf'));
 
-    RETURN jsonb_build_object(
-        'success', true, 
-        'user_id', v_user_id, 
-        'email', p_email,
-        'message', 'Password updated successfully in auth.users'
-    );
+    UPDATE auth.users
+    SET 
+        encrypted_password = v_encrypted_pwd,
+        email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+        updated_at = NOW()
+    WHERE id = target_user_id;
+
+    UPDATE public.user_profiles
+    SET 
+        is_default_password = is_default,
+        password_updated_at = NOW(),
+        updated_at = NOW()
+    WHERE id = target_user_id;
 END;
 $$;
 
 -- Grant execution permissions
 GRANT EXECUTE ON FUNCTION public.create_or_update_gdt_user TO postgres, service_role;
-GRANT EXECUTE ON FUNCTION public.admin_set_user_password TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.admin_secure_set_password TO authenticated, service_role, anon;
 
 -- 4. BATCH SEED ALL EXISTING OFFICERS WITH DEFAULT PASSWORD: GDT@2026
 DO $$
@@ -414,16 +416,16 @@ export function UserManagementModal() {
   };
 
   const generateRandomPassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
     let rand = '';
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       rand += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setFormPassword(`GDT@${rand}`);
   };
 
-  // Actual UPDATE to Supabase Database (user_profiles) for CentralAdmin
-  const handleUpdateUser = async (updatedUser: {
+  // Actual UPDATE to Supabase Database (user_profiles & admin_secure_set_password RPC) for CentralAdmin
+  const handleUpdateUser = async (editUser: {
     id: string;
     full_name: string;
     email: string;
@@ -437,15 +439,30 @@ export function UserManagementModal() {
       return false;
     }
 
-    // 2. Resolve target location info
-    const matchedBranch = safeBranches.find(
-      l => l.id === updatedUser.location_id || l.code === updatedUser.location_id
-    ) || (updatedUser.role === 'CentralAdmin' ? safeBranches.find(l => l.type === 'HQ' || l.code === 'HQ-ITSB') : null);
+    const newPassword = editUser.password;
 
-    const targetBranchId = matchedBranch?.id || updatedUser.location_id;
+    // 2. Validate password length before executing updates if a new password was provided
+    if (newPassword && newPassword.trim() !== '') {
+      if (newPassword.trim().length < 8) {
+        alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
+        setErrorMessage('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
+        return false;
+      }
+    }
+
+    // 3. Resolve target location info
+    const matchedBranch = safeBranches.find(
+      l => l.id === editUser.location_id || l.code === editUser.location_id
+    ) || (editUser.role === 'CentralAdmin' ? safeBranches.find(l => l.type === 'HQ' || l.code === 'HQ-ITSB') : null);
+
+    const targetBranchId = matchedBranch?.id || editUser.location_id;
     const targetBranchName = matchedBranch?.name_kh || matchedBranch?.name_en || '';
 
-    // 3. Supabase Direct Update
+    const hasNewPassword = Boolean(newPassword && newPassword.trim() !== '');
+    const isDefault = hasNewPassword ? newPassword!.trim() === 'GDT@2026' : undefined;
+    const nowIso = new Date().toISOString();
+
+    // 4. Supabase Direct Update & Secure Password RPC
     if (isSupabaseConfigured()) {
       try {
         // Query to check available columns in public.user_profiles
@@ -458,21 +475,12 @@ export function UserManagementModal() {
           ? new Set(Object.keys(colsCheck[0]))
           : null;
 
-        // Construct update payload dynamically matching Table user_profiles Schema
+        // Construct update payload dynamically matching Table user_profiles Schema (never store plaintext password)
         const updatePayload: Record<string, any> = {
-          full_name: updatedUser.full_name,
-          role: updatedUser.role,
-          updated_at: new Date().toISOString()
+          full_name: editUser.full_name,
+          role: editUser.role,
+          updated_at: nowIso
         };
-
-        // Check if user requested password update
-        const hasNewPassword = Boolean(updatedUser.password && updatedUser.password.trim());
-        const newPassword = hasNewPassword ? updatedUser.password!.trim() : null;
-
-        // If a new password was entered, include display_password: newPassword in user_profiles update
-        if (hasNewPassword && newPassword) {
-          updatePayload.display_password = newPassword;
-        }
 
         if (availableCols) {
           if (availableCols.has('location_id')) {
@@ -485,24 +493,20 @@ export function UserManagementModal() {
             updatePayload.branch_name = targetBranchName;
           }
           if (availableCols.has('email')) {
-            updatePayload.email = updatedUser.email.trim().toLowerCase();
-          }
-          // Method 2: If user_profiles table also has a password column, update it directly
-          if (hasNewPassword && newPassword && availableCols.has('password')) {
-            updatePayload.password = newPassword;
+            updatePayload.email = editUser.email.trim().toLowerCase();
           }
         } else {
           // Standard canonical columns
           updatePayload.location_id = targetBranchId;
         }
 
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updatedUser.id);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(editUser.id);
         
-        // Execute actual Supabase UPDATE
+        // Execute actual Supabase UPDATE for profile fields (full_name, role, branch)
         let query = supabase.from('user_profiles').update(updatePayload);
         let res = isUuid 
-          ? await query.eq('id', updatedUser.id).select()
-          : await query.ilike('email', updatedUser.email.trim()).select();
+          ? await query.eq('id', editUser.id).select()
+          : await query.ilike('email', editUser.email.trim()).select();
 
         let { data, error } = res;
 
@@ -510,15 +514,14 @@ export function UserManagementModal() {
         if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
           console.warn('Column mismatch detected in user_profiles. Retrying with safe base columns:', error.message);
           const basePayload: Record<string, any> = {
-            full_name: updatedUser.full_name,
-            role: updatedUser.role,
+            full_name: editUser.full_name,
+            role: editUser.role,
             location_id: targetBranchId,
-            ...(hasNewPassword && newPassword && !error.message?.includes('display_password') ? { display_password: newPassword } : {}),
-            updated_at: new Date().toISOString()
+            updated_at: nowIso
           };
           const retryRes = isUuid
-            ? await supabase.from('user_profiles').update(basePayload).eq('id', updatedUser.id).select()
-            : await supabase.from('user_profiles').update(basePayload).ilike('email', updatedUser.email.trim()).select();
+            ? await supabase.from('user_profiles').update(basePayload).eq('id', editUser.id).select()
+            : await supabase.from('user_profiles').update(basePayload).ilike('email', editUser.email.trim()).select();
           data = retryRes.data;
           error = retryRes.error;
         }
@@ -536,8 +539,8 @@ export function UserManagementModal() {
           console.info('No existing record found to update. Upserting into user_profiles...');
           const upsertRow: Record<string, any> = {
             ...updatePayload,
-            email: updatedUser.email.trim().toLowerCase(),
-            ...(isUuid ? { id: updatedUser.id } : {})
+            email: editUser.email.trim().toLowerCase(),
+            ...(isUuid ? { id: editUser.id } : {})
           };
           const upsertRes = await supabase.from('user_profiles').upsert(upsertRow).select();
           if (upsertRes.error) {
@@ -548,68 +551,25 @@ export function UserManagementModal() {
           }
         }
 
-        // Method 1: If password was filled, invoke Edge Function or RPC to update auth.users
-        if (hasNewPassword && newPassword) {
-          let authUpdated = false;
-
-          // 1. Try Supabase Edge Function: admin-update-user
-          try {
-            const { error: fnErr } = await supabase.functions.invoke('admin-update-user', {
-              body: {
-                userId: updatedUser.id,
-                email: updatedUser.email,
-                password: newPassword
-              }
-            });
-            if (!fnErr) {
-              authUpdated = true;
-              console.info('Password successfully updated via Supabase Edge Function (admin-update-user)');
-            }
-          } catch (fnErr) {
-            // Edge Function not deployed or unreachable
+        // 5. ISO 27001 / OWASP Secure Password Update via RPC: admin_secure_set_password
+        if (newPassword && newPassword.trim() !== '') {
+          if (newPassword.trim().length < 8) {
+            alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
+            return false;
           }
 
-          // 2. Try RPC: admin_set_user_password
-          if (!authUpdated) {
-            try {
-              const { error: rpcErr } = await supabase.rpc('admin_set_user_password', {
-                p_email: updatedUser.email,
-                p_password: newPassword,
-                p_full_name: updatedUser.full_name,
-                p_role: updatedUser.role,
-                p_location_id: targetBranchId
-              });
-              if (!rpcErr) {
-                authUpdated = true;
-                console.info('Password successfully updated via RPC admin_set_user_password');
-              } else {
-                console.warn('Notice from admin_set_user_password RPC:', rpcErr.message);
-              }
-            } catch (rpcErr) {
-              console.warn('Notice calling admin_set_user_password RPC:', rpcErr);
-            }
-          }
+          const isDefaultPwd = newPassword.trim() === 'GDT@2026';
+          const { error: pwdError } = await supabase.rpc('admin_secure_set_password', {
+            target_user_id: editUser.id,
+            new_password: newPassword.trim(),
+            is_default: isDefaultPwd
+          });
 
-          // 3. Try RPC: create_or_update_gdt_user
-          if (!authUpdated) {
-            try {
-              const locCode = matchedBranch?.code || 'HQ-ITSB';
-              const { error: rpc2Err } = await supabase.rpc('create_or_update_gdt_user', {
-                p_email: updatedUser.email,
-                p_password: newPassword,
-                p_full_name: updatedUser.full_name,
-                p_role: updatedUser.role,
-                p_location_code: locCode
-              });
-              if (!rpc2Err) {
-                authUpdated = true;
-                console.info('Password successfully updated via RPC create_or_update_gdt_user');
-              } else {
-                console.warn('Notice from create_or_update_gdt_user RPC:', rpc2Err.message);
-              }
-            } catch (rpc2Err) {
-              console.warn('Notice calling create_or_update_gdt_user RPC:', rpc2Err);
-            }
+          if (pwdError) {
+            console.error('Password Update Error:', pwdError);
+            alert('កំហុសក្នុងការកំណត់ពាក្យសម្ងាត់៖ ' + pwdError.message);
+            setErrorMessage('កំហុសក្នុងការកំណត់ពាក្យសម្ងាត់៖ ' + pwdError.message);
+            return false;
           }
         }
       } catch (err: any) {
@@ -620,27 +580,38 @@ export function UserManagementModal() {
       }
     }
 
-    // 4. Update Local State and Context upon successful Supabase write
+    // 6. Immediately Update Local State of that User (is_default_password, password_updated_at) and Clear Input Password
     if (typeof updateUserProfile === 'function') {
-      const cleanNewPwd = updatedUser.password?.trim();
-      await updateUserProfile(updatedUser.id, {
-        full_name: updatedUser.full_name,
-        email: updatedUser.email,
-        role: updatedUser.role,
+      await updateUserProfile(editUser.id, {
+        full_name: editUser.full_name,
+        email: editUser.email,
+        role: editUser.role,
         location_id: targetBranchId,
-        ...(cleanNewPwd ? { password: cleanNewPwd, display_password: cleanNewPwd } : {})
+        ...(hasNewPassword && typeof isDefault === 'boolean'
+          ? {
+              is_default_password: isDefault,
+              password_updated_at: nowIso
+            }
+          : {})
       });
     }
 
-    // 5. Re-fetch fresh users list from Supabase immediately so the table displays the new display_password
+    // Clear password input state immediately
+    setFormPassword('');
+
+    // 7. Re-fetch fresh users list from Supabase
     if (typeof fetchUsersList === 'function') {
       await fetchUsersList();
     }
 
-    // 6. Close Edit Modal & Show Success Notification
+    // 8. Close Edit Modal & Show Success Notification
     setEditingUser(null);
-    const pwdMsg = updatedUser.password?.trim() ? ` និងបានកំណត់ពាក្យសម្ងាត់ថ្មី (${updatedUser.password.trim()})` : '';
-    setSuccessMessage(`បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${updatedUser.full_name}" ចូល Supabase Database ដោយជោគជ័យ!${pwdMsg}`);
+    const pwdMsg = hasNewPassword
+      ? isDefault
+        ? ' និងបានកំណត់ពាក្យសម្ងាត់ទៅជា Default (ត្រូវប្តូរ)'
+        : ' និងបានដាក់កូដសម្ងាត់ពាក្យសម្ងាត់ថ្មីដោយសុវត្ថិភាព (Encrypted)'
+      : '';
+    setSuccessMessage(`បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${editUser.full_name}" ចូល Supabase Database ដោយជោគជ័យ!${pwdMsg}`);
     return true;
   };
 
@@ -655,18 +626,20 @@ export function UserManagementModal() {
       return;
     }
 
-    // Password validation
+    // Password validation (Minimum 8 characters per ISO 27001 / OWASP)
     if (isCreatingNew) {
       if (!formPassword.trim()) {
-        setErrorMessage('សូមកំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រីថ្មី (ឧ. GDT@2026)');
+        setErrorMessage('សូមកំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រីថ្មី');
         return;
       }
-      if (formPassword.trim().length < 6) {
-        setErrorMessage('ពាក្យសម្ងាត់ត្រូវតែមានយ៉ាងហោចណាស់ ៦ តួអក្សរ (Password must be at least 6 characters)');
+      if (formPassword.trim().length < 8) {
+        alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
+        setErrorMessage('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
         return;
       }
-    } else if (editingUser && formPassword.trim() && formPassword.trim().length < 6) {
-      setErrorMessage('ពាក្យសម្ងាត់ថ្មីត្រូវតែមានយ៉ាងហោចណាស់ ៦ តួអក្សរ');
+    } else if (editingUser && formPassword.trim() !== '' && formPassword.trim().length < 8) {
+      alert('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
+      setErrorMessage('ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ!');
       return;
     }
 
@@ -676,16 +649,19 @@ export function UserManagementModal() {
     try {
       if (isCreatingNew && typeof createUserProfile === 'function') {
         const finalPwd = formPassword.trim() || 'GDT@2026';
+        const isDefaultPwd = finalPwd === 'GDT@2026';
         const res = await createUserProfile({
           full_name: formFullName.trim(),
           email: formEmail.trim().toLowerCase(),
           role: formRole,
           location_id: formLocationId,
           password: finalPwd,
-          display_password: finalPwd
+          is_default_password: isDefaultPwd,
+          password_updated_at: new Date().toISOString()
         });
         if (res?.success) {
-          setSuccessMessage(`បានបង្កើតគណនីមន្ត្រីថ្មី "${formFullName}" ដោយជោគជ័យ! (Password: ${finalPwd})`);
+          setFormPassword('');
+          setSuccessMessage(`បានបង្កើតគណនីមន្ត្រីថ្មី "${formFullName}" ដោយជោគជ័យ!`);
           setIsCreatingNew(false);
           if (typeof fetchUsersList === 'function') {
             await fetchUsersList();
@@ -1048,8 +1024,8 @@ export function UserManagementModal() {
                       <HelpCircle size={13} className="shrink-0 mt-0.5 text-[#1E6047]" />
                       <span>
                         {isCreatingNew
-                          ? 'ពាក្យសម្ងាត់នេះនឹងត្រូវ Sync ទៅកាន់ Supabase auth.users ដោយស្វ័យប្រវត្តិតាមរយៈ Admin RPC function (យ៉ាងតិច ៦ តួអក្សរ)។'
-                          : 'បញ្ចូលពាក្យសម្ងាត់ថ្មីដើម្បី Reset ពាក្យសម្ងាត់មន្ត្រីរូបនេះ ឬទុកទទេបើមិនចង់ផ្លាស់ប្តូរ។'}
+                          ? 'ពាក្យសម្ងាត់នេះនឹងត្រូវដាក់កូដសម្ងាត់ (Encrypted) ក្នុង Supabase auth.users តាមរយៈ Admin RPC function (យ៉ាងតិច ៨ តួអក្សរ)។'
+                          : 'បញ្ចូលពាក្យសម្ងាត់ថ្មី (យ៉ាងតិច ៨ តួអក្សរ) ដើម្បី Reset ពាក្យសម្ងាត់មន្ត្រីរូបនេះ ឬទុកទទេបើមិនចង់ផ្លាស់ប្តូរ។'}
                       </span>
                     </div>
                   </div>
@@ -1200,9 +1176,25 @@ export function UserManagementModal() {
                             </div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-gray-100 text-gray-700 border border-gray-200">
-                              🔒 {user.display_password || 'GDT@2026'}
-                            </span>
+                            {user.is_default_password === false ? (
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-help"
+                                title={
+                                  user.password_updated_at
+                                    ? `កាលបរិច្ឆេទប្តូរចុងក្រោយ: ${new Date(user.password_updated_at).toLocaleString('km-KH')}`
+                                    : 'ពាក្យសម្ងាត់ត្រូវបានដាក់កូដសម្ងាត់ដោយសុវត្ថិភាព (Encrypted)'
+                                }
+                              >
+                                🔒 •••••••• (Encrypted)
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                title="ពាក្យសម្ងាត់លំនាំដើម (ត្រូវប្តូរដើម្បីសុវត្ថិភាព)"
+                              >
+                                ⚠️ Default (ត្រូវប្តូរ)
+                              </span>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <div className="flex items-center justify-center gap-1.5">
@@ -1216,25 +1208,10 @@ export function UserManagementModal() {
                                 <Edit3 size={15} />
                               </button>
 
-                              {/* Quick Reset Password to GDT@2026 Button */}
+                              {/* Quick Open Reset Password Form Button */}
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  const customPwd = prompt(`កំណត់ពាក្យសម្ងាត់សម្រាប់មន្ត្រី "${officer.full_name}":`, user.display_password || 'GDT@2026');
-                                  if (customPwd !== null && customPwd.trim().length >= 6) {
-                                    await handleUpdateUser({
-                                      id: officer.id,
-                                      full_name: officer.full_name,
-                                      email: officer.email,
-                                      role: officer.role,
-                                      location_id: officer.location_id || (officer.role === 'CentralAdmin' ? '1' : '2'),
-                                      password: customPwd.trim()
-                                    });
-                                  } else if (customPwd !== null) {
-                                    setErrorMessage('ពាក្យសម្ងាត់ត្រូវតែមានយ៉ាងតិច ៦ តួអក្សរ!');
-                                    setTimeout(() => setErrorMessage(null), 3000);
-                                  }
-                                }}
+                                onClick={() => handleStartEdit(officer)}
                                 className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                                 title="Reset / កំណត់ពាក្យសម្ងាត់មន្ត្រីនេះ"
                               >

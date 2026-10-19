@@ -63,4 +63,6 @@ export interface UserProfile {
   updated_at?: string;
   password?: string;
   display_password?: string;
+  is_default_password?: boolean;
+  password_updated_at?: string | null;
 }
