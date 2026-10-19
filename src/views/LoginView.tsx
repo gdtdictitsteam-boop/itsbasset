@@ -163,30 +163,6 @@ export function LoginView({
         {/* Form Content Body */}
         <div className="p-6 sm:p-8 space-y-6">
           
-          {/* Status Banner */}
-          <div className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs ${
-            isConfigured 
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-              : 'bg-amber-50 border-amber-200 text-amber-950'
-          }`}>
-            <Database size={16} className={`shrink-0 mt-0.5 ${isConfigured ? 'text-emerald-700' : 'text-amber-700'}`} />
-            <div>
-              <div className="font-bold flex items-center gap-1.5">
-                <span>Supabase DB:</span>
-                <span className={`px-2 py-0.2 rounded text-[10px] uppercase font-extrabold ${
-                  isConfigured ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'
-                }`}>
-                  {isConfigured ? 'បានតភ្ជាប់' : 'Demo Auth Mode'}
-                </span>
-              </div>
-              <p className="opacity-80 mt-0.5 text-[11px]">
-                {isConfigured 
-                  ? 'ប្រព័ន្ធត្រូវបានតភ្ជាប់ជាមួយ Supabase Database (user_profiles)' 
-                  : 'ពុំទាន់មាន .env key - អាចជ្រើសរើស Quick Demo Role ខាងក្រោមដើម្បីសាកល្បង RBAC'}
-              </p>
-            </div>
-          </div>
-
           {/* Error Message Alert */}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm flex items-center gap-2">
