@@ -973,13 +973,12 @@ export function UserManagementModal() {
                     <th className="py-2.5 px-3 text-center">តួនាទី (Role)</th>
                     <th className="py-2.5 px-3">សាខាប្រចាំការ</th>
                     <th className="py-2.5 px-3 text-center whitespace-nowrap">Password</th>
-                    <th className="py-2.5 px-3 text-center whitespace-nowrap">សកម្មភាព</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-slate-400">
+                      <td colSpan={6} className="text-center py-8 text-slate-400">
                         មិនមានទិន្នន័យមន្ត្រីស្របតាមការស្វែងរកឡើយ
                       </td>
                     </tr>
@@ -1042,9 +1041,14 @@ export function UserManagementModal() {
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap text-sm text-center">
                             <div className="flex flex-col items-center justify-center gap-1">
-                              <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              <button
+                                type="button"
+                                onClick={() => handleEditUser(user, true)}
+                                className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 cursor-pointer hover:opacity-80 transition"
+                                title="ចុចដើម្បីកែប្រែព័ត៌មាន ឬប្តូរពាក្យសម្ងាត់"
+                              >
                                 {user.password || 'GDT@2026'}
-                              </span>
+                              </button>
                               {user.is_default_password === false || (user.password && user.password !== 'GDT@2026') ? (
                                 <button
                                   type="button"
@@ -1052,8 +1056,8 @@ export function UserManagementModal() {
                                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer hover:opacity-80 transition"
                                   title={
                                     user.password_updated_at
-                                      ? `កាលបរិច្ឆេទប្តូរចុងក្រោយ: ${new Date(user.password_updated_at).toLocaleString('km-KH')} (ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី)`
-                                      : 'ចុចដើម្បីកំណត់ពាក្យសម្ងាត់ថ្មី'
+                                      ? `កាលបរិច្ឆេទប្តូរចុងក្រោយ: ${new Date(user.password_updated_at).toLocaleString('km-KH')} (ចុចដើម្បីកែប្រែព័ត៌មាន ឬប្តូរពាក្យសម្ងាត់)`
+                                      : 'ចុចដើម្បីកែប្រែព័ត៌មាន ឬប្តូរពាក្យសម្ងាត់'
                                   }
                                 >
                                   🔒 Encrypted
@@ -1063,46 +1067,11 @@ export function UserManagementModal() {
                                   type="button"
                                   onClick={() => handleEditUser(user, true)}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 cursor-pointer hover:opacity-80 transition"
-                                  title="ពាក្យសម្ងាត់លំនាំដើម (ចុចដើម្បីប្តូរពាក្យសម្ងាត់ថ្មី)"
+                                  title="ចុចដើម្បីកែប្រែព័ត៌មាន ឬប្តូរពាក្យសម្ងាត់"
                                 >
                                   ⚠️ Default (ត្រូវប្តូរ)
                                 </button>
                               )}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
-                              {/* Edit Button (✏️ កែប្រែ) */}
-                              <button
-                                type="button"
-                                onClick={() => handleEditUser(officer)}
-                                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                                title="កែប្រែព័ត៌មានមន្ត្រី និងកំណត់ពាក្យសម្ងាត់ថ្មី (Edit)"
-                              >
-                                <span>✏️</span>
-                                <span>កែប្រែ</span>
-                              </button>
-
-                              {/* Quick Switch / Simulate Account Button */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (typeof switchActiveUser === 'function') {
-                                    switchActiveUser(officer.id);
-                                    setSuccessMessage(`បានប្តូរទៅប្រើគណនី "${officer.full_name}" (${officer.role})!`);
-                                    setTimeout(() => setSuccessMessage(null), 3500);
-                                  }
-                                }}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0 border ${
-                                  isCurrentActive 
-                                    ? 'text-emerald-700 bg-emerald-100/60 border-emerald-300' 
-                                    : 'text-slate-600 bg-slate-50 hover:text-blue-700 hover:bg-blue-50 border-slate-200'
-                                }`}
-                                title="សាកល្បងសិទ្ធិប្រើប្រាស់ជាគណនីនេះ (Simulate/Switch)"
-                              >
-                                <ArrowRightLeft size={13} />
-                                <span className="text-[11px]">ប្តូរប្រើ</span>
-                              </button>
                             </div>
                           </td>
                         </tr>
