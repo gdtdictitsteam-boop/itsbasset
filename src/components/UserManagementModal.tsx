@@ -638,17 +638,6 @@ export function UserManagementModal() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Button to view Supabase Auth SQL script */}
-            <button
-              type="button"
-              onClick={() => setShowSqlModal(true)}
-              className="px-3 py-1.5 bg-[#A3D8C2]/20 hover:bg-[#A3D8C2]/35 text-[#A3D8C2] rounded-xl text-xs font-bold transition-all border border-[#A3D8C2]/30 flex items-center gap-1.5 cursor-pointer"
-              title="មើលកូដ SQL សម្រាប់ Run ក្នុង Supabase Auth"
-            >
-              <Database size={14} />
-              <span className="hidden sm:inline">កូដ SQL Supabase Auth</span>
-            </button>
-
             <button
               type="button"
               onClick={handleClose}
@@ -872,22 +861,6 @@ export function UserManagementModal() {
                         >
                           <Sparkles size={11} className="text-amber-600" />
                           <span>បង្កើតថ្មី</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const pwd = formPassword.trim() || 'GDT@2026';
-                            const locCode = safeBranches.find(l => l.id === formLocationId)?.code || 'HQ-ITSB';
-                            const sql = `-- Run this in Supabase SQL Editor to set password for ${formEmail.trim() || 'officer'}:\nSELECT public.create_or_update_gdt_user(\n  '${formEmail.trim()}',\n  '${pwd}',\n  '${formFullName.trim()}',\n  '${formRole}',\n  '${locCode}'\n);`;
-                            navigator.clipboard.writeText(sql);
-                            setCopiedOfficerSql(true);
-                            setTimeout(() => setCopiedOfficerSql(false), 2500);
-                          }}
-                          className="text-[11px] text-[#03291E] font-bold hover:bg-white bg-white/70 px-2 py-1 rounded-lg cursor-pointer transition-colors border border-slate-300 flex items-center gap-1"
-                          title="ចម្លង SQL Script សម្រាប់យកទៅ Run ក្នុង Supabase SQL Editor"
-                        >
-                          {copiedOfficerSql ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} className="text-slate-600" />}
-                          <span>{copiedOfficerSql ? 'បានចម្លង SQL!' : 'Copy SQL'}</span>
                         </button>
                       </div>
                     </div>
@@ -1151,14 +1124,6 @@ export function UserManagementModal() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setShowSqlModal(true)}
-              className="px-3 py-1.5 bg-[#1E6047] hover:bg-[#03291E] text-white font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <Database size={13} />
-              <span>កូដ SQL Supabase</span>
-            </button>
-            <button
-              type="button"
               onClick={handleClose}
               className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-colors cursor-pointer"
             >
@@ -1167,88 +1132,6 @@ export function UserManagementModal() {
           </div>
         </div>
       </div>
-
-      {/* SQL Script Viewer Modal */}
-      {showSqlModal && (
-        <div 
-          className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-6 bg-slate-950/75 backdrop-blur-xs font-siemreap animate-in fade-in"
-          onClick={() => setShowSqlModal(false)}
-        >
-          <div 
-            className="bg-white rounded-2xl border border-slate-300 shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="bg-[#03291E] text-white px-6 py-4 flex items-center justify-between border-b border-[#1E6047]">
-              <div className="flex items-center space-x-2.5">
-                <div className="p-2 bg-emerald-500/20 text-emerald-300 rounded-lg">
-                  <Database size={18} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm sm:text-base text-white">
-                    កូដ SQL បង្កើត User & Password ក្នុង Supabase Auth
-                  </h4>
-                  <p className="text-[11px] text-[#A3D8C2]">
-                    ដំណើរការ script នេះក្នុង Supabase SQL Editor ដើម្បីបង្កើត User ក្នុង auth.users ជាមួយ Default Password: GDT@2026
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSqlModal(false)}
-                className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Steps & Guidance */}
-            <div className="bg-emerald-50/80 px-6 py-3 border-b border-emerald-200 text-xs text-[#1E6047] space-y-1">
-              <div className="font-bold flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-emerald-600" />
-                <span>របៀបអនុវត្តក្នុង Supabase (Quick Steps)៖</span>
-              </div>
-              <ol className="list-decimal list-inside space-y-0.5 text-[11px] text-slate-700 font-medium">
-                <li>ចុចប៊ូតុង <strong>"ចម្លងកូដ SQL (Copy Code)"</strong> ខាងក្រោម</li>
-                <li>ចូលទៅកាន់គណនី Supabase របស់អ្នក → បើកមីនុយ <strong>SQL Editor</strong></li>
-                <li>បិទភ្ជាប់ (Paste) កូដ SQL នេះចូល រួចចុច <strong>RUN</strong></li>
-                <li>គណនីមន្ត្រីទាំងអស់នឹងត្រូវបង្កើតក្នុង auth.users រួចរាល់សម្រាប់យកទៅ Login ជាមួយ Password <strong>GDT@2026</strong>!</li>
-              </ol>
-            </div>
-
-            {/* SQL Code Block */}
-            <div className="p-4 bg-[#0F172A] flex-1 overflow-auto max-h-[460px]">
-              <pre className="text-xs font-mono text-[#7DD3FC] leading-relaxed whitespace-pre-wrap selection:bg-emerald-700 selection:text-white">
-                <code>{SUPABASE_AUTH_USERS_SQL}</code>
-              </pre>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-[11px] text-slate-500 font-mono">
-                supabase_auth_users_seed.sql
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCopySql}
-                  className="flex items-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  {copiedSql ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
-                  <span>{copiedSql ? 'បានចម្លងរួចរាល់! (Copied)' : 'ចម្លងកូដ SQL (Copy Code)'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSqlModal(false)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                >
-                  បិទ
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
