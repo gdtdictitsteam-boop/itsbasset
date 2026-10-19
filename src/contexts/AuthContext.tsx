@@ -101,6 +101,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   signInDemo: (email?: string, role?: string, branchId?: string) => void;
   verifyUserRoleDirectly: () => Promise<void>;
+  setUser: (userObj: any) => void;
+  onLoginSuccess: (userObj: any) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -320,7 +322,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (targetId) {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('id, email, full_name, role, location_id')
+          .select('*')
           .eq('id', targetId)
           .maybeSingle();
 
@@ -333,8 +335,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!matchedDb && targetEmail) {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('id, email, full_name, role, location_id')
-          .ilike('email', targetEmail.trim())
+          .select('*')
+          .eq('email', targetEmail.trim().toLowerCase())
           .maybeSingle();
 
         if (!error && data) {
@@ -392,33 +394,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Fetch authoritative role directly from user_profiles table in Supabase
         const email = currentSession.user.email || '';
-        let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
-        let verifiedName = currentSession.user.user_metadata?.full_name || email.split('@')[0];
+        let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'CentralAdmin';
+        let verifiedName = currentSession.user.user_metadata?.full_name || 'រដ្ឋបាល បុគ្គលិក';
         let verifiedLoc = currentSession.user.user_metadata?.location_id || '1';
 
         try {
           const { data: dbUser } = await supabase
             .from('user_profiles')
-            .select('id, email, full_name, role, location_id')
+            .select('*')
             .eq('id', currentSession.user.id)
             .maybeSingle();
 
           if (dbUser) {
-            verifiedRole = (dbUser.role === 'CentralAdmin' || dbUser.role === 'Admin-GDT') ? 'CentralAdmin' : 'BranchUser';
+            verifiedRole = dbUser.role === 'BranchUser' ? 'BranchUser' : 'CentralAdmin';
             verifiedName = dbUser.full_name || verifiedName;
-            verifiedLoc = dbUser.location_id || verifiedLoc;
+            verifiedLoc = dbUser.location_id || dbUser.branch_name || dbUser.branch || verifiedLoc;
             setDbVerifiedProfile(dbUser as UserProfile);
           } else {
             // Check by email
             const { data: dbEmailUser } = await supabase
               .from('user_profiles')
-              .select('id, email, full_name, role, location_id')
-              .ilike('email', email)
+              .select('*')
+              .eq('email', email.trim().toLowerCase())
               .maybeSingle();
             if (dbEmailUser) {
-              verifiedRole = (dbEmailUser.role === 'CentralAdmin' || dbEmailUser.role === 'Admin-GDT') ? 'CentralAdmin' : 'BranchUser';
+              verifiedRole = dbEmailUser.role === 'BranchUser' ? 'BranchUser' : 'CentralAdmin';
               verifiedName = dbEmailUser.full_name || verifiedName;
-              verifiedLoc = dbEmailUser.location_id || verifiedLoc;
+              verifiedLoc = dbEmailUser.location_id || dbEmailUser.branch_name || dbEmailUser.branch || verifiedLoc;
               setDbVerifiedProfile(dbEmailUser as UserProfile);
             }
           }
@@ -431,7 +433,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email,
           role: verifiedRole,
           name: verifiedName,
-          locationId: verifiedLoc,
+          locationId: String(verifiedLoc || '1'),
           authType: 'supabase',
           timestamp: Date.now()
         };
@@ -468,13 +470,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
 
-      // Only purge credentials on explicit SIGNED_OUT event!
       if (event === 'SIGNED_OUT') {
         setSession(null);
-        setUser(null);
-        setPersistedSession(null);
-        setDbVerifiedProfile(null);
-        clearPersistedSession();
         setLoading(false);
         return;
       }
@@ -485,30 +482,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(newSession.user);
           const email = newSession.user.email || '';
           
-          let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'BranchUser';
-          let verifiedName = newSession.user.user_metadata?.full_name || email.split('@')[0];
+          let verifiedRole: 'CentralAdmin' | 'BranchUser' = 'CentralAdmin';
+          let verifiedName = newSession.user.user_metadata?.full_name || 'រដ្ឋបាល បុគ្គលិក';
           let verifiedLoc = newSession.user.user_metadata?.location_id || '1';
 
           try {
             let { data: dbUser } = await supabase
               .from('user_profiles')
-              .select('id, email, full_name, role, location_id, is_default_password, password_updated_at')
+              .select('*')
               .eq('id', newSession.user.id)
               .maybeSingle();
 
             if (!dbUser && email) {
               const { data: dbEmailUser } = await supabase
                 .from('user_profiles')
-                .select('id, email, full_name, role, location_id, is_default_password, password_updated_at')
-                .ilike('email', email.trim())
+                .select('*')
+                .eq('email', email.trim().toLowerCase())
                 .maybeSingle();
               dbUser = dbEmailUser;
             }
 
             if (dbUser) {
-              verifiedRole = (dbUser.role === 'CentralAdmin' || dbUser.role === 'Admin-GDT') ? 'CentralAdmin' : 'BranchUser';
+              verifiedRole = dbUser.role === 'BranchUser' ? 'BranchUser' : 'CentralAdmin';
               verifiedName = dbUser.full_name || verifiedName;
-              verifiedLoc = dbUser.location_id || verifiedLoc;
+              verifiedLoc = dbUser.location_id || dbUser.branch_name || dbUser.branch || verifiedLoc;
               setDbVerifiedProfile(dbUser as UserProfile);
             }
           } catch (dbErr) {
@@ -520,7 +517,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email,
             role: verifiedRole,
             name: verifiedName,
-            locationId: verifiedLoc,
+            locationId: String(verifiedLoc || '1'),
             authType: 'supabase',
             timestamp: Date.now()
           };
@@ -920,6 +917,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Direct login state handler for LoginView (onLoginSuccess / setUser)
+  const onLoginSuccess = useCallback((finalUser: any) => {
+    if (!finalUser) {
+      setUser(null);
+      setPersistedSession(null);
+      setDbVerifiedProfile(null);
+      clearPersistedSession();
+      return;
+    }
+
+    const rawRole = finalUser.role || finalUser.user_metadata?.role || 'CentralAdmin';
+    const effectiveRole: 'CentralAdmin' | 'BranchUser' =
+      rawRole === 'BranchUser' ? 'BranchUser' : 'CentralAdmin';
+    const effectiveEmail = (finalUser.email || '').trim().toLowerCase();
+    const effectiveName =
+      finalUser.full_name ||
+      finalUser.user_metadata?.full_name ||
+      effectiveEmail.split('@')[0] ||
+      'មន្ត្រីរដ្ឋបាល';
+    const effectiveLoc =
+      finalUser.location_id ||
+      finalUser.branch_name ||
+      finalUser.branch ||
+      (effectiveRole === 'CentralAdmin' ? '1' : '2');
+
+    const sessRecord: PersistedSession = {
+      id: finalUser.id || 'user-' + Date.now(),
+      email: effectiveEmail,
+      role: effectiveRole,
+      name: effectiveName,
+      locationId: String(effectiveLoc),
+      authType: 'supabase',
+      timestamp: Date.now(),
+    };
+
+    const profileRecord: UserProfile = {
+      id: sessRecord.id,
+      email: effectiveEmail,
+      full_name: effectiveName,
+      role: effectiveRole,
+      location_id: String(effectiveLoc),
+      branch_name: finalUser.branch_name || finalUser.branch,
+      branch: finalUser.branch || finalUser.branch_name,
+      is_default_password: finalUser.is_default_password,
+      password_updated_at: finalUser.password_updated_at,
+    };
+
+    setDbVerifiedProfile(profileRecord);
+    setPersistedSession(sessRecord);
+    savePersistedSession(sessRecord);
+    setUser({
+      id: sessRecord.id,
+      email: sessRecord.email,
+      user_metadata: {
+        full_name: sessRecord.name,
+        role: sessRecord.role,
+        location_id: sessRecord.locationId,
+        branch_name: profileRecord.branch_name,
+      },
+      app_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    } as User);
+
+    fetchUsersList();
+  }, [fetchUsersList]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -944,6 +1008,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signOut,
         signInDemo,
         verifyUserRoleDirectly,
+        setUser: onLoginSuccess,
+        onLoginSuccess,
       }}
     >
       {children}

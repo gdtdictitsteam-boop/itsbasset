@@ -441,32 +441,30 @@ export function UserManagementModal() {
     setFormPassword(`GDT@${rand}`);
   };
 
-  // Helper to invoke admin_manage_officer RPC with automatic parameter signature adaptation
+  // Helper to invoke admin_manage_officer RPC
   const invokeAdminManageOfficerRpc = async (params: {
     targetId?: string;
     targetEmail: string;
     fullName: string;
     role: 'CentralAdmin' | 'BranchUser';
+    branchName: string;
     locationId: string;
-    rawLocationId: string;
     newPassword: string | null;
     callerAdminEmail: string;
   }) => {
-    const isUuidLoc = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.locationId);
-
-    // 1. Primary RPC call matching admin_manage_officer signature
+    // 1. Primary RPC call matching the exact admin_manage_officer signature
     const primaryPayload: Record<string, any> = {
-      target_email: params.targetEmail,
+      target_user_id: params.targetId || null,
+      new_email: params.targetEmail,
       new_full_name: params.fullName,
       new_role: params.role,
-      new_location_id: params.locationId,
+      new_branch: params.branchName || '',
       new_password: params.newPassword,
-      caller_admin_email: params.callerAdminEmail,
     };
 
     let { data: res, error: rpcErr } = await supabase.rpc('admin_manage_officer', primaryPayload);
 
-    // 2. If PostgREST reports PGRST202 (parameter name mismatch), dynamically adapt from hint or try known signatures
+    // 2. If PostgREST reports PGRST202 (parameter name mismatch), dynamically adapt from hint
     if (rpcErr && (rpcErr.code === 'PGRST202' || rpcErr.message?.includes('Could not find the function'))) {
       const hintText = `${rpcErr.hint || ''} ${rpcErr.message || ''} ${rpcErr.details || ''}`;
       const match = hintText.match(/admin_manage_officer\(([^)]*)\)/i);
@@ -489,7 +487,9 @@ export function UserManagementModal() {
               dynamicPayload[pName] = params.fullName;
             } else if (lower.includes('role')) {
               dynamicPayload[pName] = params.role;
-            } else if (lower.includes('loc') || lower.includes('branch')) {
+            } else if (lower.includes('branch')) {
+              dynamicPayload[pName] = params.branchName || '';
+            } else if (lower.includes('loc')) {
               dynamicPayload[pName] = params.locationId;
             } else if (lower.includes('pass') || lower.includes('pwd')) {
               dynamicPayload[pName] = params.newPassword;
@@ -502,71 +502,6 @@ export function UserManagementModal() {
           rpcErr = retryHint.error;
         }
       }
-
-      // Fallback candidate signatures if still PGRST202
-      const fallbackPayloads: Array<Record<string, any>> = [
-        {
-          target_email: params.targetEmail,
-          full_name: params.fullName,
-          role: params.role,
-          location_id: params.locationId,
-          new_password: params.newPassword,
-          caller_admin_email: params.callerAdminEmail,
-        },
-        {
-          target_email: params.targetEmail,
-          new_full_name: params.fullName,
-          new_role: params.role,
-          new_password: params.newPassword,
-          caller_admin_email: params.callerAdminEmail,
-        },
-        {
-          p_email: params.targetEmail,
-          p_full_name: params.fullName,
-          p_role: params.role,
-          p_location_id: params.locationId,
-          p_password: params.newPassword,
-          caller_admin_email: params.callerAdminEmail,
-        },
-      ];
-
-      for (const candidate of fallbackPayloads) {
-        if (!rpcErr || (rpcErr.code !== 'PGRST202' && !rpcErr.message?.includes('Could not find the function'))) {
-          break;
-        }
-        const retryRes = await supabase.rpc('admin_manage_officer', candidate);
-        res = retryRes.data;
-        rpcErr = retryRes.error;
-      }
-    }
-
-    // 3. If error due to non-UUID location_id in a UUID parameter, resolve from locations table or pass null
-    if (rpcErr && rpcErr.message?.toLowerCase().includes('uuid') && !isUuidLoc) {
-      let resolvedUuid: string | null = null;
-      const { data: locRows } = await supabase.from('locations').select('id, code, type');
-      if (locRows && locRows.length > 0) {
-        const codeMap: Record<string, string> = {
-          '1': 'HQ-ITSB',
-          '2': '7MK',
-          '3': 'CKM',
-          '4': 'DKO',
-          '5': 'DPE',
-          '6': 'TKO',
-          '24': 'KPC',
-        };
-        const targetCode = codeMap[params.rawLocationId] || params.rawLocationId;
-        const foundLoc =
-          locRows.find((l: any) => l.id === params.rawLocationId || l.code === targetCode) ||
-          (params.role === 'CentralAdmin' ? locRows.find((l: any) => l.type === 'HQ' || l.code === 'HQ-ITSB') : locRows[0]);
-        resolvedUuid = foundLoc?.id || null;
-      }
-
-      const retryUuid = await supabase.rpc('admin_manage_officer', {
-        ...primaryPayload,
-        new_location_id: resolvedUuid,
-      });
-      res = retryUuid.data;
-      rpcErr = retryUuid.error;
     }
 
     return { data: res, error: rpcErr };
@@ -627,7 +562,11 @@ export function UserManagementModal() {
           : null);
 
       const targetBranchId = matchedBranch?.id || formLocationId;
-      const targetEmail = (editingUser ? editingUser.email : formEmail).trim().toLowerCase();
+      const resolvedBranchName = matchedBranch
+        ? formatLocationOption(matchedBranch, 'kh')
+        : editingUser?.branch_name || editingUser?.branch || getLocationLabel(formLocationId) || '';
+
+      const targetEmail = formEmail.trim().toLowerCase();
       const callerAdminEmail =
         currentUser?.email || userProfile?.email || 'gdt.dict.its.team@gmail.com';
       const nowIso = new Date().toISOString();
@@ -639,38 +578,31 @@ export function UserManagementModal() {
           targetEmail,
           fullName: formFullName.trim(),
           role: formRole,
+          branchName: resolvedBranchName,
           locationId: targetBranchId,
-          rawLocationId: formLocationId,
           newPassword: hasNewPassword ? trimmedPassword : null,
           callerAdminEmail,
         });
 
-        if (rpcErr || (res && res.success === false)) {
+        if (rpcErr || (res && !res.success)) {
           const errMsg = rpcErr?.message || res?.message || 'មិនអាចរក្សាទុកទិន្នន័យបានទេ';
           alert('កំហុស៖ ' + errMsg);
           setErrorMessage('កំហុស៖ ' + errMsg);
+          setIsSaving(false);
           return;
         }
 
-        alert(res?.message || 'បានរក្សាទុកទិន្នន័យមន្ត្រី និងធ្វើសមកាលកម្មចូល Supabase ជោគជ័យ!');
+        alert('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់មន្ត្រីដោយជោគជ័យ!');
       }
 
-      if (isCreatingNew && typeof createUserProfile === 'function') {
-        const finalPwd = trimmedPassword || 'GDT@2026';
-        await createUserProfile({
+      if (editingUser && typeof updateUserProfile === 'function') {
+        await updateUserProfile(editingUser.id, {
           full_name: formFullName.trim(),
           email: targetEmail,
           role: formRole,
           location_id: targetBranchId,
-          is_default_password: finalPwd === 'GDT@2026',
-          password_updated_at: nowIso,
-        });
-      } else if (editingUser && typeof updateUserProfile === 'function') {
-        await updateUserProfile(editingUser.id, {
-          full_name: formFullName.trim(),
-          email: formEmail.trim().toLowerCase(),
-          role: formRole,
-          location_id: targetBranchId,
+          branch_name: resolvedBranchName,
+          branch: resolvedBranchName,
           ...(hasNewPassword && typeof isDefaultPwd === 'boolean'
             ? {
                 is_default_password: isDefaultPwd,
@@ -680,20 +612,16 @@ export function UserManagementModal() {
         });
       }
 
-      // Clear password field, refresh officer list from Supabase, and close edit form
       setFormPassword('');
+      setEditingUser(null);
+      setIsCreatingNew(false);
       if (typeof fetchUsersList === 'function') {
         await fetchUsersList();
       }
-      setEditingUser(null);
-      setIsCreatingNew(false);
-      setSuccessMessage(
-        hasNewPassword
-          ? 'បានកែប្រែព័ត៌មាន និងកំណត់ពាក្យសម្ងាត់ថ្មីជោគជ័យ!'
-          : `បានកែប្រែ និងរក្សាទុកទិន្នន័យមន្ត្រី "${formFullName.trim()}" ជោគជ័យ!`
-      );
+      setSuccessMessage('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់មន្ត្រីដោយជោគជ័យ!');
     } catch (err: any) {
-      alert('កំហុស៖ ' + (err?.message || 'ប្រតិបត្តិការបរាជ័យ'));
+      console.error('Save error:', err);
+      alert('មានបញ្ហាក្នុងការរក្សាទុកទិន្នន័យ៖ ' + (err.message || err));
       setErrorMessage(err?.message || 'ប្រតិបត្តិការបរាជ័យ');
     } finally {
       setIsSaving(false);

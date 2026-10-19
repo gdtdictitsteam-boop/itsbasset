@@ -101,6 +101,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     if (!userLocationId) {
       return locationsList.find(l => l.code === '7MK') || locationsList[1] || null;
     }
+    const locStr = String(userLocationId).trim();
     // Handle numeric legacy IDs or codes or UUIDs
     const codeMap: Record<string, string> = {
       '1': 'HQ-ITSB',
@@ -111,14 +112,15 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       '6': 'TKO',
       '24': 'KPC'
     };
-    const targetCode = codeMap[userLocationId] || userLocationId;
+    const targetCode = String(codeMap[locStr] || locStr);
 
     return locationsList.find(l => 
-      l.id === userLocationId || 
-      l.code === userLocationId ||
-      l.code === targetCode ||
-      l.name_kh.includes(targetCode) ||
-      (l.code && targetCode.toUpperCase() === l.code.toUpperCase())
+      String(l.id) === locStr || 
+      String(l.code) === locStr ||
+      String(l.code) === targetCode ||
+      (l.name_kh && l.name_kh.includes(targetCode)) ||
+      (l.code && targetCode.toUpperCase().includes(String(l.code).toUpperCase())) ||
+      (l.code && String(l.code).toUpperCase() === targetCode.toUpperCase())
     ) || locationsList.find(l => l.code === '7MK') || locationsList[1] || null;
   }, [userLocationId, locationsList]);
 
@@ -149,12 +151,12 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Determine current active Location object
-  const currentEffectiveId = isBranchUser && assignedBranchLocation ? assignedBranchLocation.id : selectedLocationId;
+  const currentEffectiveId = String((isBranchUser && assignedBranchLocation ? assignedBranchLocation.id : selectedLocationId) || 'ALL');
 
   const selectedLocation = locations.find(l => 
-    l.id === currentEffectiveId || 
-    l.code === currentEffectiveId ||
-    (l.code && currentEffectiveId.includes(l.code))
+    String(l.id) === currentEffectiveId || 
+    String(l.code) === currentEffectiveId ||
+    (l.code && currentEffectiveId.includes(String(l.code)))
   ) || (isBranchUser && assignedBranchLocation ? assignedBranchLocation : ALL_LOCATIONS_OPTION);
 
   return (

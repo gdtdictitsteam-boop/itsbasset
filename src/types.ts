@@ -59,6 +59,8 @@ export interface UserProfile {
   full_name: string;
   role: 'CentralAdmin' | 'BranchUser';
   location_id: string | null;
+  branch_name?: string;
+  branch?: string;
   created_at?: string;
   updated_at?: string;
   password?: string;
@@ -66,3 +68,4 @@ export interface UserProfile {
   is_default_password?: boolean;
   password_updated_at?: string | null;
 }
+
