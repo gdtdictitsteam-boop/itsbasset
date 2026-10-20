@@ -20,6 +20,7 @@ import { HandoverView } from './views/HandoverView';
 import { AuditTrailView } from './views/AuditTrailView';
 import { NewItemView } from './views/NewItemView';
 import { AdjustmentView } from './views/AdjustmentView';
+import { ExecutiveReportView } from './views/ExecutiveReportView';
 import { useLanguage } from './contexts/LanguageContext';
 
 function MainLayout() {
@@ -33,19 +34,21 @@ function MainLayout() {
       setCurrentView('dashboard');
       return;
     }
-    if (isBranchUser && !['dashboard', 'inventory', 'stockOut', 'adjustment', 'auditTrail'].includes(currentView)) {
+    if (isBranchUser && !['dashboard', 'inventory', 'executiveReport', 'stockOut', 'adjustment', 'auditTrail'].includes(currentView)) {
       setCurrentView('dashboard');
     }
   }, [isBranchUser, currentView]);
 
   const renderView = () => {
-    // If BranchUser, allow the 5 permitted views (dashboard & inventory locked to assigned branch)
+    // If BranchUser, allow the permitted views (dashboard, inventory & executiveReport locked to assigned branch)
     if (isBranchUser) {
       switch (currentView) {
         case 'dashboard':
           return <DashboardView />;
         case 'inventory':
           return <InventoryView />;
+        case 'executiveReport':
+          return <ExecutiveReportView />;
         case 'stockOut':
           return <StockOutView />;
         case 'adjustment':
@@ -63,6 +66,8 @@ function MainLayout() {
         return <DashboardView />;
       case 'inventory':
         return <InventoryView />;
+      case 'executiveReport':
+        return <ExecutiveReportView />;
       case 'stockIn':
         return (
           <ProtectedRoute allowedRoles={['CentralAdmin', 'Admin-GDT']}>
@@ -89,21 +94,27 @@ function MainLayout() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#EBF4F0] text-[#0B3C2D] overflow-hidden font-siemreap">
-      <Header />
+    <div className="flex flex-col h-screen bg-[#EBF4F0] text-[#0B3C2D] overflow-hidden font-siemreap app-shell">
+      <div className="no-print">
+        <Header />
+      </div>
       
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+        <div className="no-print flex">
+          <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+        </div>
         
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 -ml-5 mr-0 -mt-[11px] bg-[#F4F7F6]">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 -ml-5 mr-0 -mt-[11px] bg-[#F4F7F6] print-main-container">
           {renderView()}
         </main>
       </div>
 
       {/* User Management & RBAC Modal for CentralAdmin */}
-      <UserManagementModal />
+      <div className="no-print">
+        <UserManagementModal />
+      </div>
 
-      <footer className="bg-[#D2EADF] border-t border-[#B8DEC8] py-2.5 px-6 flex justify-between items-center text-[11px] font-semibold text-[#124D3A] shrink-0">
+      <footer className="no-print bg-[#D2EADF] border-t border-[#B8DEC8] py-2.5 px-6 flex justify-between items-center text-[11px] font-semibold text-[#124D3A] shrink-0">
         <div className="flex items-center space-x-4">
           <span>Version 2.4.0-stable</span>
           <span className="text-[#8BCAAD]">|</span>

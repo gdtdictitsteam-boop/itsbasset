@@ -12,7 +12,8 @@ import {
   MinusCircle, 
   SlidersHorizontal,
   History,
-  MapPin
+  MapPin,
+  FileBarChart2
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -43,6 +44,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
       items: [
         { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
         { id: 'inventory', icon: Package, label: t.inventory },
+        { id: 'executiveReport', icon: FileBarChart2, label: language === 'kh' ? 'របាយការណ៍រួម (Reports)' : 'Executive Report' },
       ]
     },
     {
@@ -68,18 +70,14 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
     }
   ];
 
-  // For BranchUser: Full access to Dashboard and Inventory (locked to branch), plus branch operations:
-  // 1. "ផ្ទាំងគ្រប់គ្រង (Dashboard)"
-  // 2. "ស្តុកបច្ចុប្បន្ន (Inventory)"
-  // 3. "ដកប្រើប្រាស់ (Stock Out)"
-  // 4. "កែតម្រូវស្តុក (Adjustment)"
-  // 5. "ប្រវត្តិសវនកម្ម (Audit Trail)"
+  // For BranchUser: Full access to Dashboard, Inventory, Executive Report (locked to branch), plus branch operations:
   const branchUserMenuGroups: MenuGroup[] = [
     {
       title: language === 'kh' ? 'ព័ត៌មានទូទៅ' : 'General Info',
       items: [
         { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
         { id: 'inventory', icon: Package, label: t.inventory },
+        { id: 'executiveReport', icon: FileBarChart2, label: language === 'kh' ? 'របាយការណ៍រួម (Reports)' : 'Executive Report' },
       ]
     },
     {
