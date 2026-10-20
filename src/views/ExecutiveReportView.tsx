@@ -19,14 +19,48 @@ import {
   SlidersHorizontal,
   Search,
   Building2,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   Layers,
-  ListChecks,
-  Grid3X3
+  Grid3X3,
+  Wrench,
+  PackageOpen
 } from 'lucide-react';
 
+// ---------------------------------------------------------------------------
+// Interfaces
+// ---------------------------------------------------------------------------
+
+// ផ្នែកទី ១៖ សម្ភារប្រើប្រាស់មិនអស់ (ទ្រព្យសម្បត្តិឧបករណ៍បច្ចេកទេស - 11 ជួរឈរ)
+interface NonConsumableRow {
+  no: number;
+  itemCode: string;
+  itemNameKh: string;
+  unit: string;
+  totalInboundA: number;        // សរុបរួម (A = B + C + D)
+  activeInUseB: number;         // កំពុងប្រើប្រាស់ / បានប្រគល់ជូន (B)
+  damagedAdjustedC: number;     // ខូច / បាត់បង់ / កែតម្រូវ (C)
+  warehouseAvailableD: number;  // ស្តុកនៅសល់ក្នុងឃ្លាំង (D = A - B - C)
+  assignedHolders: string;      // សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង
+  purposeAndDate: string;       // គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ
+  statusBadge: string;          // 🟢 ស្តុកគ្រប់គ្រាន់ | 🟡 ស្តុកទាប | 🔴 អស់ពីស្តុក
+  statusType: 'NORMAL' | 'LOW' | 'OUT';
+}
+
+// ផ្នែកទី ២៖ សម្ភារប្រើប្រាស់អស់ទៅ (សម្ភារបរិក្ខារ និងអនាម័យ - 10 ជួរឈរ)
+interface ConsumableRow {
+  no: number;
+  itemCode: string;
+  itemNameKh: string;
+  unit: string;
+  totalInboundA: number;        // សរុបរួមនាំចូល (A)
+  totalConsumedB: number;       // បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)
+  remainingStockC: number;      // ស្តុកនៅសល់ក្នុងឃ្លាំង (C = A - B)
+  issuedRecipients: string;     // សាខា ឬអង្គភាពបានបើកយកទៅប្រើប្រាស់
+  purposeAndDate: string;       // គោលបំណង និងកាលបរិច្ឆេទបើកបែក
+  statusBadge: string;          // 🟢 ស្តុកគ្រប់គ្រាន់ | 🟡 ស្តុកទាប | 🔴 អស់ពីស្តុក
+  statusType: 'NORMAL' | 'LOW' | 'OUT';
+}
+
+// Cross-Tab Matrix types
 interface SortedLocationCol {
   id: string;
   code: string;
@@ -45,33 +79,36 @@ interface MatrixItemRow {
   quantitiesByLocId: Record<string, number>;
 }
 
-interface LocationBalanceRow {
-  no: number;
-  locationId: string;
-  locationCode: string;
-  locationNameKh: string;
-  locationCategory: 'HQ' | 'KHAN' | 'PROVINCE';
-  locationCategoryLabel: string;
-  skuCount: number;
-  totalItems: number;
-  inStock: number;
-  inUseQty: number;
-  statusLabel: string;
-  statusType: 'ACTIVE' | 'EMPTY' | 'STANDBY';
-}
+// Helper: Determine if an item belongs to Part 1 (Non-Consumable / Technical Equipment)
+// vs Part 2 (Consumable / Supplies & Hygiene)
+function isNonConsumableEquipment(item: any): boolean {
+  const code = String(item.code || '').trim().toUpperCase();
+  const cat = String(item.category || '').trim().toUpperCase();
 
-interface ItemDetailRow {
-  no: number;
-  itemCode: string;
-  itemNameKh: string;
-  unit: string;
-  inStock: number;
-  inUseQty: number;
-  assignedOfficersOrBranches: string;
-  usagePurpose: string;
-  statusLabel: string;
-  statusType: 'NORMAL' | 'LOW' | 'OUT';
-  minStock: number;
+  if (code.startsWith('T-') || code.startsWith('TK') || code.startsWith('EQ') || code.startsWith('IT')) {
+    return true;
+  }
+  if (code.startsWith('S-') || code.startsWith('TM') || code.startsWith('CS')) {
+    return false;
+  }
+  if (
+    cat.includes('TOOL') ||
+    cat.includes('EQUIPMENT') ||
+    cat.includes('HARDWARE') ||
+    cat.includes('ASSET') ||
+    cat.includes('ឧបករណ៍')
+  ) {
+    return true;
+  }
+  if (
+    cat.includes('SUPPL') ||
+    cat.includes('CONSUM') ||
+    cat.includes('សម្ភារប្រើប្រាស់អស់') ||
+    cat.includes('បរិក្ខារ')
+  ) {
+    return false;
+  }
+  return true;
 }
 
 // Format concise Khmer header label for each of the 34 locations in the Matrix table
@@ -102,12 +139,11 @@ export function ExecutiveReportView() {
   const [dbItems, setDbItems] = useState<any[]>([]);
   const [dbLocations, setDbLocations] = useState<any[]>([]);
   const [dbInventory, setDbInventory] = useState<any[]>([]);
-  const [dbTransactions, setDbTransactions] = useState<any[]>([]);
+  const [dbAuditTrail, setDbAuditTrail] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Filter & Tab States
-  // Default to 'MATRIX' so the new Cross-Tab Stock Distribution Matrix is prominently shown
-  const [activeReportTab, setActiveReportTab] = useState<'MATRIX' | 'PART_A' | 'PART_B' | 'ALL'>('MATRIX');
+  // View Tab State: Default to 'CONSOLIDATED' (2-Part Consolidated Report: Part 1 + Part 2)
+  const [activeReportTab, setActiveReportTab] = useState<'CONSOLIDATED' | 'PART_1' | 'PART_2' | 'MATRIX'>('CONSOLIDATED');
   const [reportLocationId, setReportLocationId] = useState<string>(
     isBranchUser ? selectedLocationId : (selectedLocationId || 'ALL')
   );
@@ -115,7 +151,7 @@ export function ExecutiveReportView() {
   const [endDate, setEndDate] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Sync location if Sidebar location changes or if BranchUser is locked
+  // Keep report location synced if Sidebar location changes or if BranchUser is locked
   useEffect(() => {
     if (isBranchUser) {
       setReportLocationId(selectedLocationId);
@@ -131,15 +167,15 @@ export function ExecutiveReportView() {
       setDbItems(ctxItems);
       setDbLocations(locations.length > 0 ? locations : mockLocations);
       setDbInventory(ctxInventory);
-      setDbTransactions(ctxTransactions);
+      setDbAuditTrail(ctxTransactions);
       setLoading(false);
       return;
     }
 
     try {
       const [itemsRes, locsRes, invRes, txRes] = await Promise.all([
-        supabase.from('items').select('id, code, name_kh, name_en, category, unit, min_stock').order('code', { ascending: true }),
-        supabase.from('locations').select('id, code, name_kh, name_en, type'),
+        supabase.from('items').select('*').order('code', { ascending: true }),
+        supabase.from('locations').select('*'),
         supabase.from('inventory').select('*'),
         supabase.from('transactions').select('*').order('date', { ascending: false })
       ]);
@@ -153,13 +189,13 @@ export function ExecutiveReportView() {
           : mockLocations
       );
       setDbInventory(invRes.data && invRes.data.length > 0 ? invRes.data : ctxInventory);
-      setDbTransactions(txRes.data && txRes.data.length > 0 ? txRes.data : ctxTransactions);
+      setDbAuditTrail(txRes.data && txRes.data.length > 0 ? txRes.data : ctxTransactions);
     } catch (err) {
-      console.error('Error fetching read-only executive report data:', err);
+      console.error('Error fetching read-only consolidated report data:', err);
       setDbItems(ctxItems);
       setDbLocations(locations.length > 0 ? locations : mockLocations);
       setDbInventory(ctxInventory);
-      setDbTransactions(ctxTransactions);
+      setDbAuditTrail(ctxTransactions);
     } finally {
       setLoading(false);
     }
@@ -179,9 +215,19 @@ export function ExecutiveReportView() {
       .trim();
   };
 
-  // =========================================================================
-  // 1. SORTED LOCATIONS (1. HQ/Central -> 2. Khan Branches -> 3. Province Branches)
-  // =========================================================================
+  // Format short date for Purpose & Date column
+  const formatShortDate = (rawDate?: string): string => {
+    if (!rawDate) return '';
+    try {
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('km-KH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+      return '';
+    }
+  };
+
+  // Sorted 34 locations (1. HQ -> 2. Khan Branches -> 3. Province Branches)
   const sortedLocations: SortedLocationCol[] = useMemo(() => {
     const rawList =
       dbLocations.length > 0 ? dbLocations : locations.length > 0 ? locations : mockLocations;
@@ -231,7 +277,7 @@ export function ExecutiveReportView() {
     }));
   }, [dbLocations, locations]);
 
-  // Helper to check if an inventory record belongs to a specific location
+  // Helper to check if a record belongs to a specific location
   const matchesTargetLocation = useCallback(
     (locObj: { id: string; code: string; nameKh?: string; name_kh?: string }, locIdOrCode?: string, locName?: string): boolean => {
       if (!locObj) return false;
@@ -257,8 +303,408 @@ export function ExecutiveReportView() {
     []
   );
 
+  // Helper to check if a record matches the active filter dropdown
+  const matchesFilterLocation = useCallback(
+    (locIdOrCode?: string, locName?: string): boolean => {
+      if (!reportLocationId || reportLocationId === 'ALL') return true;
+      const targetLoc = sortedLocations.find(
+        (l) =>
+          String(l.id) === String(reportLocationId) ||
+          String(l.code).toUpperCase() === String(reportLocationId).toUpperCase()
+      );
+      if (targetLoc) {
+        return matchesTargetLocation(targetLoc, locIdOrCode, locName);
+      }
+      return String(locIdOrCode || '').trim().toUpperCase() === String(reportLocationId).trim().toUpperCase();
+    },
+    [reportLocationId, sortedLocations, matchesTargetLocation]
+  );
+
+  // Active selected location object
+  const activeLocationObj = useMemo(() => {
+    if (!reportLocationId || reportLocationId === 'ALL') {
+      return {
+        id: 'ALL',
+        code: 'ALL',
+        name_kh: 'គ្រប់ទីតាំងថ្នាក់កណ្តាល និងសាខាពន្ធដារខេត្ត-ខណ្ឌទាំងអស់',
+        name_en: 'All Locations (HQ & Branches)',
+        type: 'ALL'
+      };
+    }
+    const found = sortedLocations.find(
+      (l) =>
+        String(l.id) === String(reportLocationId) ||
+        String(l.code).toUpperCase() === String(reportLocationId).toUpperCase()
+    );
+    if (found) {
+      return {
+        id: found.id,
+        code: found.code,
+        name_kh: found.nameKh,
+        name_en: found.nameKh,
+        type: found.category
+      };
+    }
+    return selectedLocation;
+  }, [reportLocationId, sortedLocations, selectedLocation]);
+
+  // Filter audit trail / transactions by Date Range & Location
+  const filteredTransactions = useMemo(() => {
+    return dbAuditTrail.filter((tx) => {
+      if (reportLocationId !== 'ALL') {
+        const fromMatch = matchesFilterLocation(tx.from_location_id || tx.from_location, tx.from_location);
+        const toMatch = matchesFilterLocation(tx.to_location_id || tx.to_location, tx.to_location);
+        if (!fromMatch && !toMatch) return false;
+      }
+
+      const rawDate = tx.date || tx.created_at;
+      if (rawDate && (startDate || endDate)) {
+        const txDate = new Date(rawDate);
+        if (startDate) {
+          const sDate = new Date(startDate);
+          sDate.setHours(0, 0, 0, 0);
+          if (txDate < sDate) return false;
+        }
+        if (endDate) {
+          const eDate = new Date(endDate);
+          eDate.setHours(23, 59, 59, 999);
+          if (txDate > eDate) return false;
+        }
+      }
+      return true;
+    });
+  }, [dbAuditTrail, reportLocationId, startDate, endDate, matchesFilterLocation]);
+
   // =========================================================================
-  // 2. CROSS-TAB STOCK DISTRIBUTION MATRIX (inventoryMap[item_id][location_id] = quantity)
+  // PART 1: ប្រភេទទី១៖ សម្ភារប្រើប្រាស់មិនអស់ (ទ្រព្យសម្បត្តិឧបករណ៍បច្ចេកទេស - 11 ជួរឈរ)
+  // =========================================================================
+  const part1NonConsumableRows: NonConsumableRow[] = useMemo(() => {
+    const rawItems = dbItems.length > 0 ? dbItems : ctxItems;
+    const toolItems = rawItems
+      .filter((item) => isNonConsumableEquipment(item))
+      .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true }));
+
+    const rows: NonConsumableRow[] = toolItems.map((item, idx) => {
+      const itemIdStr = String(item.id);
+      const itemCodeStr = String(item.code || '').toUpperCase();
+
+      // Match inventory rows for this item
+      const itemInvAll = dbInventory.filter(
+        (inv) =>
+          String(inv.item_id) === itemIdStr ||
+          String(inv.item_code || '').toUpperCase() === itemCodeStr
+      );
+
+      // Match transactions for this item
+      const itemTxs = filteredTransactions.filter(
+        (tx) =>
+          String(tx.item_id) === itemIdStr ||
+          String(tx.item_code || '').toUpperCase() === itemCodeStr ||
+          (tx.item_name_kh && tx.item_name_kh === item.name_kh)
+      );
+
+      // Warehouse Available Qty (D):
+      // If viewing ALL locations, D is Central HQ Warehouse stock; if viewing a specific branch, D is that branch's available stock
+      let warehouseAvailableD = 0;
+      if (reportLocationId === 'ALL') {
+        warehouseAvailableD = itemInvAll
+          .filter((inv) => isHqLocationOrRow(inv, dbLocations))
+          .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
+      } else {
+        warehouseAvailableD = itemInvAll
+          .filter(
+            (inv) =>
+              matchesFilterLocation(inv.location_id, inv.location_name_kh) ||
+              matchesFilterLocation(inv.location_code, inv.location_name_kh)
+          )
+          .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
+      }
+
+      // Active In-Use / Handed Over Qty (B):
+      // Branch stock + STOCK_OUT / HANDOVER transactions
+      const branchInvQty =
+        reportLocationId === 'ALL'
+          ? itemInvAll
+              .filter((inv) => !isHqLocationOrRow(inv, dbLocations))
+              .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0)
+          : 0;
+
+      const usageTxs = itemTxs.filter((tx) => {
+        const tType = String(tx.type || '').toUpperCase();
+        return tType === 'STOCK_OUT' || tType === 'HANDOVER';
+      });
+      const txUsedQty = usageTxs.reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
+
+      const activeInUseB = Math.max(branchInvQty, txUsedQty);
+
+      // Damaged / Lost / Adjusted Qty (C):
+      const adjustTxs = itemTxs.filter((tx) => String(tx.type || '').toUpperCase() === 'ADJUSTMENT');
+      const damagedAdjustedC = adjustTxs.reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
+
+      // Total Inbound Qty (A = B + C + D)
+      const totalInboundA = warehouseAvailableD + activeInUseB + damagedAdjustedC;
+
+      // Assigned Branch / Officer from audit trail & branch inventory
+      const holderSet = new Set<string>();
+      usageTxs.forEach((tx) => {
+        if (tx.to_location && String(tx.to_location).trim() && tx.to_location !== '-') {
+          holderSet.add(String(tx.to_location).trim().replace(/^សាខាពន្ធដារ/, ''));
+        }
+        if (tx.recorded_by && String(tx.recorded_by).trim()) {
+          holderSet.add(String(tx.recorded_by).trim());
+        }
+        const cleaned = cleanRemarkText(tx.remark || tx.purpose);
+        const officerMatch = cleaned.match(/មន្ត្រីទទួល:\s*([^|,-]+)/i);
+        if (officerMatch && officerMatch[1]) {
+          holderSet.add(officerMatch[1].trim());
+        }
+      });
+
+      itemInvAll.forEach((inv) => {
+        if (!isHqLocationOrRow(inv, dbLocations) && (Number(inv.quantity) || 0) > 0) {
+          if (reportLocationId === 'ALL' || matchesFilterLocation(inv.location_id, inv.location_name_kh)) {
+            const locLabel = String(inv.location_name_kh || inv.location_code || '')
+              .replace(/^សាខាពន្ធដារ/, '')
+              .trim();
+            if (locLabel) holderSet.add(`${locLabel} (${inv.quantity})`);
+          }
+        }
+      });
+
+      const assignedHolders =
+        holderSet.size > 0
+          ? Array.from(holderSet).slice(0, 4).join(', ')
+          : warehouseAvailableD > 0
+          ? 'រក្សាទុកនៅឃ្លាំងស្តុកកណ្តាល (HQ-ITSB)'
+          : '-';
+
+      // Purpose & Date from audit trail
+      const purposeEntries: string[] = [];
+      usageTxs.slice(0, 2).forEach((tx) => {
+        const cleaned = cleanRemarkText(tx.remark || tx.purpose || tx.notes);
+        const dStr = formatShortDate(tx.date || tx.created_at);
+        if (cleaned && cleaned !== '-') {
+          purposeEntries.push(dStr ? `${cleaned} (${dStr})` : cleaned);
+        }
+      });
+
+      if (purposeEntries.length === 0 && itemTxs.length > 0) {
+        itemTxs.slice(0, 1).forEach((tx) => {
+          const cleaned = cleanRemarkText(tx.remark || tx.purpose || tx.notes);
+          const dStr = formatShortDate(tx.date || tx.created_at);
+          if (cleaned && cleaned !== '-') {
+            purposeEntries.push(dStr ? `${cleaned} (${dStr})` : cleaned);
+          }
+        });
+      }
+
+      const purposeAndDate =
+        purposeEntries.length > 0
+          ? purposeEntries.join(' | ')
+          : activeInUseB > 0
+          ? 'ប្រគល់ជូនសាខា និងមន្ត្រីបម្រើការងារបច្ចេកទេស'
+          : 'ស្តុកបម្រុងសម្រាប់បម្រើការងារបច្ចេកទេស';
+
+      // Stock Status Badge (🟢 ស្តុកគ្រប់គ្រាន់, 🟡 ស្តុកទាប, 🔴 អស់ពីស្តុក)
+      const minStock = Number(item.min_stock) || 5;
+      let statusBadge = '🟢 ស្តុកគ្រប់គ្រាន់';
+      let statusType: 'NORMAL' | 'LOW' | 'OUT' = 'NORMAL';
+      if (warehouseAvailableD <= 0) {
+        statusBadge = '🔴 អស់ពីស្តុក';
+        statusType = 'OUT';
+      } else if (warehouseAvailableD <= minStock) {
+        statusBadge = '🟡 ស្តុកទាប';
+        statusType = 'LOW';
+      }
+
+      return {
+        no: idx + 1,
+        itemCode: item.code || '-',
+        itemNameKh: item.name_kh || '-',
+        unit: item.unit || 'គ្រឿង',
+        totalInboundA,
+        activeInUseB,
+        damagedAdjustedC,
+        warehouseAvailableD,
+        assignedHolders,
+        purposeAndDate,
+        statusBadge,
+        statusType
+      };
+    });
+
+    if (!searchQuery.trim()) return rows;
+    const q = searchQuery.toLowerCase().trim();
+    return rows
+      .filter(
+        (r) =>
+          r.itemCode.toLowerCase().includes(q) ||
+          r.itemNameKh.toLowerCase().includes(q) ||
+          r.assignedHolders.toLowerCase().includes(q) ||
+          r.purposeAndDate.toLowerCase().includes(q)
+      )
+      .map((r, i) => ({ ...r, no: i + 1 }));
+  }, [dbItems, ctxItems, dbInventory, dbLocations, filteredTransactions, reportLocationId, matchesFilterLocation, searchQuery]);
+
+  // =========================================================================
+  // PART 2: ប្រភេទទី២៖ សម្ភារប្រើប្រាស់អស់ទៅ (សម្ភារបរិក្ខារ និងអនាម័យ - 10 ជួរឈរ)
+  // =========================================================================
+  const part2ConsumableRows: ConsumableRow[] = useMemo(() => {
+    const rawItems = dbItems.length > 0 ? dbItems : ctxItems;
+    const supplyItems = rawItems
+      .filter((item) => !isNonConsumableEquipment(item))
+      .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true }));
+
+    const rows: ConsumableRow[] = supplyItems.map((item, idx) => {
+      const itemIdStr = String(item.id);
+      const itemCodeStr = String(item.code || '').toUpperCase();
+
+      const itemInvAll = dbInventory.filter(
+        (inv) =>
+          String(inv.item_id) === itemIdStr ||
+          String(inv.item_code || '').toUpperCase() === itemCodeStr
+      );
+
+      const itemTxs = filteredTransactions.filter(
+        (tx) =>
+          String(tx.item_id) === itemIdStr ||
+          String(tx.item_code || '').toUpperCase() === itemCodeStr ||
+          (tx.item_name_kh && tx.item_name_kh === item.name_kh)
+      );
+
+      // Remaining Stock Qty in Warehouse (C):
+      let remainingStockC = 0;
+      if (reportLocationId === 'ALL') {
+        remainingStockC = itemInvAll
+          .filter((inv) => isHqLocationOrRow(inv, dbLocations))
+          .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
+      } else {
+        remainingStockC = itemInvAll
+          .filter(
+            (inv) =>
+              matchesFilterLocation(inv.location_id, inv.location_name_kh) ||
+              matchesFilterLocation(inv.location_code, inv.location_name_kh)
+          )
+          .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
+      }
+
+      // Total Issued / Consumed Qty (B):
+      const branchIssuedQty =
+        reportLocationId === 'ALL'
+          ? itemInvAll
+              .filter((inv) => !isHqLocationOrRow(inv, dbLocations))
+              .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0)
+          : 0;
+
+      const consumedTxs = itemTxs.filter((tx) => {
+        const tType = String(tx.type || '').toUpperCase();
+        return tType === 'STOCK_OUT' || tType === 'HANDOVER';
+      });
+      const txConsumedQty = consumedTxs.reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
+
+      const totalConsumedB = Math.max(branchIssuedQty, txConsumedQty);
+
+      // Total Inbound Qty (A = B + C)
+      const totalInboundA = remainingStockC + totalConsumedB;
+
+      // Issued Branches / Recipients
+      const recipientSet = new Set<string>();
+      consumedTxs.forEach((tx) => {
+        if (tx.to_location && String(tx.to_location).trim() && tx.to_location !== '-') {
+          recipientSet.add(String(tx.to_location).trim().replace(/^សាខាពន្ធដារ/, ''));
+        }
+        if (tx.recorded_by && String(tx.recorded_by).trim()) {
+          recipientSet.add(String(tx.recorded_by).trim());
+        }
+      });
+
+      itemInvAll.forEach((inv) => {
+        if (!isHqLocationOrRow(inv, dbLocations) && (Number(inv.quantity) || 0) > 0) {
+          if (reportLocationId === 'ALL' || matchesFilterLocation(inv.location_id, inv.location_name_kh)) {
+            const locLabel = String(inv.location_name_kh || inv.location_code || '')
+              .replace(/^សាខាពន្ធដារ/, '')
+              .trim();
+            if (locLabel) recipientSet.add(`${locLabel} (${inv.quantity})`);
+          }
+        }
+      });
+
+      const issuedRecipients =
+        recipientSet.size > 0
+          ? Array.from(recipientSet).slice(0, 4).join(', ')
+          : remainingStockC > 0
+          ? 'រក្សាទុកនៅឃ្លាំងស្តុកកណ្តាល (HQ-ITSB)'
+          : '-';
+
+      // Purpose & Date
+      const purposeEntries: string[] = [];
+      consumedTxs.slice(0, 2).forEach((tx) => {
+        const cleaned = cleanRemarkText(tx.remark || tx.purpose || tx.notes);
+        const dStr = formatShortDate(tx.date || tx.created_at);
+        if (cleaned && cleaned !== '-') {
+          purposeEntries.push(dStr ? `${cleaned} (${dStr})` : cleaned);
+        }
+      });
+
+      if (purposeEntries.length === 0 && itemTxs.length > 0) {
+        itemTxs.slice(0, 1).forEach((tx) => {
+          const cleaned = cleanRemarkText(tx.remark || tx.purpose || tx.notes);
+          const dStr = formatShortDate(tx.date || tx.created_at);
+          if (cleaned && cleaned !== '-') {
+            purposeEntries.push(dStr ? `${cleaned} (${dStr})` : cleaned);
+          }
+        });
+      }
+
+      const purposeAndDate =
+        purposeEntries.length > 0
+          ? purposeEntries.join(' | ')
+          : totalConsumedB > 0
+          ? 'បើកផ្តល់ជូនសាខា និងអង្គភាពប្រើប្រាស់ប្រចាំថ្ងៃ'
+          : 'ស្តុកបម្រុងសម្រាប់បើកផ្តល់ជូនសាខា និងអង្គភាព';
+
+      // Stock Status Badge
+      const minStock = Number(item.min_stock) || 20;
+      let statusBadge = '🟢 ស្តុកគ្រប់គ្រាន់';
+      let statusType: 'NORMAL' | 'LOW' | 'OUT' = 'NORMAL';
+      if (remainingStockC <= 0) {
+        statusBadge = '🔴 អស់ពីស្តុក';
+        statusType = 'OUT';
+      } else if (remainingStockC <= minStock) {
+        statusBadge = '🟡 ស្តុកទាប';
+        statusType = 'LOW';
+      }
+
+      return {
+        no: idx + 1,
+        itemCode: item.code || '-',
+        itemNameKh: item.name_kh || '-',
+        unit: item.unit || 'ដុំ',
+        totalInboundA,
+        totalConsumedB,
+        remainingStockC,
+        issuedRecipients,
+        purposeAndDate,
+        statusBadge,
+        statusType
+      };
+    });
+
+    if (!searchQuery.trim()) return rows;
+    const q = searchQuery.toLowerCase().trim();
+    return rows
+      .filter(
+        (r) =>
+          r.itemCode.toLowerCase().includes(q) ||
+          r.itemNameKh.toLowerCase().includes(q) ||
+          r.issuedRecipients.toLowerCase().includes(q) ||
+          r.purposeAndDate.toLowerCase().includes(q)
+      )
+      .map((r, i) => ({ ...r, no: i + 1 }));
+  }, [dbItems, ctxItems, dbInventory, dbLocations, filteredTransactions, reportLocationId, matchesFilterLocation, searchQuery]);
+
+  // =========================================================================
+  // CROSS-TAB STOCK DISTRIBUTION MATRIX (34 LOCATIONS)
   // =========================================================================
   const matrixData = useMemo(() => {
     const rawItems = dbItems.length > 0 ? dbItems : ctxItems;
@@ -266,7 +712,6 @@ export function ExecutiveReportView() {
       String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true })
     );
 
-    // Filter items by search query if user searches for an item code or name
     const q = searchQuery.toLowerCase().trim();
     const filteredItems = q
       ? sortedItems.filter(
@@ -279,7 +724,6 @@ export function ExecutiveReportView() {
 
     const itemsToUse = filteredItems.length > 0 ? filteredItems : sortedItems;
 
-    // Build Pivot Map: inventoryMap[itemKey][locationId] = quantity
     const rows: MatrixItemRow[] = itemsToUse.map((item, idx) => {
       const itemIdStr = String(item.id);
       const itemCodeStr = String(item.code || '').toUpperCase();
@@ -287,7 +731,6 @@ export function ExecutiveReportView() {
       let rowTotal = 0;
 
       sortedLocations.forEach((loc) => {
-        // Find matching inventory records for (item, loc)
         const matchingInv = dbInventory.filter((inv) => {
           const itemMatches =
             String(inv.item_id) === itemIdStr ||
@@ -316,7 +759,6 @@ export function ExecutiveReportView() {
       };
     });
 
-    // Column totals per location + Grand Total
     const columnTotalsByLocId: Record<string, number> = {};
     let grandTotalQty = 0;
 
@@ -333,382 +775,34 @@ export function ExecutiveReportView() {
     };
   }, [dbItems, ctxItems, sortedLocations, dbInventory, matchesTargetLocation, searchQuery]);
 
-  // Active selected location object for filtered views
-  const activeLocationObj = useMemo(() => {
-    if (!reportLocationId || reportLocationId === 'ALL') {
-      return {
-        id: 'ALL',
-        code: 'ALL',
-        name_kh: 'គ្រប់ទីតាំងថ្នាក់កណ្តាល និងសាខាពន្ធដារខេត្ត-ខណ្ឌទាំងអស់',
-        name_en: 'All Locations (HQ & Branches)',
-        type: 'ALL'
-      };
-    }
-    const found = sortedLocations.find(
-      (l) =>
-        String(l.id) === String(reportLocationId) ||
-        String(l.code).toUpperCase() === String(reportLocationId).toUpperCase()
-    );
-    if (found) {
-      return {
-        id: found.id,
-        code: found.code,
-        name_kh: found.nameKh,
-        name_en: found.nameKh,
-        type: found.category
-      };
-    }
-    return selectedLocation;
-  }, [reportLocationId, sortedLocations, selectedLocation]);
-
-  // Helper to check if a record matches the active filter dropdown
-  const matchesFilterLocation = useCallback(
-    (locIdOrCode?: string, locName?: string): boolean => {
-      if (!reportLocationId || reportLocationId === 'ALL') return true;
-      const targetLoc = sortedLocations.find(
-        (l) =>
-          String(l.id) === String(reportLocationId) ||
-          String(l.code).toUpperCase() === String(reportLocationId).toUpperCase()
-      );
-      if (targetLoc) {
-        return matchesTargetLocation(targetLoc, locIdOrCode, locName);
-      }
-      return String(locIdOrCode || '').trim().toUpperCase() === String(reportLocationId).trim().toUpperCase();
-    },
-    [reportLocationId, sortedLocations, matchesTargetLocation]
-  );
-
-  // Filter transactions by Date Range
-  const dateFilteredTransactions = useMemo(() => {
-    return dbTransactions.filter((tx) => {
-      const rawDate = tx.date || tx.created_at;
-      if (rawDate && (startDate || endDate)) {
-        const txDate = new Date(rawDate);
-        if (startDate) {
-          const sDate = new Date(startDate);
-          sDate.setHours(0, 0, 0, 0);
-          if (txDate < sDate) return false;
-        }
-        if (endDate) {
-          const eDate = new Date(endDate);
-          eDate.setHours(23, 59, 59, 999);
-          if (txDate > eDate) return false;
-        }
-      }
-      return true;
-    });
-  }, [dbTransactions, startDate, endDate]);
-
   // =========================================================================
-  // PART A: Stock Balance by Locations (តារាងតុល្យភាពស្តុកតាមបណ្តាទីតាំងទាំងអស់)
+  // Totals for Part 1 & Part 2 Footers + Executive KPI Cards
   // =========================================================================
-  const locationBalanceRows: LocationBalanceRow[] = useMemo(() => {
-    const locsToDisplay =
-      reportLocationId === 'ALL'
-        ? sortedLocations
-        : sortedLocations.filter(
-            (l) =>
-              String(l.id) === String(reportLocationId) ||
-              String(l.code).toUpperCase() === String(reportLocationId).toUpperCase()
-          );
-
-    const rows = locsToDisplay.map((loc, idx) => {
-      let locationCategoryLabel = 'សាខាពន្ធដារខេត្ត';
-      if (loc.category === 'HQ') {
-        locationCategoryLabel =
-          loc.shortLabel === 'ថ្នាក់កណ្តាល' ? 'ឃ្លាំងស្តុកកណ្តាល (HQ-ITSB)' : 'ក្រុមការងារថ្នាក់កណ្តាល';
-      } else if (loc.category === 'KHAN') {
-        locationCategoryLabel = 'សាខាពន្ធដារខណ្ឌ';
-      }
-
-      const locInv = dbInventory.filter(
-        (inv) =>
-          matchesTargetLocation(loc, inv.location_id, inv.location_name_kh) ||
-          matchesTargetLocation(loc, inv.location_code, inv.location_name_kh)
-      );
-
-      const skuSet = new Set<string>();
-      locInv.forEach((inv) => {
-        if ((Number(inv.quantity) || 0) > 0) {
-          skuSet.add(String(inv.item_code || inv.item_id));
-        }
-      });
-
-      const inStock = locInv.reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
-
-      const isMainHq = loc.shortLabel === 'ថ្នាក់កណ្តាល';
-      const locTxs = dateFilteredTransactions.filter((tx) => {
-        const tType = String(tx.type || '').toUpperCase();
-        const fromMatches = matchesTargetLocation(loc, tx.from_location_id || tx.from_location, tx.from_location);
-        const toMatches = matchesTargetLocation(loc, tx.to_location_id || tx.to_location, tx.to_location);
-
-        if (isMainHq) {
-          return (tType === 'STOCK_OUT' || tType === 'HANDOVER') && fromMatches;
-        } else {
-          return (tType === 'STOCK_OUT' && (fromMatches || toMatches)) || (tType === 'HANDOVER' && toMatches);
-        }
-      });
-
-      locTxs.forEach((tx) => {
-        if (tx.item_code || tx.item_id) {
-          skuSet.add(String(tx.item_code || tx.item_id));
-        }
-      });
-
-      const inUseQty = locTxs.reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
-      const totalItems = inStock + inUseQty;
-
-      let statusLabel = 'ដំណើរការធម្មតា';
-      let statusType: 'ACTIVE' | 'EMPTY' | 'STANDBY' = 'ACTIVE';
-      if (inStock === 0 && inUseQty === 0) {
-        statusLabel = 'មិនទាន់បើកសម្ភារ';
-        statusType = 'STANDBY';
-      } else if (inStock === 0 && inUseQty > 0) {
-        statusLabel = 'កំពុងប្រើប្រាស់ ១០០%';
-        statusType = 'ACTIVE';
-      }
-
-      return {
-        no: idx + 1,
-        locationId: loc.id,
-        locationCode: loc.code || '-',
-        locationNameKh: loc.nameKh || '-',
-        locationCategory: loc.category,
-        locationCategoryLabel,
-        skuCount: skuSet.size,
-        totalItems,
-        inStock,
-        inUseQty,
-        statusLabel,
-        statusType
-      };
-    });
-
-    if (!searchQuery.trim()) return rows;
-    const q = searchQuery.toLowerCase().trim();
-    const matched = rows.filter(
-      (r) =>
-        r.locationNameKh.toLowerCase().includes(q) ||
-        r.locationCode.toLowerCase().includes(q) ||
-        r.locationCategoryLabel.toLowerCase().includes(q)
-    );
-    return matched.length > 0 ? matched.map((r, i) => ({ ...r, no: i + 1 })) : rows;
-  }, [sortedLocations, reportLocationId, dbInventory, dateFilteredTransactions, matchesTargetLocation, searchQuery]);
-
-  // =========================================================================
-  // PART B: Itemized Details & Purposes (តារាងលម្អិតសម្ភារ និងគោលបំណងនៃការប្រើប្រាស់)
-  // =========================================================================
-  const filteredTransactionsForItems = useMemo(() => {
-    return dateFilteredTransactions.filter((tx) => {
-      if (reportLocationId === 'ALL') return true;
-      const fromMatch = matchesFilterLocation(tx.from_location_id || tx.from_location, tx.from_location);
-      const toMatch = matchesFilterLocation(tx.to_location_id || tx.to_location, tx.to_location);
-      return fromMatch || toMatch;
-    });
-  }, [dateFilteredTransactions, reportLocationId, matchesFilterLocation]);
-
-  const filteredInventoryForItems = useMemo(() => {
-    return dbInventory.filter((inv) => {
-      if (reportLocationId === 'ALL') return true;
-      return (
-        matchesFilterLocation(inv.location_id, inv.location_name_kh) ||
-        matchesFilterLocation(inv.location_code, inv.location_name_kh)
-      );
-    });
-  }, [dbInventory, reportLocationId, matchesFilterLocation]);
-
-  const itemDetailRows: ItemDetailRow[] = useMemo(() => {
-    const masterItems = dbItems.length > 0 ? dbItems : ctxItems;
-
-    const rows: ItemDetailRow[] = masterItems.map((item, idx) => {
-      const itemIdStr = String(item.id);
-      const itemCodeStr = String(item.code || '').toUpperCase();
-
-      const itemInvRows = filteredInventoryForItems.filter(
-        (inv) =>
-          String(inv.item_id) === itemIdStr ||
-          String(inv.item_code || '').toUpperCase() === itemCodeStr
-      );
-      const inStock = itemInvRows.reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
-
-      const itemTxs = filteredTransactionsForItems.filter(
-        (tx) =>
-          String(tx.item_id) === itemIdStr ||
-          String(tx.item_code || '').toUpperCase() === itemCodeStr ||
-          (tx.item_name_kh && tx.item_name_kh === item.name_kh)
-      );
-
-      const usageTxs = itemTxs.filter((tx) => {
-        const tType = String(tx.type || '').toUpperCase();
-        return tType === 'STOCK_OUT' || tType === 'HANDOVER';
-      });
-
-      const txUsedQty = usageTxs.reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
-
-      const branchAllocatedQty = itemInvRows
-        .filter((inv) => !isHqLocationOrRow(inv, dbLocations))
-        .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
-
-      const inUseQty = Math.max(txUsedQty, branchAllocatedQty);
-
-      const holderSet = new Set<string>();
-      usageTxs.forEach((tx) => {
-        if (tx.to_location && String(tx.to_location).trim() && tx.to_location !== '-') {
-          holderSet.add(String(tx.to_location).trim());
-        }
-        if (tx.recorded_by && String(tx.recorded_by).trim()) {
-          holderSet.add(String(tx.recorded_by).trim());
-        }
-        const cleaned = cleanRemarkText(tx.remark || tx.purpose);
-        const officerMatch = cleaned.match(/មន្ត្រីទទួល:\s*([^|,-]+)/i);
-        if (officerMatch && officerMatch[1]) {
-          holderSet.add(officerMatch[1].trim());
-        }
-      });
-
-      itemInvRows.forEach((inv) => {
-        if (!isHqLocationOrRow(inv, dbLocations) && (Number(inv.quantity) || 0) > 0) {
-          if (inv.location_name_kh) {
-            holderSet.add(String(inv.location_name_kh).trim());
-          } else if (inv.location_code) {
-            holderSet.add(String(inv.location_code).trim());
-          }
-        }
-      });
-
-      const assignedOfficersOrBranches =
-        holderSet.size > 0
-          ? Array.from(holderSet).slice(0, 3).join(', ')
-          : inStock > 0
-          ? 'ឃ្លាំងស្តុកកណ្តាល (HQ-ITSB)'
-          : '-';
-
-      const purposeSet = new Set<string>();
-      usageTxs.forEach((tx) => {
-        const cleaned = cleanRemarkText(tx.remark || tx.purpose || tx.notes);
-        if (cleaned && cleaned !== '-') {
-          purposeSet.add(cleaned);
-        }
-      });
-
-      if (purposeSet.size === 0 && itemTxs.length > 0) {
-        itemTxs.slice(0, 2).forEach((tx) => {
-          const cleaned = cleanRemarkText(tx.remark || tx.purpose || tx.notes);
-          if (cleaned && cleaned !== '-') {
-            purposeSet.add(cleaned);
-          }
-        });
-      }
-
-      const usagePurpose =
-        purposeSet.size > 0
-          ? Array.from(purposeSet).slice(0, 2).join(' | ')
-          : inUseQty > 0
-          ? 'ប្រគល់ជូនសាខា និងមន្ត្រីបម្រើការងារបច្ចេកទេស'
-          : inStock > 0
-          ? 'រក្សាទុកក្នុងឃ្លាំងស្តុកបម្រុងសម្រាប់បើកផ្តល់ជូនសាខា'
-          : '-';
-
-      const minStock = Number(item.min_stock) || 5;
-      let statusLabel = 'ស្តុកធម្មតា';
-      let statusType: 'NORMAL' | 'LOW' | 'OUT' = 'NORMAL';
-      if (inStock <= 0) {
-        statusLabel = 'អស់ពីស្តុក';
-        statusType = 'OUT';
-      } else if (inStock <= minStock) {
-        statusLabel = 'ស្តុកទាប';
-        statusType = 'LOW';
-      }
-
-      return {
-        no: idx + 1,
-        itemCode: item.code || '-',
-        itemNameKh: item.name_kh || '-',
-        unit: item.unit || 'គ្រឿង',
-        inStock,
-        inUseQty,
-        assignedOfficersOrBranches,
-        usagePurpose,
-        statusLabel,
-        statusType,
-        minStock
-      };
-    });
-
-    if (!searchQuery.trim()) return rows;
-    const q = searchQuery.toLowerCase().trim();
-    return rows
-      .filter(
-        (r) =>
-          r.itemCode.toLowerCase().includes(q) ||
-          r.itemNameKh.toLowerCase().includes(q) ||
-          r.assignedOfficersOrBranches.toLowerCase().includes(q) ||
-          r.usagePurpose.toLowerCase().includes(q)
-      )
-      .map((r, i) => ({ ...r, no: i + 1 }));
-  }, [
-    dbItems,
-    ctxItems,
-    filteredInventoryForItems,
-    filteredTransactionsForItems,
-    dbLocations,
-    searchQuery
-  ]);
-
-  // =========================================================================
-  // EXECUTIVE KPI SUMMARY MATRIX (4 Standard Metrics)
-  // =========================================================================
-  const kpiMatrix = useMemo(() => {
-    const centralHqStockBalance = dbInventory
-      .filter((inv) => isHqLocationOrRow(inv, dbLocations))
-      .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
-
-    const branchStockSum = dbInventory
-      .filter((inv) => !isHqLocationOrRow(inv, dbLocations))
-      .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
-
-    const stockOutAndHandoverSum = dateFilteredTransactions
-      .filter((tx) => {
-        const tType = String(tx.type || '').toUpperCase();
-        return tType === 'STOCK_OUT' || tType === 'HANDOVER';
-      })
-      .reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
-
-    const activeBranchDeployed = Math.max(branchStockSum, stockOutAndHandoverSum);
-
-    const stockInTxSum = dateFilteredTransactions
-      .filter((tx) => String(tx.type || '').toUpperCase() === 'STOCK_IN')
-      .reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
-
-    const totalInventoryInbound = Math.max(centralHqStockBalance + activeBranchDeployed, stockInTxSum);
-
-    const totalAdjusted = dateFilteredTransactions
-      .filter((tx) => String(tx.type || '').toUpperCase() === 'ADJUSTMENT')
-      .reduce((sum, tx) => sum + Math.abs(Number(tx.quantity) || 0), 0);
-
+  const part1Totals = useMemo(() => {
     return {
-      totalInventoryInbound,
-      centralHqStockBalance,
-      activeBranchDeployed,
-      totalAdjusted
+      totalInboundA: part1NonConsumableRows.reduce((s, r) => s + r.totalInboundA, 0),
+      activeInUseB: part1NonConsumableRows.reduce((s, r) => s + r.activeInUseB, 0),
+      damagedAdjustedC: part1NonConsumableRows.reduce((s, r) => s + r.damagedAdjustedC, 0),
+      warehouseAvailableD: part1NonConsumableRows.reduce((s, r) => s + r.warehouseAvailableD, 0)
     };
-  }, [dbInventory, dbLocations, dateFilteredTransactions]);
+  }, [part1NonConsumableRows]);
 
-  // Totals for Part A & Part B Footers
-  const partATotals = useMemo(() => {
+  const part2Totals = useMemo(() => {
     return {
-      totalItems: locationBalanceRows.reduce((s, r) => s + r.totalItems, 0),
-      inStock: locationBalanceRows.reduce((s, r) => s + r.inStock, 0),
-      inUseQty: locationBalanceRows.reduce((s, r) => s + r.inUseQty, 0)
+      totalInboundA: part2ConsumableRows.reduce((s, r) => s + r.totalInboundA, 0),
+      totalConsumedB: part2ConsumableRows.reduce((s, r) => s + r.totalConsumedB, 0),
+      remainingStockC: part2ConsumableRows.reduce((s, r) => s + r.remainingStockC, 0)
     };
-  }, [locationBalanceRows]);
+  }, [part2ConsumableRows]);
 
-  const partBTotals = useMemo(() => {
+  const kpiSummary = useMemo(() => {
     return {
-      inStock: itemDetailRows.reduce((s, r) => s + r.inStock, 0),
-      inUseQty: itemDetailRows.reduce((s, r) => s + r.inUseQty, 0)
+      totalInbound: part1Totals.totalInboundA + part2Totals.totalInboundA,
+      warehouseAvailable: part1Totals.warehouseAvailableD + part2Totals.remainingStockC,
+      activeInUseAndIssued: part1Totals.activeInUseB + part2Totals.totalConsumedB,
+      damagedAdjusted: part1Totals.damagedAdjustedC
     };
-  }, [itemDetailRows]);
+  }, [part1Totals, part2Totals]);
 
   // Trigger Official Landscape A4 Print
   const handlePrintLandscapeA4 = () => {
@@ -716,7 +810,7 @@ export function ExecutiveReportView() {
   };
 
   // =========================================================================
-  // 3. EXPORT TO EXCEL (.xlsx) WITH FULL 34-LOCATION CROSS-TAB MATRIX SHEET
+  // 2. EXPORT TO EXCEL (.xlsx) WITH SHEETS FOR PART 1, PART 2 & MATRIX
   // =========================================================================
   const exportToExcel = () => {
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -729,7 +823,147 @@ export function ExecutiveReportView() {
     const workbook = XLSX.utils.book_new();
 
     // -----------------------------------------------------------------------
-    // SHEET 1: តារាងម៉ាទ្រីសបែងចែកស្តុកគ្រប់ទីតាំង (Cross-Tab Matrix - 39 Columns)
+    // SHEET 1: ឧបករណ៍បច្ចេកទេស (ប្រភេទទី១) - 11 ជួរឈរ
+    // -----------------------------------------------------------------------
+    const sheet1Data: any[][] = [
+      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា'],
+      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ'],
+      ['ការិយាល័យសេវាកម្មបច្ចេកវិទ្យាព័ត៌មាន (ITSB)'],
+      [],
+      ['របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារប្រើប្រាស់មិនអស់ (ទ្រព្យសម្បត្តិឧបករណ៍បច្ចេកទេស)»'],
+      [`កាលបរិច្ឆេទ៖ ${dateRangeTitle} | ទីតាំង៖ ${locationTitle}`],
+      [],
+      [
+        'ល.រ',
+        'កូដ',
+        'ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស',
+        'ឯកតា',
+        'សរុបរួម (A=B+C+D)',
+        'កំពុងប្រើប្រាស់ / បានប្រគល់ជូន (B)',
+        'ខូច / បាត់បង់ / កែតម្រូវ (C)',
+        'ស្តុកនៅសល់ក្នុងឃ្លាំង (D)',
+        'សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង',
+        'គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ',
+        'ស្ថានភាពស្តុក'
+      ]
+    ];
+
+    part1NonConsumableRows.forEach((row) => {
+      sheet1Data.push([
+        row.no,
+        row.itemCode,
+        row.itemNameKh,
+        row.unit,
+        row.totalInboundA,
+        row.activeInUseB,
+        row.damagedAdjustedC,
+        row.warehouseAvailableD,
+        row.assignedHolders,
+        row.purposeAndDate,
+        row.statusBadge
+      ]);
+    });
+
+    sheet1Data.push([
+      '',
+      '',
+      'សរុបរួមឧបករណ៍បច្ចេកទេស (TOTAL PART 1)',
+      '',
+      part1Totals.totalInboundA,
+      part1Totals.activeInUseB,
+      part1Totals.damagedAdjustedC,
+      part1Totals.warehouseAvailableD,
+      '',
+      '',
+      ''
+    ]);
+
+    const ws1 = XLSX.utils.aoa_to_sheet(sheet1Data);
+    ws1['!cols'] = [
+      { wch: 7 },  // ល.រ
+      { wch: 12 }, // កូដ
+      { wch: 40 }, // ឈ្មោះឧបករណ៍
+      { wch: 10 }, // ឯកតា
+      { wch: 18 }, // សរុបរួម (A)
+      { wch: 24 }, // កំពុងប្រើប្រាស់ (B)
+      { wch: 22 }, // ខូច/កែតម្រូវ (C)
+      { wch: 22 }, // ស្តុកនៅសល់ក្នុងឃ្លាំង (D)
+      { wch: 34 }, // សាខា/មន្ត្រីទទួលកាន់កាប់
+      { wch: 42 }, // គោលបំណង និងកាលបរិច្ឆេទ
+      { wch: 18 }  // ស្ថានភាពស្តុក
+    ];
+    XLSX.utils.book_append_sheet(workbook, ws1, 'ឧបករណ៍បច្ចេកទេស (ប្រភេទទី១)');
+
+    // -----------------------------------------------------------------------
+    // SHEET 2: សម្ភារប្រើប្រាស់អស់ទៅ (ប្រភេទទី២) - 10 ជួរឈរ
+    // -----------------------------------------------------------------------
+    const sheet2Data: any[][] = [
+      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា'],
+      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ'],
+      ['ការិយាល័យសេវាកម្មបច្ចេកវិទ្យាព័ត៌មាន (ITSB)'],
+      [],
+      ['របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារប្រើប្រាស់អស់ទៅ (សម្ភារបរិក្ខារ និងអនាម័យ)»'],
+      [`កាលបរិច្ឆេទ៖ ${dateRangeTitle} | ទីតាំង៖ ${locationTitle}`],
+      [],
+      [
+        'ល.រ',
+        'កូដ',
+        'ឈ្មោះសម្ភារប្រើប្រាស់អស់ទៅ',
+        'ឯកតា',
+        'សរុបរួមនាំចូល (A)',
+        'បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)',
+        'ស្តុកនៅសល់ក្នុងឃ្លាំង (C = A - B)',
+        'សាខា ឬអង្គភាពបានបើកយកទៅប្រើប្រាស់',
+        'គោលបំណង និងកាលបរិច្ឆេទបើកបែក',
+        'ស្ថានភាពស្តុក'
+      ]
+    ];
+
+    part2ConsumableRows.forEach((row) => {
+      sheet2Data.push([
+        row.no,
+        row.itemCode,
+        row.itemNameKh,
+        row.unit,
+        row.totalInboundA,
+        row.totalConsumedB,
+        row.remainingStockC,
+        row.issuedRecipients,
+        row.purposeAndDate,
+        row.statusBadge
+      ]);
+    });
+
+    sheet2Data.push([
+      '',
+      '',
+      'សរុបរួមសម្ភារប្រើប្រាស់អស់ទៅ (TOTAL PART 2)',
+      '',
+      part2Totals.totalInboundA,
+      part2Totals.totalConsumedB,
+      part2Totals.remainingStockC,
+      '',
+      '',
+      ''
+    ]);
+
+    const ws2 = XLSX.utils.aoa_to_sheet(sheet2Data);
+    ws2['!cols'] = [
+      { wch: 7 },  // ល.រ
+      { wch: 12 }, // កូដ
+      { wch: 36 }, // ឈ្មោះសម្ភារប្រើប្រាស់អស់ទៅ
+      { wch: 10 }, // ឯកតា
+      { wch: 18 }, // សរុបរួមនាំចូល (A)
+      { wch: 26 }, // បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)
+      { wch: 24 }, // ស្តុកនៅសល់ក្នុងឃ្លាំង (C = A - B)
+      { wch: 34 }, // សាខា ឬអង្គភាពបានបើកយកទៅប្រើប្រាស់
+      { wch: 42 }, // គោលបំណង និងកាលបរិច្ឆេទបើកបែក
+      { wch: 18 }  // ស្ថានភាពស្តុក
+    ];
+    XLSX.utils.book_append_sheet(workbook, ws2, 'សម្ភារប្រើប្រាស់អស់ទៅ (ប្រភេទទី២)');
+
+    // -----------------------------------------------------------------------
+    // SHEET 3: តារាងម៉ាទ្រីសគ្រប់ទីតាំង (34 ទីតាំង)
     // -----------------------------------------------------------------------
     const matrixHeaders = [
       'ល.រ',
@@ -741,10 +975,6 @@ export function ExecutiveReportView() {
     ];
 
     const sheetMatrixData: any[][] = [
-      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា'],
-      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ'],
-      ['ការិយាល័យសេវាកម្មបច្ចេកវិទ្យាព័ត៌មាន (ITSB)'],
-      [],
       ['តារាងបូកសរុបស្តុកតាមបណ្តាទីតាំង (ថ្នាក់កណ្តាល និង ៣៣ សាខា)'],
       [`កាលបរិច្ឆេទ៖ ${dateRangeTitle}`],
       [],
@@ -762,7 +992,6 @@ export function ExecutiveReportView() {
       ]);
     });
 
-    // Footer Total Row across all 34 locations
     sheetMatrixData.push([
       '',
       '',
@@ -774,132 +1003,14 @@ export function ExecutiveReportView() {
 
     const wsMatrix = XLSX.utils.aoa_to_sheet(sheetMatrixData);
     wsMatrix['!cols'] = [
-      { wch: 6 },  // ល.រ
-      { wch: 11 }, // លេខកូដ
-      { wch: 38 }, // ឈ្មោះឧបករណ៍ / សម្ភារ
-      { wch: 9 },  // ឯកតា
-      { wch: 10 }, // សរុប
+      { wch: 6 },
+      { wch: 11 },
+      { wch: 38 },
+      { wch: 9 },
+      { wch: 10 },
       ...sortedLocations.map(() => ({ wch: 12 }))
     ];
-    XLSX.utils.book_append_sheet(workbook, wsMatrix, '១_តារាងម៉ាទ្រីសគ្រប់ទីតាំង');
-
-    // -----------------------------------------------------------------------
-    // SHEET 2: តារាងលម្អិតសម្ភារ និងគោលបំណងនៃការប្រើប្រាស់ (Itemized Details)
-    // -----------------------------------------------------------------------
-    const sheetBData: any[][] = [
-      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា'],
-      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ'],
-      ['ការិយាល័យសេវាកម្មបច្ចេកវិទ្យាព័ត៌មាន (ITSB)'],
-      [],
-      ['តារាងលម្អិតសម្ភារ និងគោលបំណងនៃការប្រើប្រាស់ (Itemized Details & Purposes)'],
-      [`កាលបរិច្ឆេទ៖ ${dateRangeTitle} | ទីតាំង៖ ${locationTitle}`],
-      [],
-      [
-        'ល.រ',
-        'កូដសម្ភារ',
-        'ឈ្មោះសម្ភារ',
-        'ឯកតា',
-        'ស្តុកនៅសល់',
-        'កំពុងប្រើប្រាស់',
-        'មន្ត្រី/សាខាទទួលកាន់កាប់',
-        'គោលបំណងនៃការប្រើប្រាស់ (Purpose/Remark)',
-        'ស្ថានភាព'
-      ]
-    ];
-
-    itemDetailRows.forEach((row) => {
-      sheetBData.push([
-        row.no,
-        row.itemCode,
-        row.itemNameKh,
-        row.unit,
-        row.inStock,
-        row.inUseQty,
-        row.assignedOfficersOrBranches,
-        row.usagePurpose,
-        row.statusLabel
-      ]);
-    });
-
-    sheetBData.push([
-      '',
-      '',
-      'សរុបរួម (GRAND TOTAL)',
-      '',
-      partBTotals.inStock,
-      partBTotals.inUseQty,
-      '',
-      '',
-      ''
-    ]);
-
-    const wsB = XLSX.utils.aoa_to_sheet(sheetBData);
-    wsB['!cols'] = [
-      { wch: 8 },
-      { wch: 14 },
-      { wch: 38 },
-      { wch: 11 },
-      { wch: 15 },
-      { wch: 16 },
-      { wch: 32 },
-      { wch: 46 },
-      { wch: 16 }
-    ];
-    XLSX.utils.book_append_sheet(workbook, wsB, '២_លម្អិតសម្ភារនិងគោលបំណង');
-
-    // -----------------------------------------------------------------------
-    // SHEET 3: តារាងតុល្យភាពស្តុកតាមបណ្តាទីតាំង (Stock by Locations Summary)
-    // -----------------------------------------------------------------------
-    const sheetAData: any[][] = [
-      ['តារាងតុល្យភាពស្តុកតាមបណ្តាទីតាំង (Stock by Locations - 34 Locations)'],
-      [
-        'ល.រ',
-        'ឈ្មោះទីតាំង/សាខា',
-        'ប្រភេទទីតាំង',
-        'ចំនួនមុខសម្ភារ',
-        'សម្ភារសរុប',
-        'នៅសល់ក្នុងស្តុក',
-        'កំពុងប្រើប្រាស់',
-        'ស្ថានភាព'
-      ]
-    ];
-
-    locationBalanceRows.forEach((r) => {
-      sheetAData.push([
-        r.no,
-        r.locationNameKh,
-        r.locationCategoryLabel,
-        r.skuCount,
-        r.totalItems,
-        r.inStock,
-        r.inUseQty,
-        r.statusLabel
-      ]);
-    });
-
-    sheetAData.push([
-      '',
-      'សរុបរួមទូទាំងទីតាំង (GRAND TOTAL)',
-      `${locationBalanceRows.length} ទីតាំង`,
-      '',
-      partATotals.totalItems,
-      partATotals.inStock,
-      partATotals.inUseQty,
-      ''
-    ]);
-
-    const wsA = XLSX.utils.aoa_to_sheet(sheetAData);
-    wsA['!cols'] = [
-      { wch: 8 },
-      { wch: 38 },
-      { wch: 26 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 20 }
-    ];
-    XLSX.utils.book_append_sheet(workbook, wsA, '៣_តុល្យភាពតាមទីតាំង');
+    XLSX.utils.book_append_sheet(workbook, wsMatrix, 'តារាងម៉ាទ្រីសគ្រប់ទីតាំង');
 
     const fileName = `GDT_Inventory_Executive_Report_${todayStr}.xlsx`;
     XLSX.writeFile(workbook, fileName);
@@ -930,15 +1041,15 @@ export function ExecutiveReportView() {
                   style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}
                 >
                   {language === 'kh'
-                    ? 'របាយការណ៍រួម និងតារាងម៉ាទ្រីសស្តុក (Executive Report & Matrix)'
-                    : 'Executive Summary & Cross-Tab Stock Distribution Matrix'}
+                    ? 'របាយការណ៍សង្ខេបស្តុក (Executive Consolidated Report)'
+                    : 'Executive Consolidated Inventory Report'}
                 </h2>
                 <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-md bg-emerald-100 text-[#004D40] border border-emerald-300">
                   Read-Only • A4 Landscape
                 </span>
               </div>
               <p className="text-xs text-slate-600 mt-1">
-                តារាងបូកសរុបស្តុកតាមបណ្តាទីតាំង (ថ្នាក់កណ្តាល និង ៣៣ សាខា) និងរបាយការណ៍លម្អិតសម្រាប់បោះពុម្ពលើក្រដាស A4 ជួរដេក
+                បែងចែកជា ២ ផ្នែកដាច់ពីគ្នា៖ ប្រភេទទី១ (ឧបករណ៍បច្ចេកទេស/ប្រើប្រាស់មិនអស់) និងប្រភេទទី២ (សម្ភារប្រើប្រាស់អស់ទៅ) រួមជាមួយតារាងម៉ាទ្រីស ៣៤ ទីតាំង
               </p>
             </div>
           </div>
@@ -962,7 +1073,7 @@ export function ExecutiveReportView() {
               className="px-4 py-2.5 rounded-xl bg-[#004D40] hover:bg-[#03291E] text-white text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
             >
               <Printer size={16} />
-              <span>🖨️ បោះពុម្ព A4 ជួរដេក (Print Landscape A4)</span>
+              <span>🖨️ បោះពុម្ពរបាយការណ៍ A4</span>
             </button>
 
             <button
@@ -971,7 +1082,7 @@ export function ExecutiveReportView() {
               className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
             >
               <FileSpreadsheet size={16} />
-              <span>📥 ទាញយកជា Excel (Export .xlsx)</span>
+              <span>📥 ទាញយកជា Excel (.xlsx)</span>
             </button>
           </div>
         </div>
@@ -1037,13 +1148,13 @@ export function ExecutiveReportView() {
               <div className="flex-1">
                 <label className="block text-[11px] font-bold text-[#1E6047] uppercase mb-1.5 flex items-center gap-1.5">
                   <Search size={13} />
-                  <span>ស្វែងរកសម្ភារ / លេខកូដ / សាខា</span>
+                  <span>ស្វែងរកសម្ភារ / កូដ / សាខា / មន្ត្រី</span>
                 </label>
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="វាយកូដសម្ភារ, ឈ្មោះសម្ភារ, សាខា..."
+                  placeholder="វាយកូដ T-001, S-001, ឈ្មោះសម្ភារ, សាខា..."
                   className="w-full px-3 py-2 bg-[#F7FCFA] border border-[#BDE0D0] rounded-xl text-xs font-medium text-[#03291E] outline-none focus:ring-2 focus:ring-[#004D40]/20"
                 />
               </div>
@@ -1066,8 +1177,47 @@ export function ExecutiveReportView() {
 
           {/* Section Switcher Tabs */}
           <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-bold text-slate-600">ជ្រើសរើសទម្រង់តារាងរបាយការណ៍៖</span>
+            <span className="text-xs font-bold text-slate-600">ជ្រើសរើសផ្នែកនៃរបាយការណ៍៖</span>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveReportTab('CONSOLIDATED')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  activeReportTab === 'CONSOLIDATED'
+                    ? 'bg-[#004D40] text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Layers size={15} />
+                <span>បង្ហាញរបាយការណ៍សង្ខេបទាំង ២ ផ្នែក (ផ្នែកទី១ + ផ្នែកទី២)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveReportTab('PART_1')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  activeReportTab === 'PART_1'
+                    ? 'bg-[#004D40] text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Wrench size={15} />
+                <span>ផ្នែកទី ១៖ សម្ភារប្រើប្រាស់មិនអស់ ({part1NonConsumableRows.length} មុខ)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveReportTab('PART_2')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  activeReportTab === 'PART_2'
+                    ? 'bg-[#004D40] text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <PackageOpen size={15} />
+                <span>ផ្នែកទី ២៖ សម្ភារប្រើប្រាស់អស់ទៅ ({part2ConsumableRows.length} មុខ)</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setActiveReportTab('MATRIX')}
@@ -1078,46 +1228,7 @@ export function ExecutiveReportView() {
                 }`}
               >
                 <Grid3X3 size={15} />
-                <span>តារាងទី ១៖ តារាងម៉ាទ្រីសគ្រប់ទីតាំង ({sortedLocations.length} ទីតាំង)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveReportTab('PART_B')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                  activeReportTab === 'PART_B'
-                    ? 'bg-[#004D40] text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <ListChecks size={15} />
-                <span>តារាងទី ២៖ តារាងលម្អិត និងគោលបំណងប្រើប្រាស់ ({itemDetailRows.length} មុខ)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveReportTab('PART_A')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                  activeReportTab === 'PART_A'
-                    ? 'bg-[#004D40] text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Building2 size={15} />
-                <span>តារាងទី ៣៖ តុល្យភាពស្តុកតាមសាខា ({locationBalanceRows.length} ទីតាំង)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveReportTab('ALL')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                  activeReportTab === 'ALL'
-                    ? 'bg-[#004D40] text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Layers size={15} />
-                <span>បង្ហាញគ្រប់តារាងទាំងអស់</span>
+                <span>តារាងម៉ាទ្រីសគ្រប់ទីតាំង ({sortedLocations.length} ទីតាំង)</span>
               </button>
             </div>
           </div>
@@ -1127,7 +1238,7 @@ export function ExecutiveReportView() {
       {/* ===================================================================== */}
       {/* OFFICIAL LANDSCAPE A4 REPORT CONTAINER (Screen Preview & Print Ready) */}
       {/* ===================================================================== */}
-      <div className="print-container a4-print-sheet bg-white rounded-2xl border border-[#CDE5DA] shadow-sm p-4 sm:p-6 lg:p-8 text-[#03291E] space-y-5">
+      <div className="print-container a4-print-sheet bg-white rounded-2xl border border-[#CDE5DA] shadow-sm p-4 sm:p-6 lg:p-8 text-[#03291E] space-y-6">
         {/* ----------------------------------------------------------------- */}
         {/* OFFICIAL ADMINISTRATIVE HEADER (ក្បាលទំព័ររបាយការណ៍រដ្ឋបាលផ្លូវការ)    */}
         {/* ----------------------------------------------------------------- */}
@@ -1165,18 +1276,24 @@ export function ExecutiveReportView() {
             >
               {activeReportTab === 'MATRIX'
                 ? 'តារាងបូកសរុបស្តុកតាមបណ្តាទីតាំង (ថ្នាក់កណ្តាល និង ៣៣ សាខា)'
-                : 'របាយការណ៍បូកសរុបស្ថានភាពសម្ភារបច្ចេកវិទ្យាព័ត៌មានទូទាំងអង្គភាព'}
+                : 'របាយការណ៍សង្ខេបតុល្យភាពស្តុកសម្ភារបច្ចេកវិទ្យាព័ត៌មាន និងសម្ភារបរិក្ខារ'}
             </h1>
             <p className="text-[11px] font-bold text-[#004D40] bg-[#EBF4F0] border border-[#BDE0D0] inline-block px-3 py-0.5 rounded-full">
               គ្របដណ្តប់ទីតាំងថ្នាក់កណ្តាល (១) និងសាខាពន្ធដារខេត្ត-ខណ្ឌ (៣៣)
             </p>
-            <div className="text-[11px] font-bold text-slate-700">
-              កាលបរិច្ឆេទរបាយការណ៍៖{' '}
-              <strong className="text-[#03291E]">
-                {startDate || endDate
-                  ? `ចាប់ពី ${startDate || 'ដើមគ្រា'} ដល់ ${endDate || 'បច្ចុប្បន្ន'}`
-                  : `គិតត្រឹមថ្ងៃទី ${formattedCurrentDateKh}`}
-              </strong>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 text-[11px] font-bold text-slate-700">
+              <span>
+                ទីតាំង៖ <strong className="text-[#03291E]">{activeLocationObj?.name_kh}</strong>
+              </span>
+              <span>|</span>
+              <span>
+                កាលបរិច្ឆេទ៖{' '}
+                <strong className="text-[#03291E]">
+                  {startDate || endDate
+                    ? `ចាប់ពី ${startDate || 'ដើមគ្រា'} ដល់ ${endDate || 'បច្ចុប្បន្ន'}`
+                    : `គិតត្រឹមថ្ងៃទី ${formattedCurrentDateKh}`}
+                </strong>
+              </span>
             </div>
           </div>
 
@@ -1201,16 +1318,15 @@ export function ExecutiveReportView() {
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* EXECUTIVE KPI SUMMARY MATRIX (Hidden when printing Matrix alone so 32 rows fit on 1 page) */}
+        {/* EXECUTIVE KPI SUMMARY CARDS                                       */}
         {/* ----------------------------------------------------------------- */}
         <div className={`grid grid-cols-4 gap-3 ${activeReportTab === 'MATRIX' ? 'no-print' : ''}`}>
-          {/* KPI 1: Total Inventory Inbound */}
           <div className="rounded-xl p-3 bg-[#F2F9F6] border border-[#004D40]/25 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-bold text-[#004D40]">សម្ភារសរុបក្នុងប្រព័ន្ធ</p>
-              <p className="text-[10px] text-slate-500">Total Inventory Inbound</p>
+              <p className="text-[11px] font-bold text-[#004D40]">សម្ភារសរុបរួមនាំចូល (A)</p>
+              <p className="text-[10px] text-slate-500">Total Inbound Qty</p>
               <p className="text-xl font-black text-[#03291E] mt-0.5">
-                {kpiMatrix.totalInventoryInbound.toLocaleString()}
+                {kpiSummary.totalInbound.toLocaleString()}
               </p>
             </div>
             <div className="w-9 h-9 rounded-lg bg-[#004D40] text-white flex items-center justify-center shrink-0">
@@ -1218,27 +1334,12 @@ export function ExecutiveReportView() {
             </div>
           </div>
 
-          {/* KPI 2: Central HQ Stock Balance */}
-          <div className="rounded-xl p-3 bg-emerald-50/70 border border-emerald-300 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-emerald-900">ស្តុកនៅសល់ជាក់ស្តែងថ្នាក់កណ្តាល</p>
-              <p className="text-[10px] text-emerald-700">Central HQ Stock Balance</p>
-              <p className="text-xl font-black text-emerald-800 mt-0.5">
-                {kpiMatrix.centralHqStockBalance.toLocaleString()}
-              </p>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0">
-              <PackageCheck size={18} />
-            </div>
-          </div>
-
-          {/* KPI 3: Active Deployed at 33 Branches */}
           <div className="rounded-xl p-3 bg-blue-50/70 border border-blue-300 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-bold text-blue-900">សម្ភារកំពុងប្រើប្រាស់តាម ៣៣ សាខា</p>
-              <p className="text-[10px] text-blue-700">Active Deployed at 33 Branches</p>
+              <p className="text-[11px] font-bold text-blue-900">កំពុងប្រើប្រាស់ និងបានបើកផ្តល់ (B)</p>
+              <p className="text-[10px] text-blue-700">Active In-Use & Issued Qty</p>
               <p className="text-xl font-black text-blue-800 mt-0.5">
-                {kpiMatrix.activeBranchDeployed.toLocaleString()}
+                {kpiSummary.activeInUseAndIssued.toLocaleString()}
               </p>
             </div>
             <div className="w-9 h-9 rounded-lg bg-blue-700 text-white flex items-center justify-center shrink-0">
@@ -1246,25 +1347,330 @@ export function ExecutiveReportView() {
             </div>
           </div>
 
-          {/* KPI 4: Adjusted / Damaged Items */}
           <div className="rounded-xl p-3 bg-amber-50/70 border border-amber-300 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-bold text-amber-900">សម្ភារខូច/កែសម្រួល</p>
-              <p className="text-[10px] text-amber-700">Adjusted / Damaged Items</p>
+              <p className="text-[11px] font-bold text-amber-900">ខូច / បាត់បង់ / កែតម្រូវ (C)</p>
+              <p className="text-[10px] text-amber-700">Damaged / Adjusted Qty</p>
               <p className="text-xl font-black text-amber-800 mt-0.5">
-                {kpiMatrix.totalAdjusted.toLocaleString()}
+                {kpiSummary.damagedAdjusted.toLocaleString()}
               </p>
             </div>
             <div className="w-9 h-9 rounded-lg bg-amber-600 text-white flex items-center justify-center shrink-0">
               <SlidersHorizontal size={18} />
             </div>
           </div>
+
+          <div className="rounded-xl p-3 bg-emerald-50/70 border border-emerald-300 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold text-emerald-900">ស្តុកនៅសល់ក្នុងឃ្លាំង (D)</p>
+              <p className="text-[10px] text-emerald-700">Warehouse Available Qty</p>
+              <p className="text-xl font-black text-emerald-800 mt-0.5">
+                {kpiSummary.warehouseAvailable.toLocaleString()}
+              </p>
+            </div>
+            <div className="w-9 h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0">
+              <PackageCheck size={18} />
+            </div>
+          </div>
         </div>
 
         {/* ================================================================= */}
-        {/* TABLE 1: CROSS-TAB STOCK DISTRIBUTION MATRIX (39 COLUMNS)         */}
+        {/* PART 1: ប្រភេទទី១៖ សម្ភារប្រើប្រាស់មិនអស់ (ទ្រព្យសម្បត្តិឧបករណ៍បច្ចេកទេស) */}
         {/* ================================================================= */}
-        {(activeReportTab === 'MATRIX' || activeReportTab === 'ALL') && (
+        {(activeReportTab === 'CONSOLIDATED' || activeReportTab === 'PART_1') && (
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between border-l-4 border-[#004D40] pl-3 py-1.5 bg-[#E8F4EE] rounded-r-lg">
+              <div>
+                <h2
+                  className="text-xs sm:text-sm font-bold text-[#03291E]"
+                  style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}
+                >
+                  ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារប្រើប្រាស់មិនអស់ (ទ្រព្យសម្បត្តិឧបករណ៍បច្ចេកទេស)»
+                </h2>
+                <p className="text-[11px] text-slate-600">
+                  រូបមន្តតុល្យភាព៖ សរុបរួម (A) = កំពុងប្រើប្រាស់/បានប្រគល់ជូន (B) + ខូច/បាត់បង់/កែតម្រូវ (C) + ស្តុកនៅសល់ក្នុងឃ្លាំង (D)
+                </p>
+              </div>
+              <span className="text-[11px] font-bold text-[#004D40] px-2.5 py-1 bg-white rounded-md border border-[#CDE5DA] mr-2 shrink-0">
+                សរុប {part1NonConsumableRows.length} មុខ
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-slate-400 text-[11px]">
+                <thead>
+                  <tr className="bg-[#004D40] text-white">
+                    <th className="border border-slate-400 py-2 px-1.5 text-center w-9">ល.រ</th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-16">កូដ</th>
+                    <th className="border border-slate-400 py-2 px-2.5 text-left min-w-[175px]">
+                      ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស
+                    </th>
+                    <th className="border border-slate-400 py-2 px-1.5 text-center w-14">ឯកតា</th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-24 bg-[#00382E]">
+                      សរុបរួម
+                      <span className="block text-[9.5px] font-normal text-emerald-200">(A=B+C+D)</span>
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-28">
+                      កំពុងប្រើប្រាស់ / បានប្រគល់ជូន (B)
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-24">
+                      ខូច / បាត់បង់ / កែតម្រូវ (C)
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-26 bg-emerald-900">
+                      ស្តុកនៅសល់ក្នុងឃ្លាំង (D)
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2.5 text-left min-w-[155px]">
+                      សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2.5 text-left min-w-[175px]">
+                      គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-28">
+                      ស្ថានភាពស្តុក
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={11} className="py-8 text-center text-slate-500 font-semibold">
+                        កំពុងទាញយកទិន្នន័យឧបករណ៍បច្ចេកទេស (ប្រភេទទី១)...
+                      </td>
+                    </tr>
+                  ) : part1NonConsumableRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="py-8 text-center text-slate-500 font-semibold">
+                        មិនមានទិន្នន័យឧបករណ៍បច្ចេកទេសត្រូវនឹងលក្ខខណ្ឌស្វែងរកឡើយ
+                      </td>
+                    </tr>
+                  ) : (
+                    part1NonConsumableRows.map((row) => (
+                      <tr
+                        key={row.itemCode}
+                        className="odd:bg-white even:bg-slate-50/70 hover:bg-emerald-50/40 transition-colors"
+                      >
+                        <td className="border border-slate-300 py-1.5 px-1.5 text-center font-bold text-slate-700">
+                          {row.no}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold text-[#004D40]">
+                          {row.itemCode}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2.5 font-bold text-slate-900">
+                          {row.itemNameKh}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-1.5 text-center text-slate-700">
+                          {row.unit}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-black text-[#03291E] bg-slate-100/80">
+                          {row.totalInboundA.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-black text-blue-800 bg-blue-50/40">
+                          {row.activeInUseB.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-bold text-amber-800 bg-amber-50/30">
+                          {row.damagedAdjustedC.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-black text-emerald-800 bg-emerald-50/60">
+                          {row.warehouseAvailableD.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2.5 text-slate-800 font-medium leading-snug">
+                          {row.assignedHolders}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2.5 text-slate-700 leading-snug">
+                          {row.purposeAndDate}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center whitespace-nowrap">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              row.statusType === 'NORMAL'
+                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                                : row.statusType === 'LOW'
+                                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                : 'bg-rose-50 text-rose-900 border-rose-300'
+                            }`}
+                          >
+                            {row.statusBadge}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {part1NonConsumableRows.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-[#D6EDE2] font-black text-[#03291E]">
+                      <td colSpan={4} className="border border-slate-400 py-2 px-3 text-right">
+                        សរុបរួមផ្នែកទី ១ (ឧបករណ៍បច្ចេកទេស)៖
+                      </td>
+                      <td className="border border-slate-400 py-2 px-2 text-center text-[#03291E]">
+                        {part1Totals.totalInboundA.toLocaleString()}
+                      </td>
+                      <td className="border border-slate-400 py-2 px-2 text-center text-blue-900">
+                        {part1Totals.activeInUseB.toLocaleString()}
+                      </td>
+                      <td className="border border-slate-400 py-2 px-2 text-center text-amber-900">
+                        {part1Totals.damagedAdjustedC.toLocaleString()}
+                      </td>
+                      <td className="border border-slate-400 py-2 px-2 text-center text-emerald-900">
+                        {part1Totals.warehouseAvailableD.toLocaleString()}
+                      </td>
+                      <td colSpan={3} className="border border-slate-400 py-2 px-2.5 text-left text-[10.5px] font-bold text-[#004D40]">
+                        ឧបករណ៍បច្ចេកទេសសរុប {part1NonConsumableRows.length} មុខ
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* PART 2: ប្រភេទទី២៖ សម្ភារប្រើប្រាស់អស់ទៅ (សម្ភារបរិក្ខារ និងអនាម័យ)   */}
+        {/* ================================================================= */}
+        {(activeReportTab === 'CONSOLIDATED' || activeReportTab === 'PART_2') && (
+          <div className="space-y-2.5 pt-2">
+            <div className="flex items-center justify-between border-l-4 border-teal-700 pl-3 py-1.5 bg-[#EBF7F4] rounded-r-lg">
+              <div>
+                <h2
+                  className="text-xs sm:text-sm font-bold text-[#03291E]"
+                  style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}
+                >
+                  ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារប្រើប្រាស់អស់ទៅ (សម្ភារបរិក្ខារ និងអនាម័យ)»
+                </h2>
+                <p className="text-[11px] text-slate-600">
+                  រូបមន្តតុល្យភាព៖ ស្តុកនៅសល់ក្នុងឃ្លាំង (C) = សរុបរួមនាំចូល (A) - បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)
+                </p>
+              </div>
+              <span className="text-[11px] font-bold text-teal-800 px-2.5 py-1 bg-white rounded-md border border-teal-200 mr-2 shrink-0">
+                សរុប {part2ConsumableRows.length} មុខ
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-slate-400 text-[11px]">
+                <thead>
+                  <tr className="bg-[#0F5246] text-white">
+                    <th className="border border-slate-400 py-2 px-1.5 text-center w-9">ល.រ</th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-16">កូដ</th>
+                    <th className="border border-slate-400 py-2 px-2.5 text-left min-w-[180px]">
+                      ឈ្មោះសម្ភារប្រើប្រាស់អស់ទៅ
+                    </th>
+                    <th className="border border-slate-400 py-2 px-1.5 text-center w-14">ឯកតា</th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-28 bg-[#093B32]">
+                      សរុបរួមនាំចូល (A)
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-32">
+                      បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-32 bg-emerald-900">
+                      ស្តុកនៅសល់ក្នុងឃ្លាំង
+                      <span className="block text-[9.5px] font-normal text-emerald-200">(C = A - B)</span>
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2.5 text-left min-w-[170px]">
+                      សាខា ឬអង្គភាពបានបើកយកទៅប្រើប្រាស់
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2.5 text-left min-w-[185px]">
+                      គោលបំណង និងកាលបរិច្ឆេទបើកបែក
+                    </th>
+                    <th className="border border-slate-400 py-2 px-2 text-center w-28">
+                      ស្ថានភាពស្តុក
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={10} className="py-8 text-center text-slate-500 font-semibold">
+                        កំពុងទាញយកទិន្នន័យសម្ភារប្រើប្រាស់អស់ទៅ (ប្រភេទទី២)...
+                      </td>
+                    </tr>
+                  ) : part2ConsumableRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-8 text-center text-slate-500 font-semibold">
+                        មិនមានទិន្នន័យសម្ភារប្រើប្រាស់អស់ទៅត្រូវនឹងលក្ខខណ្ឌស្វែងរកឡើយ
+                      </td>
+                    </tr>
+                  ) : (
+                    part2ConsumableRows.map((row) => (
+                      <tr
+                        key={row.itemCode}
+                        className="odd:bg-white even:bg-slate-50/70 hover:bg-emerald-50/40 transition-colors"
+                      >
+                        <td className="border border-slate-300 py-1.5 px-1.5 text-center font-bold text-slate-700">
+                          {row.no}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-mono font-bold text-teal-800">
+                          {row.itemCode}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2.5 font-bold text-slate-900">
+                          {row.itemNameKh}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-1.5 text-center text-slate-700">
+                          {row.unit}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-black text-[#03291E] bg-slate-100/80">
+                          {row.totalInboundA.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-black text-blue-800 bg-blue-50/40">
+                          {row.totalConsumedB.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center font-black text-emerald-800 bg-emerald-50/60">
+                          {row.remainingStockC.toLocaleString()}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2.5 text-slate-800 font-medium leading-snug">
+                          {row.issuedRecipients}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2.5 text-slate-700 leading-snug">
+                          {row.purposeAndDate}
+                        </td>
+                        <td className="border border-slate-300 py-1.5 px-2 text-center whitespace-nowrap">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              row.statusType === 'NORMAL'
+                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                                : row.statusType === 'LOW'
+                                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                : 'bg-rose-50 text-rose-900 border-rose-300'
+                            }`}
+                          >
+                            {row.statusBadge}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {part2ConsumableRows.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-[#D6EDE2] font-black text-[#03291E]">
+                      <td colSpan={4} className="border border-slate-400 py-2 px-3 text-right">
+                        សរុបរួមផ្នែកទី ២ (សម្ភារប្រើប្រាស់អស់ទៅ)៖
+                      </td>
+                      <td className="border border-slate-400 py-2 px-2 text-center text-[#03291E]">
+                        {part2Totals.totalInboundA.toLocaleString()}
+                      </td>
+                      <td className="border border-slate-400 py-2 px-2 text-center text-blue-900">
+                        {part2Totals.totalConsumedB.toLocaleString()}
+                      </td>
+                      <td className="border border-slate-400 py-2 px-2 text-center text-emerald-900">
+                        {part2Totals.remainingStockC.toLocaleString()}
+                      </td>
+                      <td colSpan={3} className="border border-slate-400 py-2 px-2.5 text-left text-[10.5px] font-bold text-[#004D40]">
+                        សម្ភារប្រើប្រាស់អស់ទៅសរុប {part2ConsumableRows.length} មុខ
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 3: CROSS-TAB STOCK DISTRIBUTION MATRIX (39 COLUMNS)           */}
+        {/* ================================================================= */}
+        {activeReportTab === 'MATRIX' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between border-l-4 border-[#004D40] pl-3 py-1 bg-[#F4F9F6] rounded-r-lg no-print">
               <div>
@@ -1295,7 +1701,6 @@ export function ExecutiveReportView() {
               <table className="matrix-table w-full border-collapse border border-slate-800 text-[10px] leading-tight">
                 <thead>
                   <tr className="bg-[#E8F4EE] text-[#03291E] h-[126px]">
-                    {/* 5 Base Columns on Left */}
                     <th className="border border-slate-700 px-1 py-2 text-center font-bold w-[26px] align-middle bg-[#D6EDE2]">
                       ល.រ
                     </th>
@@ -1312,7 +1717,6 @@ export function ExecutiveReportView() {
                       សរុប
                     </th>
 
-                    {/* Dynamic 34 Location Columns with Slanted / Rotated Header */}
                     {sortedLocations.map((loc) => {
                       const headerBg =
                         loc.category === 'HQ'
@@ -1355,15 +1759,6 @@ export function ExecutiveReportView() {
                         កំពុងទាញយកទិន្នន័យម៉ាទ្រីសស្តុកពី Supabase Database...
                       </td>
                     </tr>
-                  ) : matrixData.rows.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={5 + sortedLocations.length}
-                        className="py-10 text-center text-slate-500 font-semibold text-xs"
-                      >
-                        មិនមានទិន្នន័យសម្ភារត្រូវនឹងលក្ខខណ្ឌស្វែងរកឡើយ
-                      </td>
-                    </tr>
                   ) : (
                     matrixData.rows.map((row) => (
                       <tr
@@ -1389,7 +1784,6 @@ export function ExecutiveReportView() {
                           {row.totalQty}
                         </td>
 
-                        {/* 34 Location Cells */}
                         {sortedLocations.map((loc) => {
                           const qty = row.quantitiesByLocId[loc.id] ?? 0;
                           const isHq = loc.category === 'HQ';
@@ -1436,291 +1830,6 @@ export function ExecutiveReportView() {
                           </td>
                         );
                       })}
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ================================================================= */}
-        {/* TABLE 2: ITEMIZED DETAILS & USAGE PURPOSES TABLE                  */}
-        {/* ================================================================= */}
-        {(activeReportTab === 'PART_B' || activeReportTab === 'ALL') && (
-          <div className="space-y-2.5 pt-2">
-            <div className="flex items-center justify-between border-l-4 border-[#004D40] pl-3 py-1 bg-[#F4F9F6] rounded-r-lg">
-              <div>
-                <h2
-                  className="text-xs sm:text-sm font-bold text-[#03291E]"
-                  style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}
-                >
-                  តារាងលម្អិតសម្ភារ និងគោលបំណងនៃការប្រើប្រាស់ (Itemized Details & Purposes)
-                </h2>
-                <p className="text-[11px] text-slate-600">
-                  បង្ហាញបរិមាណស្តុកនៅសល់ បរិមាណកំពុងប្រើប្រាស់ មន្ត្រី/សាខាទទួលកាន់កាប់ និងគោលបំណងនៃការប្រើប្រាស់ពីប្រតិបត្តិការជាក់ស្តែង
-                </p>
-              </div>
-              <span className="text-[11px] font-bold text-[#004D40] px-2.5 py-1 bg-white rounded-md border border-[#CDE5DA] mr-2">
-                សម្ភារសរុប {itemDetailRows.length} មុខ
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-slate-300 text-xs">
-                <thead>
-                  <tr className="bg-[#004D40] text-white">
-                    <th className="border border-slate-300 py-2 px-2 text-center w-10">ល.រ</th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-left w-24">កូដសម្ភារ</th>
-                    <th className="border border-slate-300 py-2 px-3 text-left min-w-[180px]">
-                      ឈ្មោះសម្ភារ
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2 text-center w-16">ឯកតា</th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-24">
-                      ស្តុកនៅសល់
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-28">
-                      កំពុងប្រើប្រាស់
-                    </th>
-                    <th className="border border-slate-300 py-2 px-3 text-left min-w-[160px]">
-                      មន្ត្រី/សាខាទទួលកាន់កាប់
-                    </th>
-                    <th className="border border-slate-300 py-2 px-3 text-left min-w-[210px]">
-                      គោលបំណងនៃការប្រើប្រាស់ (Purpose/Remark)
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-24">
-                      ស្ថានភាព
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-500 font-semibold">
-                        កំពុងទាញយកទិន្នន័យលម្អិតសម្ភារ...
-                      </td>
-                    </tr>
-                  ) : itemDetailRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-500 font-semibold">
-                        មិនមានទិន្នន័យសម្ភារត្រូវនឹងលក្ខខណ្ឌស្វែងរកឡើយ
-                      </td>
-                    </tr>
-                  ) : (
-                    itemDetailRows.map((row) => (
-                      <tr
-                        key={row.itemCode}
-                        className="hover:bg-emerald-50/40 transition-colors odd:bg-white even:bg-slate-50/60"
-                      >
-                        <td className="border border-slate-300 py-1.5 px-2 text-center font-bold text-slate-700">
-                          {row.no}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 font-mono font-bold text-[#004D40]">
-                          {row.itemCode}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-3 font-bold text-slate-900">
-                          {row.itemNameKh}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2 text-center text-slate-700">
-                          {row.unit}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 text-center font-black text-emerald-800 bg-emerald-50/40">
-                          {row.inStock.toLocaleString()}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 text-center font-black text-blue-800 bg-blue-50/30">
-                          {row.inUseQty.toLocaleString()}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-3 text-slate-800 font-medium">
-                          {row.assignedOfficersOrBranches}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-3 text-slate-700 leading-relaxed">
-                          {row.usagePurpose}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2 text-center">
-                          {row.statusType === 'NORMAL' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              <CheckCircle2 size={10} />
-                              {row.statusLabel}
-                            </span>
-                          )}
-                          {row.statusType === 'LOW' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                              <AlertTriangle size={10} />
-                              {row.statusLabel}
-                            </span>
-                          )}
-                          {row.statusType === 'OUT' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                              <XCircle size={10} />
-                              {row.statusLabel}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-                {itemDetailRows.length > 0 && (
-                  <tfoot>
-                    <tr className="bg-[#E1F2EA] font-black text-[#03291E]">
-                      <td colSpan={4} className="border border-slate-300 py-2 px-3 text-right">
-                        សរុបរួមបរិមាណសម្ភារទាំងអស់ (GRAND TOTAL)៖
-                      </td>
-                      <td className="border border-slate-300 py-2 px-2.5 text-center text-emerald-900">
-                        {partBTotals.inStock.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 py-2 px-2.5 text-center text-blue-900">
-                        {partBTotals.inUseQty.toLocaleString()}
-                      </td>
-                      <td colSpan={3} className="border border-slate-300 py-2 px-3 text-left text-[11px] font-bold text-[#004D40]">
-                        សម្ភារសរុបចំនួន {itemDetailRows.length} មុខ (SKUs)
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ================================================================= */}
-        {/* TABLE 3: STOCK BALANCE BY LOCATIONS SUMMARY TABLE                 */}
-        {/* ================================================================= */}
-        {(activeReportTab === 'PART_A' || activeReportTab === 'ALL') && (
-          <div className="space-y-2.5 pt-2">
-            <div className="flex items-center justify-between border-l-4 border-[#004D40] pl-3 py-1 bg-[#F4F9F6] rounded-r-lg">
-              <div>
-                <h2
-                  className="text-xs sm:text-sm font-bold text-[#03291E]"
-                  style={{ fontFamily: "'Khmer OS Muol Light', 'Moul', serif" }}
-                >
-                  តារាងតុល្យភាពស្តុកតាមបណ្តាទីតាំង (Stock by Locations - {locationBalanceRows.length} Locations)
-                </h2>
-                <p className="text-[11px] text-slate-600">
-                  បង្ហាញតុល្យភាពស្តុកសម្ភារបច្ចេកទេសនៅថ្នាក់កណ្តាល (HQ-ITSB), សាខាពន្ធដារខណ្ឌ និងសាខាពន្ធដារខេត្តទាំងអស់
-                </p>
-              </div>
-              <span className="text-[11px] font-bold text-[#004D40] px-2.5 py-1 bg-white rounded-md border border-[#CDE5DA] mr-2">
-                សរុប {locationBalanceRows.length} ទីតាំង
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-slate-300 text-xs">
-                <thead>
-                  <tr className="bg-[#004D40] text-white">
-                    <th className="border border-slate-300 py-2 px-2 text-center w-10">ល.រ</th>
-                    <th className="border border-slate-300 py-2 px-3 text-left min-w-[210px]">
-                      ឈ្មោះទីតាំង/សាខា
-                    </th>
-                    <th className="border border-slate-300 py-2 px-3 text-left w-44">
-                      ប្រភេទទីតាំង
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-28">
-                      ចំនួនមុខសម្ភារ
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-28">
-                      សម្ភារសរុប
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-32">
-                      នៅសល់ក្នុងស្តុក
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-32">
-                      កំពុងប្រើប្រាស់
-                    </th>
-                    <th className="border border-slate-300 py-2 px-2.5 text-center w-32">
-                      ស្ថានភាព
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={8} className="py-8 text-center text-slate-500 font-semibold">
-                        កំពុងទាញយកទិន្នន័យតុល្យភាពស្តុកតាមទីតាំង...
-                      </td>
-                    </tr>
-                  ) : locationBalanceRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-8 text-center text-slate-500 font-semibold">
-                        មិនមានទិន្នន័យទីតាំងត្រូវនឹងលក្ខខណ្ឌស្វែងរកឡើយ
-                      </td>
-                    </tr>
-                  ) : (
-                    locationBalanceRows.map((locRow) => (
-                      <tr
-                        key={locRow.locationId}
-                        className={`transition-colors ${
-                          locRow.locationCategory === 'HQ'
-                            ? 'bg-emerald-50/70 font-semibold'
-                            : 'odd:bg-white even:bg-slate-50/60 hover:bg-emerald-50/30'
-                        }`}
-                      >
-                        <td className="border border-slate-300 py-1.5 px-2 text-center font-bold text-slate-700">
-                          {locRow.no}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-3 font-bold text-[#03291E]">
-                          {locRow.locationNameKh}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-3">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
-                              locRow.locationCategory === 'HQ'
-                                ? 'bg-teal-100 text-teal-900 border-teal-300'
-                                : locRow.locationCategory === 'KHAN'
-                                ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                : 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                            }`}
-                          >
-                            {locRow.locationCategoryLabel}
-                          </span>
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 text-center font-bold text-slate-700">
-                          {locRow.skuCount} មុខ
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 text-center font-black text-slate-900">
-                          {locRow.totalItems.toLocaleString()}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 text-center font-black text-emerald-800 bg-emerald-50/40">
-                          {locRow.inStock.toLocaleString()}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 text-center font-black text-blue-800 bg-blue-50/30">
-                          {locRow.inUseQty.toLocaleString()}
-                        </td>
-                        <td className="border border-slate-300 py-1.5 px-2.5 text-center">
-                          {locRow.statusType === 'ACTIVE' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              <CheckCircle2 size={10} />
-                              {locRow.statusLabel}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-300">
-                              {locRow.statusLabel}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-                {locationBalanceRows.length > 0 && (
-                  <tfoot>
-                    <tr className="bg-[#E1F2EA] font-black text-[#03291E]">
-                      <td colSpan={4} className="border border-slate-300 py-2 px-3 text-right">
-                        សរុបរួមតាមបណ្តាទីតាំងទាំងអស់ ({locationBalanceRows.length} ទីតាំង)៖
-                      </td>
-                      <td className="border border-slate-300 py-2 px-2.5 text-center text-[#03291E]">
-                        {partATotals.totalItems.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 py-2 px-2.5 text-center text-emerald-900">
-                        {partATotals.inStock.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 py-2 px-2.5 text-center text-blue-900">
-                        {partATotals.inUseQty.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 py-2 px-2.5 text-center text-[11px] font-bold text-[#004D40]">
-                        ត្រឹមត្រូវ ១០០%
-                      </td>
                     </tr>
                   </tfoot>
                 )}
