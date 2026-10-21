@@ -13,9 +13,6 @@ import {
   RefreshCw,
   MapPin,
   Calendar,
-  Boxes,
-  ArrowUpFromLine,
-  Warehouse,
   Search,
   ClipboardList,
   CheckCircle2,
@@ -1068,7 +1065,7 @@ export function ExecutiveReportView() {
       ['នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '', '', '', '', '', '', '✦ ✦ ✦', '', '', ''],
       ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', '', ''],
       ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', '', ''],
-      ['ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់)»', '', '', '', '', '', '', '', '', '', ''],
+      ['ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (Tools)»', '', '', '', '', '', '', '', '', '', ''],
       [`ទីតាំងស្តុក៖ ${locationLabel}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', '', ''],
       ['និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។', '', '', '', '', '', '', '', '', '', ''],
       // Row 8: KPI Summary Banner for Part 1
@@ -1155,7 +1152,7 @@ export function ExecutiveReportView() {
       ws1,
       merges1,
       cols1,
-      'ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់)»',
+      'ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (Tools)»',
       'និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។'
     );
 
@@ -1401,7 +1398,7 @@ export function ExecutiveReportView() {
       ['នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '', '', '', '', '', '✦ ✦ ✦', '', '', ''],
       ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', ''],
       ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', ''],
-      ['ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារ និងសម្ភារប្រើប្រាស់ (ប្រើប្រាស់អស់ទៅ)»', '', '', '', '', '', '', '', '', ''],
+      ['ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារប្រើប្រាស់ (Suppliers)»', '', '', '', '', '', '', '', '', ''],
       [`ទីតាំងស្តុក៖ ${locationLabel}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', ''],
       ['និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។', '', '', '', '', '', '', '', '', ''],
       // Row 8: KPI Summary Banner for Part 2
@@ -1483,7 +1480,7 @@ export function ExecutiveReportView() {
       ws2,
       merges2,
       cols2,
-      'ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារ និងសម្ភារប្រើប្រាស់ (ប្រើប្រាស់អស់ទៅ)»',
+      'ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារប្រើប្រាស់ (Suppliers)»',
       'និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។'
     );
 
@@ -2245,90 +2242,11 @@ export function ExecutiveReportView() {
           </div>
         </div>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* ២. ផ្ទាំងសង្ខេបតួលេខរួមទាំង ៤ (4 KPI EXECUTIVE SUMMARY CARDS)      */}
-        {/* ----------------------------------------------------------------- */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-3">
-          {/* Card 1: ឧបករណ៍បច្ចេកទេសសរុប (ប្រើប្រាស់មិនអស់) */}
-          <div className="rounded-xl border border-slate-300 bg-slate-50/90 p-3 flex items-start justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-bold text-slate-700">
-                ១. សម្ភារឧបករណ៍បច្ចេកទេស (មិនអស់)
-              </p>
-              <p className="text-lg sm:text-xl font-extrabold text-slate-900">
-                {part1Totals.totalInboundA.toLocaleString()} <span className="text-xs font-semibold text-slate-500">គ្រឿង/ឈុត</span>
-              </p>
-              <p className="text-[10px] text-slate-600 font-medium">
-                សរុប <strong className="text-[#05402D]">{nonConsumableRows.length} មុខឧបករណ៍</strong> (A = B + C + D)
-              </p>
-            </div>
-            <div className="w-8 h-8 rounded-lg bg-[#05402D]/10 text-[#05402D] flex items-center justify-center shrink-0">
-              <Wrench className="w-4 h-4" />
-            </div>
-          </div>
-
-          {/* Card 2: កំពុងប្រើប្រាស់ជាក់ស្តែង និងសល់ក្នុងឃ្លាំង (ផ្នែកទី១) */}
-          <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 flex items-start justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-bold text-blue-900">
-                ២. ឧបករណ៍កំពុងប្រើប្រាស់ (B) / សល់ក្នុងឃ្លាំង (D)
-              </p>
-              <p className="text-lg sm:text-xl font-extrabold text-blue-800">
-                {part1Totals.inUseB.toLocaleString()}{' '}
-                <span className="text-xs font-semibold text-slate-500">/</span>{' '}
-                <span className="text-emerald-700">{part1Totals.warehouseAvailD.toLocaleString()}</span>
-              </p>
-              <p className="text-[10px] text-blue-700 font-medium">
-                កំពុងប្រើប្រាស់ (B) និងស្តុកក្នុងឃ្លាំង (D)
-              </p>
-            </div>
-            <div className="w-8 h-8 rounded-lg bg-blue-600/15 text-blue-700 flex items-center justify-center shrink-0">
-              <Boxes className="w-4 h-4" />
-            </div>
-          </div>
-
-          {/* Card 3: សម្ភារបរិក្ខារប្រើប្រាស់អស់ទៅសរុបនាំចូល (A) */}
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 flex items-start justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-bold text-amber-900">
-                ៣. សម្ភារប្រើប្រាស់អស់ទៅនាំចូល (A)
-              </p>
-              <p className="text-lg sm:text-xl font-extrabold text-amber-800">
-                {part2Totals.totalInboundA.toLocaleString()} <span className="text-xs font-semibold text-amber-700">ឯកតា</span>
-              </p>
-              <p className="text-[10px] text-amber-700 font-medium">
-                សរុប <strong className="text-amber-900">{consumableRows.length} មុខសម្ភារ</strong> | បើកផ្តល់ (B): {part2Totals.totalIssuedB.toLocaleString()}
-              </p>
-            </div>
-            <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
-              <ArrowUpFromLine className="w-4 h-4" />
-            </div>
-          </div>
-
-          {/* Card 4: ស្តុកនៅសល់ក្នុងឃ្លាំងសរុបរួម (ផ្នែកទី២ C) */}
-          <div className="rounded-xl border border-emerald-300 bg-emerald-50/70 p-3 flex items-start justify-between">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-bold text-[#05402D]">
-                ៤. ស្តុកសម្ភារអស់ទៅនៅសល់ក្នុងឃ្លាំង (C)
-              </p>
-              <p className="text-lg sm:text-xl font-extrabold text-[#05402D]">
-                {part2Totals.remainingStockC.toLocaleString()} <span className="text-xs font-semibold text-emerald-800">ឯកតា</span>
-              </p>
-              <p className="text-[10px] text-emerald-800 font-medium">
-                តុល្យភាពស្តុកនៅសល់ក្នុងឃ្លាំង (C = A - B)
-              </p>
-            </div>
-            <div className="w-8 h-8 rounded-lg bg-[#05402D] text-[#D4AF37] flex items-center justify-center shrink-0">
-              <Warehouse className="w-4 h-4" />
-            </div>
-          </div>
-        </div>
-
         {/* ================================================================= */}
         {/* TWO-PART CONSOLIDATED REPORT TABLES (ផ្នែកទី១ & ផ្នែកទី២)         */}
         {/* ================================================================= */}
         {activeReportTab === 'consolidated_two_part' && (
-          <div className="space-y-7 mt-4">
+          <div className="space-y-7 mt-2">
             {/* ------------------------------------------------------------- */}
             {/* ផ្នែកទី ១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់) - 11 COLS */}
             {/* ------------------------------------------------------------- */}
@@ -2338,7 +2256,7 @@ export function ExecutiveReportView() {
                   <Wrench className="w-4 h-4 text-[#05402D] shrink-0 mt-0.5" />
                   <div>
                     <h3 className="font-moul text-xs sm:text-sm text-[#05402D]">
-                      ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់)»
+                      ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (Tools)»
                     </h3>
                     <p className="text-[11px] text-slate-600 mt-0.5">
                       <strong>និយមន័យ៖</strong> ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។
@@ -2468,7 +2386,7 @@ export function ExecutiveReportView() {
                   <PackageCheck className="w-4 h-4 text-[#05402D] shrink-0 mt-0.5" />
                   <div>
                     <h3 className="font-moul text-xs sm:text-sm text-[#05402D]">
-                      ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារ និងសម្ភារប្រើប្រាស់ (ប្រើប្រាស់អស់ទៅ)»
+                      ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារប្រើប្រាស់ (Suppliers)»
                     </h3>
                     <p className="text-[11px] text-slate-600 mt-0.5">
                       <strong>និយមន័យ៖</strong> ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។
