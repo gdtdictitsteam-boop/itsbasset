@@ -797,8 +797,6 @@ export function ExecutiveReportView() {
       startDate || endDate
         ? `ចាប់ពីថ្ងៃទី ${startDate || '...'} ដល់ថ្ងៃទី ${endDate || '...'}`
         : `គិតត្រឹមថ្ងៃទី ${formattedKhDate}`;
-    const officerName =
-      user?.full_name || (user as any)?.fullName || (user as any)?.name || 'មន្ត្រីគ្រប់គ្រងស្តុក';
 
     // Reusable border helpers
     const thinBorder = (color = 'CBD5E1') => ({
@@ -950,10 +948,31 @@ export function ExecutiveReportView() {
 
       const sigStartRow = sheetAoA.length;
       const lastCol = totalCols - 1;
-      const g1End = Math.max(2, Math.floor(totalCols / 3) - 1);
-      const g2Start = g1End + 1;
-      const g2End = Math.max(g2Start + 2, Math.floor((totalCols * 2) / 3) - 1);
-      const g3Start = g2End + 1;
+
+      // Align the 3 signature blocks cleanly with the table column groups:
+      // Sheet 1 (11 cols): Left = Cols 0..3, Center = Cols 4..7, Right = Cols 8..10
+      // Sheet 2 (10 cols): Left = Cols 0..3, Center = Cols 4..6, Right = Cols 7..9
+      let g1End: number;
+      let g2Start: number;
+      let g2End: number;
+      let g3Start: number;
+
+      if (totalCols === 11) {
+        g1End = 3;
+        g2Start = 4;
+        g2End = 7;
+        g3Start = 8;
+      } else if (totalCols === 10) {
+        g1End = 3;
+        g2Start = 4;
+        g2End = 6;
+        g3Start = 7;
+      } else {
+        g1End = Math.max(3, Math.floor(totalCols / 3) - 1);
+        g2Start = g1End + 1;
+        g2End = Math.max(g2Start + 2, Math.floor((totalCols * 2) / 3) - 1);
+        g3Start = g2End + 1;
+      }
 
       const buildSigRow = (leftText: string, midText: string, rightText: string) => {
         const row = new Array(totalCols).fill('');
@@ -963,7 +982,10 @@ export function ExecutiveReportView() {
         return row;
       };
 
-      // 6 structured rows for the 3-Column Official Signature Block
+      // 6 structured rows for the 3-Column Official Signature Block:
+      // Left: អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក) -> មន្ត្រីគ្រប់គ្រងស្តុក
+      // Center: បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ) -> ប្រធានការិយាល័យទទួលបន្ទុក
+      // Right: បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន) -> ប្រធាននាយកដ្ឋាន
       sheetAoA.push(
         buildSigRow(
           'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩',
@@ -973,7 +995,7 @@ export function ExecutiveReportView() {
       );
       sheetAoA.push(
         buildSigRow(
-          `រាជធានីភ្នំពេញ, ${formattedKhDate}`,
+          'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦',
           'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦',
           'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦'
         )
@@ -981,7 +1003,7 @@ export function ExecutiveReportView() {
       sheetAoA.push(
         buildSigRow(
           'អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)',
-          'បានពិនិត្យត្រឹមត្រូវ (ប្រធានការិយាល័យ)',
+          'បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ)',
           'បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)'
         )
       );
@@ -995,7 +1017,7 @@ export function ExecutiveReportView() {
       );
       sheetAoA.push(
         buildSigRow(
-          officerName,
+          'មន្ត្រីគ្រប់គ្រងស្តុក',
           'ប្រធានការិយាល័យទទួលបន្ទុក',
           'ប្រធាននាយកដ្ឋាន'
         )
@@ -1022,7 +1044,7 @@ export function ExecutiveReportView() {
         font: { name: 'Khmer OS Muol Light', sz: 10, bold: true, color: { rgb: '05402D' } },
         alignment: { horizontal: 'center', vertical: 'center' }
       });
-      // Dotted line & Signer Name rows
+      // Dotted line & Signer Title/Name rows
       styleRange(ws, sigStartRow + 4, 0, sigStartRow + 4, lastCol, {
         font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '94A3B8' } },
         alignment: { horizontal: 'center', vertical: 'bottom' }
@@ -2701,7 +2723,7 @@ export function ExecutiveReportView() {
         {/* ----------------------------------------------------------------- */}
         <div className="pt-6 mt-5 border-t border-slate-300 break-inside-avoid">
           <div className="grid grid-cols-3 gap-6 text-center text-xs">
-            {/* Left Signature: អ្នករៀបចំរបាយការណ៍ */}
+            {/* Left Signature: អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក) */}
             <div className="space-y-10">
               <div className="space-y-0.5">
                 <p className="text-[11px] text-slate-700 font-medium">
@@ -2711,21 +2733,18 @@ export function ExecutiveReportView() {
                   រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
                 </p>
                 <p className="font-moul text-xs text-[#05402D] pt-1">
-                  អ្នករៀបចំរបាយការណ៍
-                </p>
-                <p className="text-[10px] font-semibold text-slate-600">
-                  (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)
+                  អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)
                 </p>
               </div>
               <div className="pt-2">
-                <div className="w-40 mx-auto border-b border-dotted border-slate-400 mb-1" />
+                <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
                 <p className="font-bold text-slate-800 text-[11px]">
-                  {user?.full_name || (user as any)?.fullName || (user as any)?.name || 'មន្ត្រីគ្រប់គ្រងស្តុក'}
+                  មន្ត្រីគ្រប់គ្រងស្តុក
                 </p>
               </div>
             </div>
 
-            {/* Center Signature: បានពិនិត្យត្រឹមត្រូវ */}
+            {/* Center Signature: បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ) */}
             <div className="space-y-10">
               <div className="space-y-0.5">
                 <p className="text-[11px] text-slate-700 font-medium">
@@ -2735,19 +2754,18 @@ export function ExecutiveReportView() {
                   រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
                 </p>
                 <p className="font-moul text-xs text-[#05402D] pt-1">
-                  បានពិនិត្យត្រឹមត្រូវ
-                </p>
-                <p className="text-[10px] font-semibold text-slate-600">
-                  ប្រធានការិយាល័យ
+                  បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ)
                 </p>
               </div>
               <div className="pt-2">
-                <div className="w-40 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                <p className="text-[11px] text-slate-500">ហត្ថលេខា និងឈ្មោះ</p>
+                <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
+                <p className="font-bold text-slate-800 text-[11px]">
+                  ប្រធានការិយាល័យទទួលបន្ទុក
+                </p>
               </div>
             </div>
 
-            {/* Right Signature: បានឃើញ និងឯកភាព */}
+            {/* Right Signature: បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន) */}
             <div className="space-y-10">
               <div className="space-y-0.5">
                 <p className="text-[11px] text-slate-700 font-medium">
@@ -2757,15 +2775,14 @@ export function ExecutiveReportView() {
                   រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
                 </p>
                 <p className="font-moul text-xs text-[#05402D] pt-1">
-                  បានឃើញ និងឯកភាព
-                </p>
-                <p className="text-[10px] font-semibold text-slate-600">
-                  ប្រធាននាយកដ្ឋាន / ប្រធានអង្គភាព
+                  បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)
                 </p>
               </div>
               <div className="pt-2">
-                <div className="w-40 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                <p className="text-[11px] text-slate-500">ហត្ថលេខា និងត្រា</p>
+                <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
+                <p className="font-bold text-slate-800 text-[11px]">
+                  ប្រធាននាយកដ្ឋាន
+                </p>
               </div>
             </div>
           </div>
