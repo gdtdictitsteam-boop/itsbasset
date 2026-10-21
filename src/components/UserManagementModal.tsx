@@ -525,9 +525,18 @@ export function UserManagementModal() {
       }
 
       if (isCreatingNew || !editUser.id) {
+        const generatedUuid =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                const r = (Math.random() * 16) | 0;
+                const v = c === 'x' ? r : (r & 0x3) | 0x8;
+                return v.toString(16);
+              });
+
         const insertPayload = {
           ...updatePayload,
-          id: 'user-' + Date.now(),
+          id: generatedUuid,
           password: (newPassword && newPassword.trim() !== '') ? newPassword.trim() : 'GDT@2026',
           is_default_password: !newPassword || newPassword.trim() === '' || newPassword.trim() === 'GDT@2026',
           password_updated_at: new Date().toISOString(),
@@ -544,10 +553,13 @@ export function UserManagementModal() {
           return;
         }
       } else {
-        const { error: updateErr } = await supabase
-          .from('user_profiles')
-          .update(updatePayload)
-          .eq('id', editUser.id);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          String(editUser.id)
+        );
+        const query = supabase.from('user_profiles').update(updatePayload);
+        const { error: updateErr } = isUuid
+          ? await query.eq('id', editUser.id)
+          : await query.eq('email', editUser.email);
 
         if (updateErr) {
           alert('កំហុសក្នុងការកែប្រែ៖ ' + updateErr.message);
@@ -561,11 +573,14 @@ export function UserManagementModal() {
         await updateUserProfile(editUser.id, updatePayload);
       }
 
-      alert('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់ជោគជ័យ!');
+      const actionMsg = isCreatingNew || !editUser.id
+        ? 'បានបន្ថែមមន្ត្រីថ្មីដោយជោគជ័យ!'
+        : 'បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់ជោគជ័យ!';
+      alert(actionMsg);
       setNewPassword('');
       setIsEditModalOpen(false);
       await fetchUsers(); // Refresh តារាងបញ្ជីមន្ត្រី
-      setSuccessMessage('បានកែប្រែព័ត៌មាន និងពាក្យសម្ងាត់ជោគជ័យ!');
+      setSuccessMessage(actionMsg);
 
     } catch (err: any) {
       console.error('Save error:', err);

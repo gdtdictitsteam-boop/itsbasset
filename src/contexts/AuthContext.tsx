@@ -322,8 +322,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       let matchedDb: any = null;
 
-      // 1. Query by User ID
-      if (targetId) {
+      // 1. Query by User ID only if targetId is a valid UUID
+      const isUuid =
+        typeof targetId === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+
+      if (targetId && isUuid) {
         const { data, error } = await supabase
           .from('user_profiles')
           .select('*')
@@ -645,7 +649,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Create new user profile directly in public.user_profiles
   const createUserProfile = async (profileData: Omit<UserProfile, 'id'>): Promise<{ success: boolean; error?: string }> => {
     try {
-      const newId = 'user-' + Date.now();
+      const newId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0;
+              const v = c === 'x' ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
       const rawPwd = (profileData.password || '').trim() || 'GDT@2026';
       const isDefaultPwd = typeof profileData.is_default_password === 'boolean' 
         ? profileData.is_default_password 
@@ -671,7 +682,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (configured) {
-        await supabase.from('user_profiles').insert([{
+        const { error } = await supabase.from('user_profiles').insert([{
           id: newId,
           email: newProfile.email,
           full_name: newProfile.full_name,
@@ -681,6 +692,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           is_default_password: isDefaultPwd,
           password_updated_at: nowIso
         }]);
+        if (error) {
+          return { success: false, error: error.message };
+        }
       }
 
       return { success: true };
