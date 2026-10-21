@@ -5,7 +5,8 @@ import { useLocationContext, formatLocationOption } from '../contexts/LocationCo
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Item, InventoryItem, Location } from '../types';
-import * as XLSX from 'xlsx';
+// @ts-ignore - xlsx-js-style is a drop-in build of SheetJS that writes cell styles (.s)
+import XLSX from 'xlsx-js-style';
 import {
   FileSpreadsheet,
   Printer,
@@ -778,9 +779,16 @@ export function ExecutiveReportView() {
     };
   }, [unifiedItems, unifiedInventory, unifiedLocations, searchQuery, findLocationByIdOrCode]);
 
-  // Export 2-Sheet Excel (.xlsx) — GDT_Executive_Stock_Report_YYYY-MM-DD.xlsx
-  const handleExportExcel = () => {
+  // ===========================================================================
+  // EXPORT TO EXCEL (.xlsx) — STYLED TO MATCH OFFICIAL A4 LANDSCAPE PRINT PREVIEW
+  // ===========================================================================
+  const exportToExcel = () => {
     const todayStr = new Date().toISOString().slice(0, 10);
+    const formattedKhDate = new Date().toLocaleDateString('km-KH', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
     const locationLabel =
       reportLocationId === 'ALL' || !activeSelectedLocationObj
         ? 'គ្រប់ទីតាំងស្តុកទាំងអស់ (ឃ្លាំងកណ្តាល HQ-ITSB និង ៣៣ សាខាពន្ធដារ)'
@@ -788,43 +796,306 @@ export function ExecutiveReportView() {
     const dateRangeLabel =
       startDate || endDate
         ? `ចាប់ពីថ្ងៃទី ${startDate || '...'} ដល់ថ្ងៃទី ${endDate || '...'}`
-        : `គិតត្រឹមថ្ងៃទី ${new Date().toLocaleDateString('km-KH', { day: '2-digit', month: 'long', year: 'numeric' })}`;
+        : `គិតត្រឹមថ្ងៃទី ${formattedKhDate}`;
+    const officerName =
+      user?.full_name || (user as any)?.fullName || (user as any)?.name || 'មន្ត្រីគ្រប់គ្រងស្តុក';
+
+    // Reusable border helpers
+    const thinBorder = (color = 'CBD5E1') => ({
+      top: { style: 'thin', color: { rgb: color } },
+      bottom: { style: 'thin', color: { rgb: color } },
+      left: { style: 'thin', color: { rgb: color } },
+      right: { style: 'thin', color: { rgb: color } }
+    });
+
+    const headerBorder = {
+      top: { style: 'medium', color: { rgb: '05402D' } },
+      bottom: { style: 'medium', color: { rgb: 'D4AF37' } },
+      left: { style: 'thin', color: { rgb: '475569' } },
+      right: { style: 'thin', color: { rgb: '475569' } }
+    };
+
+    const subtotalBorder = {
+      top: { style: 'medium', color: { rgb: '05402D' } },
+      bottom: { style: 'double', color: { rgb: '05402D' } },
+      left: { style: 'thin', color: { rgb: '94A3B8' } },
+      right: { style: 'thin', color: { rgb: '94A3B8' } }
+    };
+
+    // Helper to apply style to a range of cells (inclusive, 0-indexed)
+    const styleRange = (
+      ws: Record<string, any>,
+      sR: number,
+      sC: number,
+      eR: number,
+      eC: number,
+      styleObj: Record<string, any>
+    ) => {
+      for (let r = sR; r <= eR; r++) {
+        for (let c = sC; c <= eC; c++) {
+          const ref = XLSX.utils.encode_cell({ r, c });
+          if (!ws[ref]) {
+            ws[ref] = { t: 's', v: '' };
+          }
+          ws[ref].s = {
+            ...(ws[ref].s || {}),
+            ...styleObj
+          };
+        }
+      }
+    };
+
+    // Helper to build the official Royal Government header + KPI summary block
+    const applyOfficialSheetHeader = (
+      ws: Record<string, any>,
+      merges: any[],
+      totalCols: number,
+      sectionTitleKh: string,
+      definitionKh: string
+    ) => {
+      const lastCol = totalCols - 1;
+      const leftSpanEnd = Math.min(3, Math.floor(totalCols / 2) - 1);
+      const rightSpanStart = Math.max(leftSpanEnd + 1, totalCols - 4);
+
+      // Merges for Row 0..3 (Left Ministry & Right Kingdom Motto)
+      for (let r = 0; r <= 3; r++) {
+        merges.push({ s: { r, c: 0 }, e: { r, c: leftSpanEnd } });
+        merges.push({ s: { r, c: rightSpanStart }, e: { r, c: lastCol } });
+      }
+
+      // Merges for Centerpiece Title, Section Title, Scope/Date, Definition (Rows 4..7)
+      merges.push({ s: { r: 4, c: 0 }, e: { r: 4, c: lastCol } });
+      merges.push({ s: { r: 5, c: 0 }, e: { r: 5, c: lastCol } });
+      merges.push({ s: { r: 6, c: 0 }, e: { r: 6, c: lastCol } });
+      merges.push({ s: { r: 7, c: 0 }, e: { r: 7, c: lastCol } });
+
+      // Style Left Official Header (Rows 0..1: Moul, Row 2: Dept Bold, Row 3: Ref No)
+      styleRange(ws, 0, 0, 1, leftSpanEnd, {
+        font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+        alignment: { horizontal: 'left', vertical: 'center' }
+      });
+      styleRange(ws, 2, 0, 2, leftSpanEnd, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '1E293B' } },
+        alignment: { horizontal: 'left', vertical: 'center' }
+      });
+      styleRange(ws, 3, 0, 3, leftSpanEnd, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '475569' } },
+        alignment: { horizontal: 'left', vertical: 'center' },
+        border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
+      });
+
+      // Style Middle Empty Header Row 3 Bottom Border
+      if (rightSpanStart > leftSpanEnd + 1) {
+        styleRange(ws, 3, leftSpanEnd + 1, 3, rightSpanStart - 1, {
+          border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
+        });
+      }
+
+      // Style Right Kingdom Motto (Rows 0..1: Moul, Row 2: Gold Divider, Row 3: Bottom Border)
+      styleRange(ws, 0, rightSpanStart, 1, lastCol, {
+        font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      });
+      styleRange(ws, 2, rightSpanStart, 2, lastCol, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: 'D4AF37' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      });
+      styleRange(ws, 3, rightSpanStart, 3, lastCol, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '64748B' } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
+      });
+
+      // Row 4: Main Report Title
+      styleRange(ws, 4, 0, 4, lastCol, {
+        font: { name: 'Khmer OS Muol Light', sz: 12.5, bold: true, color: { rgb: '05402D' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      });
+
+      // Row 5: Section Subtitle
+      const secCell = XLSX.utils.encode_cell({ r: 5, c: 0 });
+      if (ws[secCell]) ws[secCell].v = sectionTitleKh;
+      styleRange(ws, 5, 0, 5, lastCol, {
+        font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+        fill: { fgColor: { rgb: 'ECFDF5' } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('A7F3D0')
+      });
+
+      // Row 6: Location Scope & Date Range
+      styleRange(ws, 6, 0, 6, lastCol, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E293B' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      });
+
+      // Row 7: Definition Banner
+      const defCell = XLSX.utils.encode_cell({ r: 7, c: 0 });
+      if (ws[defCell]) ws[defCell].v = definitionKh;
+      styleRange(ws, 7, 0, 7, lastCol, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, italic: true, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: 'F8FAFC' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: thinBorder('E2E8F0')
+      });
+    };
+
+    // Helper to style the 3-column signature block at the bottom of a sheet
+    const appendAndStyleSignatureBlock = (
+      sheetAoA: (string | number)[][],
+      merges: any[],
+      totalCols: number
+    ): number => {
+      const emptyRow = new Array(totalCols).fill('');
+      sheetAoA.push([...emptyRow]); // Blank spacer row
+
+      const sigStartRow = sheetAoA.length;
+      const lastCol = totalCols - 1;
+      const g1End = Math.max(2, Math.floor(totalCols / 3) - 1);
+      const g2Start = g1End + 1;
+      const g2End = Math.max(g2Start + 2, Math.floor((totalCols * 2) / 3) - 1);
+      const g3Start = g2End + 1;
+
+      const buildSigRow = (leftText: string, midText: string, rightText: string) => {
+        const row = new Array(totalCols).fill('');
+        row[0] = leftText;
+        row[g2Start] = midText;
+        row[g3Start] = rightText;
+        return row;
+      };
+
+      // 6 structured rows for the 3-Column Official Signature Block
+      sheetAoA.push(
+        buildSigRow(
+          'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩',
+          'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩',
+          'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩'
+        )
+      );
+      sheetAoA.push(
+        buildSigRow(
+          `រាជធានីភ្នំពេញ, ${formattedKhDate}`,
+          'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦',
+          'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦'
+        )
+      );
+      sheetAoA.push(
+        buildSigRow(
+          'អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)',
+          'បានពិនិត្យត្រឹមត្រូវ (ប្រធានការិយាល័យ)',
+          'បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)'
+        )
+      );
+      sheetAoA.push([...emptyRow]); // Space for physical stamp & signature
+      sheetAoA.push(
+        buildSigRow(
+          '...................................................',
+          '...................................................',
+          '...................................................'
+        )
+      );
+      sheetAoA.push(
+        buildSigRow(
+          officerName,
+          'ប្រធានការិយាល័យទទួលបន្ទុក',
+          'ប្រធាននាយកដ្ឋាន'
+        )
+      );
+
+      for (let r = sigStartRow; r < sigStartRow + 6; r++) {
+        merges.push({ s: { r, c: 0 }, e: { r, c: g1End } });
+        merges.push({ s: { r, c: g2Start }, e: { r, c: g2End } });
+        merges.push({ s: { r, c: g3Start }, e: { r, c: lastCol } });
+      }
+
+      return sigStartRow;
+    };
+
+    const styleSignatureRows = (ws: Record<string, any>, sigStartRow: number, totalCols: number) => {
+      const lastCol = totalCols - 1;
+      // Lunar & Solar date rows
+      styleRange(ws, sigStartRow, 0, sigStartRow + 1, lastCol, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '334155' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      });
+      // Role Title row (Moul font)
+      styleRange(ws, sigStartRow + 2, 0, sigStartRow + 2, lastCol, {
+        font: { name: 'Khmer OS Muol Light', sz: 10, bold: true, color: { rgb: '05402D' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      });
+      // Dotted line & Signer Name rows
+      styleRange(ws, sigStartRow + 4, 0, sigStartRow + 4, lastCol, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '94A3B8' } },
+        alignment: { horizontal: 'center', vertical: 'bottom' }
+      });
+      styleRange(ws, sigStartRow + 5, 0, sigStartRow + 5, lastCol, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '0F172A' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      });
+    };
 
     const wb = XLSX.utils.book_new();
 
     // =========================================================================
-    // SHEET 1: "ឧបករណ៍បច្ចេកទេស-មិនអស់" (11 Columns)
+    // SHEET 1: "ឧបករណ៍បច្ចេកទេស-មិនអស់" (11 Columns — Part 1)
     // =========================================================================
-    const sheet1Data: (string | number)[][] = [
-      ['ព្រះរាជាណាចក្រកម្ពុជា'],
-      ['ជាតិ សាសនា ព្រះមហាក្សត្រ'],
-      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ'],
-      ['អគ្គនាយកដ្ឋានពន្ធដារ - នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន'],
-      [''],
-      ['ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់)»'],
-      ['និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។'],
-      [`វិសាលភាពទីតាំង៖ ${locationLabel} | កាលបរិច្ឆេទ៖ ${dateRangeLabel}`],
-      [''],
+    const cols1 = 11;
+    const merges1: any[] = [];
+    const sheet1AoA: (string | number)[][] = [
+      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា', '', '', ''],
+      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ', '', '', ''],
+      ['នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '', '', '', '', '', '', '✦ ✦ ✦', '', '', ''],
+      ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', '', ''],
+      ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', '', ''],
+      ['ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់)»', '', '', '', '', '', '', '', '', '', ''],
+      [`ទីតាំងស្តុក៖ ${locationLabel}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', '', ''],
+      ['និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។', '', '', '', '', '', '', '', '', '', ''],
+      // Row 8: KPI Summary Banner for Part 1
+      [
+        `១. ឧបករណ៍បច្ចេកទេសសរុប (A)៖ ${part1Totals.totalInboundA.toLocaleString()} គ្រឿង (${nonConsumableRows.length} មុខ)`,
+        '',
+        '',
+        `២. កំពុងប្រើប្រាស់ជាក់ស្តែង (B)៖ ${part1Totals.inUseB.toLocaleString()} គ្រឿង`,
+        '',
+        '',
+        `៣. ខូច / កែតម្រូវ (C)៖ ${part1Totals.damagedAdjustedC.toLocaleString()} គ្រឿង`,
+        '',
+        `៤. ស្តុកនៅសល់ក្នុងឃ្លាំង (D = A - B - C)៖ ${part1Totals.warehouseAvailD.toLocaleString()} គ្រឿង`,
+        '',
+        ''
+      ],
+      new Array(cols1).fill(''), // Row 9: Spacer
+      // Row 10: Table Header
       [
         'ល.រ',
         'កូដ',
         'ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស',
         'ឯកតា',
-        'សរុបរួម (A=B+C)',
-        'កំពុងប្រើប្រាស់ / បានប្រគល់ជូន (B)',
-        'ខូច / បាត់បង់ / កែតម្រូវ (C)',
-        'ស្តុកនៅសល់ក្នុងឃ្លាំង (D)',
+        'សរុបរួម\n(A = B + C + D)',
+        'កំពុងប្រើប្រាស់ /\nបានប្រគល់ជូន (B)',
+        'ខូច / បាត់បង់ /\nកែតម្រូវ (C)',
+        'ស្តុកនៅសល់ក្នុងឃ្លាំង\n(D = A - B - C)',
         'សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង',
         'គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ',
         'ស្ថានភាពស្តុក'
       ]
     ];
 
+    // Merges for Row 8 KPI cards on Sheet 1
+    merges1.push(
+      { s: { r: 8, c: 0 }, e: { r: 8, c: 2 } },
+      { s: { r: 8, c: 3 }, e: { r: 8, c: 5 } },
+      { s: { r: 8, c: 6 }, e: { r: 8, c: 7 } },
+      { s: { r: 8, c: 8 }, e: { r: 8, c: 10 } }
+    );
+
+    const headerRowIdx1 = 10;
+    const dataStartRow1 = 11;
+
     nonConsumableRows.forEach(r => {
-      sheet1Data.push([
+      sheet1AoA.push([
         r.no,
         r.itemCode,
-        `${r.nameKh} (${r.nameEn})`,
+        `${r.nameKh}\n(${r.nameEn})`,
         r.unitKh,
         r.totalInboundA,
         r.inUseB,
@@ -836,83 +1107,325 @@ export function ExecutiveReportView() {
       ]);
     });
 
-    sheet1Data.push([
+    const subtotalRowIdx1 = sheet1AoA.length;
+    sheet1AoA.push([
+      'សរុបរួមផ្នែកទី ១ (SUBTOTAL - សម្ភារឧបករណ៍បច្ចេកទេសប្រើប្រាស់មិនអស់)៖',
       '',
       '',
-      'សរុបរួមផ្នែកទី ១ (SUBTOTAL - ឧបករណ៍បច្ចេកទេសប្រើប្រាស់មិនអស់)',
-      'គ្រឿង/ឈុត',
+      '',
       part1Totals.totalInboundA,
       part1Totals.inUseB,
       part1Totals.damagedAdjustedC,
       part1Totals.warehouseAvailD,
-      `សរុប ${nonConsumableRows.length} មុខឧបករណ៍`,
-      'ផ្ទៀងផ្ទាត់ត្រឹមត្រូវតាមបញ្ជីសារពើភណ្ឌ',
-      ''
-    ]);
-
-    sheet1Data.push(['']);
-    sheet1Data.push([
-      '',
-      'អ្នករៀបចំរបាយការណ៍ (មន្ត្រីកាន់ស្តុក)',
-      '',
-      '',
-      'បានពិនិត្យត្រឹមត្រូវ (ប្រធានការិយាល័យ)',
-      '',
-      '',
-      '',
-      'បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋាន)',
+      `តុល្យភាពស្តុកឧបករណ៍បច្ចេកទេស៖ D (${part1Totals.warehouseAvailD.toLocaleString()}) = A (${part1Totals.totalInboundA.toLocaleString()}) - B (${part1Totals.inUseB.toLocaleString()}) - C (${part1Totals.damagedAdjustedC.toLocaleString()})`,
       '',
       ''
     ]);
+    merges1.push(
+      { s: { r: subtotalRowIdx1, c: 0 }, e: { r: subtotalRowIdx1, c: 3 } },
+      { s: { r: subtotalRowIdx1, c: 8 }, e: { r: subtotalRowIdx1, c: 10 } }
+    );
 
-    const ws1 = XLSX.utils.aoa_to_sheet(sheet1Data);
+    const sigStart1 = appendAndStyleSignatureBlock(sheet1AoA, merges1, cols1);
+    const ws1 = XLSX.utils.aoa_to_sheet(sheet1AoA);
+
+    applyOfficialSheetHeader(
+      ws1,
+      merges1,
+      cols1,
+      'ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់)»',
+      'និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។'
+    );
+
+    // Style KPI Row 8 on Sheet 1
+    styleRange(ws1, 8, 0, 8, 2, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
+      fill: { fgColor: { rgb: 'F1F5F9' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('94A3B8')
+    });
+    styleRange(ws1, 8, 3, 8, 5, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E40AF' } },
+      fill: { fgColor: { rgb: 'EFF6FF' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('93C5FD')
+    });
+    styleRange(ws1, 8, 6, 8, 7, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '9F1239' } },
+      fill: { fgColor: { rgb: 'FFF1F2' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('FDA4AF')
+    });
+    styleRange(ws1, 8, 8, 8, 10, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'ECFDF5' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('6EE7B7')
+    });
+
+    // Style Table Header Row 10 on Sheet 1
+    styleRange(ws1, headerRowIdx1, 0, headerRowIdx1, cols1 - 1, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '05402D' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+    // Highlight Col 4 (Inbound A) & Col 7 (Warehouse D) in Header
+    styleRange(ws1, headerRowIdx1, 4, headerRowIdx1, 4, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '03291E' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+    styleRange(ws1, headerRowIdx1, 7, headerRowIdx1, 7, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'D4AF37' } },
+      fill: { fgColor: { rgb: '022C22' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+
+    // Style Data Rows on Sheet 1
+    nonConsumableRows.forEach((row, idx) => {
+      const r = dataStartRow1 + idx;
+      const zebraFill = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+
+      // Base row style
+      styleRange(ws1, r, 0, r, cols1 - 1, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '1E293B' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { vertical: 'center', wrapText: true },
+        border: thinBorder('CBD5E1')
+      });
+
+      // Col 0: No (Center)
+      styleRange(ws1, r, 0, r, 0, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      // Col 1: Code (Center, Bold Green)
+      styleRange(ws1, r, 1, r, 1, {
+        font: { name: 'Consolas', sz: 9.5, bold: true, color: { rgb: '05402D' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      // Col 2: Name (Left, Bold)
+      styleRange(ws1, r, 2, r, 2, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+        border: thinBorder('CBD5E1')
+      });
+      // Col 3: Unit (Center)
+      styleRange(ws1, r, 3, r, 3, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      // Col 4: Inbound A (Right, Bold Slate, Light Gray Fill)
+      styleRange(ws1, r, 4, r, 4, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '0F172A' } },
+        fill: { fgColor: { rgb: 'F1F5F9' } },
+        alignment: { horizontal: 'right', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+      // Col 5: In-Use B (Right, Bold Blue)
+      styleRange(ws1, r, 5, r, 5, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '1D4ED8' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'right', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+      // Col 6: Damaged/Adjusted C (Right, Rose)
+      styleRange(ws1, r, 6, r, 6, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: row.damagedAdjustedC > 0, color: { rgb: row.damagedAdjustedC > 0 ? 'BE123C' : '64748B' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'right', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+      // Col 7: Warehouse Available D (Right, Bold GDT Green, Soft Emerald Fill)
+      styleRange(ws1, r, 7, r, 7, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
+        fill: { fgColor: { rgb: 'ECFDF5' } },
+        alignment: { horizontal: 'right', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+      // Col 8 & 9: Assigned Holders & Purpose (Left, Wrap)
+      styleRange(ws1, r, 8, r, 9, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '1E293B' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+        border: thinBorder('CBD5E1')
+      });
+      // Col 10: Status Badge
+      const statusFill =
+        row.statusCode === 'sufficient'
+          ? 'DCFCE7'
+          : row.statusCode === 'low_stock'
+            ? 'FEF3C7'
+            : 'FFE4E6';
+      const statusColor =
+        row.statusCode === 'sufficient'
+          ? '166534'
+          : row.statusCode === 'low_stock'
+            ? '92400E'
+            : '9F1239';
+      styleRange(ws1, r, 10, r, 10, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: statusColor } },
+        fill: { fgColor: { rgb: statusFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+    });
+
+    // Style Subtotal Row on Sheet 1
+    styleRange(ws1, subtotalRowIdx1, 0, subtotalRowIdx1, 3, {
+      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      border: subtotalBorder
+    });
+    styleRange(ws1, subtotalRowIdx1, 4, subtotalRowIdx1, 4, {
+      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '0F172A' } },
+      fill: { fgColor: { rgb: 'CBD5E1' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    styleRange(ws1, subtotalRowIdx1, 5, subtotalRowIdx1, 5, {
+      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '1E40AF' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    styleRange(ws1, subtotalRowIdx1, 6, subtotalRowIdx1, 6, {
+      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '9F1239' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    styleRange(ws1, subtotalRowIdx1, 7, subtotalRowIdx1, 7, {
+      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'D1FAE5' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    styleRange(ws1, subtotalRowIdx1, 8, subtotalRowIdx1, 10, {
+      font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '334155' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+      border: subtotalBorder
+    });
+
+    styleSignatureRows(ws1, sigStart1, cols1);
+
+    ws1['!merges'] = merges1;
     ws1['!cols'] = [
-      { wch: 6 },
-      { wch: 11 },
-      { wch: 38 },
-      { wch: 10 },
-      { wch: 16 },
-      { wch: 24 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 36 },
-      { wch: 38 },
-      { wch: 18 }
+      { wch: 6 },   // ល.រ
+      { wch: 11 },  // កូដ
+      { wch: 36 },  // ឈ្មោះឧបករណ៍
+      { wch: 10 },  // ឯកតា
+      { wch: 16 },  // សរុបរួម A
+      { wch: 20 },  // កំពុងប្រើប្រាស់ B
+      { wch: 17 },  // ខូច/កែតម្រូវ C
+      { wch: 20 },  // ស្តុកនៅសល់ក្នុងឃ្លាំង D
+      { wch: 36 },  // សាខា ឬមន្ត្រីទទួលកាន់កាប់
+      { wch: 38 },  // គោលបំណង និងកាលបរិច្ឆេទ
+      { wch: 18 }   // ស្ថានភាពស្តុក
     ];
+    ws1['!rows'] = [
+      { hpt: 20 }, // Row 0
+      { hpt: 20 }, // Row 1
+      { hpt: 19 }, // Row 2
+      { hpt: 19 }, // Row 3
+      { hpt: 28 }, // Row 4 Main Title
+      { hpt: 24 }, // Row 5 Section Title
+      { hpt: 20 }, // Row 6 Scope & Date
+      { hpt: 22 }, // Row 7 Definition
+      { hpt: 26 }, // Row 8 KPI Cards
+      { hpt: 10 }, // Row 9 Spacer
+      { hpt: 36 }, // Row 10 Table Header
+      ...nonConsumableRows.map(() => ({ hpt: 32 })),
+      { hpt: 28 }, // Subtotal
+      { hpt: 14 }, // Spacer
+      { hpt: 19 }, // Sig Lunar
+      { hpt: 19 }, // Sig Solar
+      { hpt: 22 }, // Sig Title
+      { hpt: 38 }, // Sig Stamp Space
+      { hpt: 18 }, // Sig Dotted
+      { hpt: 22 }  // Sig Officer Name
+    ];
+    ws1['!pageSetup'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
     XLSX.utils.book_append_sheet(wb, ws1, 'ឧបករណ៍បច្ចេកទេស-មិនអស់');
 
     // =========================================================================
-    // SHEET 2: "សម្ភារប្រើប្រាស់-អស់ទៅ" (10 Columns)
+    // SHEET 2: "សម្ភារប្រើប្រាស់-អស់ទៅ" (10 Columns — Part 2)
     // =========================================================================
-    const sheet2Data: (string | number)[][] = [
-      ['ព្រះរាជាណាចក្រកម្ពុជា'],
-      ['ជាតិ សាសនា ព្រះមហាក្សត្រ'],
-      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ'],
-      ['អគ្គនាយកដ្ឋានពន្ធដារ - នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន'],
-      [''],
-      ['ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារ និងសម្ភារប្រើប្រាស់ (ប្រើប្រាស់អស់ទៅ)»'],
-      ['និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។'],
-      [`វិសាលភាពទីតាំង៖ ${locationLabel} | កាលបរិច្ឆេទ៖ ${dateRangeLabel}`],
-      [''],
+    const cols2 = 10;
+    const merges2: any[] = [];
+    const sheet2AoA: (string | number)[][] = [
+      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា', '', '', ''],
+      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ', '', '', ''],
+      ['នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '', '', '', '', '', '✦ ✦ ✦', '', '', ''],
+      ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', ''],
+      ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', ''],
+      ['ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារ និងសម្ភារប្រើប្រាស់ (ប្រើប្រាស់អស់ទៅ)»', '', '', '', '', '', '', '', '', ''],
+      [`ទីតាំងស្តុក៖ ${locationLabel}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', ''],
+      ['និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។', '', '', '', '', '', '', '', '', ''],
+      // Row 8: KPI Summary Banner for Part 2
+      [
+        `១. មុខសម្ភារប្រើប្រាស់អស់ទៅសរុប៖ ${consumableRows.length} មុខសម្ភារ`,
+        '',
+        '',
+        `២. បរិមាណសរុបរួមនាំចូល (A)៖ ${part2Totals.totalInboundA.toLocaleString()} ឯកតា`,
+        '',
+        `៣. បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)៖ ${part2Totals.totalIssuedB.toLocaleString()} ឯកតា`,
+        '',
+        `៤. ស្តុកនៅសល់ក្នុងឃ្លាំង (C = A - B)៖ ${part2Totals.remainingStockC.toLocaleString()} ឯកតា`,
+        '',
+        ''
+      ],
+      new Array(cols2).fill(''), // Row 9: Spacer
+      // Row 10: Table Header
       [
         'ល.រ',
         'កូដ',
         'ឈ្មោះសម្ភារប្រើប្រាស់អស់ទៅ',
         'ឯកតា',
-        'សរុបរួមនាំចូល (A)',
-        'បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)',
-        'ស្តុកនៅសល់ក្នុងឃ្លាំង (C = A - B)',
+        'សរុបរួមនាំចូល\n(A)',
+        'បានបើកផ្តល់ និង\nប្រើប្រាស់សរុប (B)',
+        'ស្តុកនៅសល់ក្នុងឃ្លាំង\n(C = A - B)',
         'សាខា ឬអង្គភាពបានបើកយកទៅប្រើប្រាស់',
         'គោលបំណង និងកាលបរិច្ឆេទបើកបែក',
         'ស្ថានភាពស្តុក'
       ]
     ];
 
+    merges2.push(
+      { s: { r: 8, c: 0 }, e: { r: 8, c: 2 } },
+      { s: { r: 8, c: 3 }, e: { r: 8, c: 4 } },
+      { s: { r: 8, c: 5 }, e: { r: 8, c: 6 } },
+      { s: { r: 8, c: 7 }, e: { r: 8, c: 9 } }
+    );
+
+    const headerRowIdx2 = 10;
+    const dataStartRow2 = 11;
+
     consumableRows.forEach(r => {
-      sheet2Data.push([
+      sheet2AoA.push([
         r.no,
         r.itemCode,
-        `${r.nameKh} (${r.nameEn})`,
+        `${r.nameKh}\n(${r.nameEn})`,
         r.unitKh,
         r.totalInboundA,
         r.totalIssuedB,
@@ -923,50 +1436,524 @@ export function ExecutiveReportView() {
       ]);
     });
 
-    sheet2Data.push([
+    const subtotalRowIdx2 = sheet2AoA.length;
+    sheet2AoA.push([
+      'សរុបរួមផ្នែកទី ២ (SUBTOTAL - សម្ភារប្រើប្រាស់អស់ទៅ)៖',
       '',
       '',
-      'សរុបរួមផ្នែកទី ២ (SUBTOTAL - សម្ភារប្រើប្រាស់អស់ទៅ)',
-      'ឯកតា',
+      '',
       part2Totals.totalInboundA,
       part2Totals.totalIssuedB,
       part2Totals.remainingStockC,
-      `សរុប ${consumableRows.length} មុខសម្ភារ`,
-      'ផ្ទៀងផ្ទាត់ត្រឹមត្រូវតាមបញ្ជីសារពើភណ្ឌ',
-      ''
-    ]);
-
-    sheet2Data.push(['']);
-    sheet2Data.push([
-      '',
-      'អ្នករៀបចំរបាយការណ៍ (មន្ត្រីកាន់ស្តុក)',
-      '',
-      '',
-      'បានពិនិត្យត្រឹមត្រូវ (ប្រធានការិយាល័យ)',
-      '',
-      '',
-      'បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋាន)',
+      `តុល្យភាពស្តុកសម្ភារប្រើប្រាស់អស់ទៅ៖ C (${part2Totals.remainingStockC.toLocaleString()}) = A (${part2Totals.totalInboundA.toLocaleString()}) - B (${part2Totals.totalIssuedB.toLocaleString()})`,
       '',
       ''
     ]);
+    merges2.push(
+      { s: { r: subtotalRowIdx2, c: 0 }, e: { r: subtotalRowIdx2, c: 3 } },
+      { s: { r: subtotalRowIdx2, c: 7 }, e: { r: subtotalRowIdx2, c: 9 } }
+    );
 
-    const ws2 = XLSX.utils.aoa_to_sheet(sheet2Data);
+    const sigStart2 = appendAndStyleSignatureBlock(sheet2AoA, merges2, cols2);
+    const ws2 = XLSX.utils.aoa_to_sheet(sheet2AoA);
+
+    applyOfficialSheetHeader(
+      ws2,
+      merges2,
+      cols2,
+      'ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារ និងសម្ភារប្រើប្រាស់ (ប្រើប្រាស់អស់ទៅ)»',
+      'និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។'
+    );
+
+    // Style KPI Row 8 on Sheet 2
+    styleRange(ws2, 8, 0, 8, 2, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
+      fill: { fgColor: { rgb: 'F1F5F9' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('94A3B8')
+    });
+    styleRange(ws2, 8, 3, 8, 4, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E293B' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('94A3B8')
+    });
+    styleRange(ws2, 8, 5, 8, 6, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '92400E' } },
+      fill: { fgColor: { rgb: 'FFFBEB' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('FCD34D')
+    });
+    styleRange(ws2, 8, 7, 8, 9, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'ECFDF5' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('6EE7B7')
+    });
+
+    // Style Table Header Row 10 on Sheet 2
+    styleRange(ws2, headerRowIdx2, 0, headerRowIdx2, cols2 - 1, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '05402D' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+    styleRange(ws2, headerRowIdx2, 4, headerRowIdx2, 4, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '03291E' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+    styleRange(ws2, headerRowIdx2, 6, headerRowIdx2, 6, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'D4AF37' } },
+      fill: { fgColor: { rgb: '022C22' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+
+    // Style Data Rows on Sheet 2
+    consumableRows.forEach((row, idx) => {
+      const r = dataStartRow2 + idx;
+      const zebraFill = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+
+      styleRange(ws2, r, 0, r, cols2 - 1, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '1E293B' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { vertical: 'center', wrapText: true },
+        border: thinBorder('CBD5E1')
+      });
+
+      styleRange(ws2, r, 0, r, 0, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      styleRange(ws2, r, 1, r, 1, {
+        font: { name: 'Consolas', sz: 9.5, bold: true, color: { rgb: '05402D' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      styleRange(ws2, r, 2, r, 2, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+        border: thinBorder('CBD5E1')
+      });
+      styleRange(ws2, r, 3, r, 3, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      // Col 4: Inbound A
+      styleRange(ws2, r, 4, r, 4, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '0F172A' } },
+        fill: { fgColor: { rgb: 'F1F5F9' } },
+        alignment: { horizontal: 'right', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+      // Col 5: Issued B (Amber)
+      styleRange(ws2, r, 5, r, 5, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: 'B45309' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'right', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+      // Col 6: Remaining Stock C (GDT Green)
+      styleRange(ws2, r, 6, r, 6, {
+        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
+        fill: { fgColor: { rgb: 'ECFDF5' } },
+        alignment: { horizontal: 'right', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+      // Col 7 & 8: Recipients & Purpose
+      styleRange(ws2, r, 7, r, 8, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '1E293B' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+        border: thinBorder('CBD5E1')
+      });
+      // Col 9: Status Badge
+      const statusFill =
+        row.statusCode === 'sufficient'
+          ? 'DCFCE7'
+          : row.statusCode === 'low_stock'
+            ? 'FEF3C7'
+            : 'FFE4E6';
+      const statusColor =
+        row.statusCode === 'sufficient'
+          ? '166534'
+          : row.statusCode === 'low_stock'
+            ? '92400E'
+            : '9F1239';
+      styleRange(ws2, r, 9, r, 9, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: statusColor } },
+        fill: { fgColor: { rgb: statusFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+    });
+
+    // Style Subtotal Row on Sheet 2
+    styleRange(ws2, subtotalRowIdx2, 0, subtotalRowIdx2, 3, {
+      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      border: subtotalBorder
+    });
+    styleRange(ws2, subtotalRowIdx2, 4, subtotalRowIdx2, 4, {
+      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '0F172A' } },
+      fill: { fgColor: { rgb: 'CBD5E1' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    styleRange(ws2, subtotalRowIdx2, 5, subtotalRowIdx2, 5, {
+      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '92400E' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    styleRange(ws2, subtotalRowIdx2, 6, subtotalRowIdx2, 6, {
+      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'D1FAE5' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    styleRange(ws2, subtotalRowIdx2, 7, subtotalRowIdx2, 9, {
+      font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '334155' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+      border: subtotalBorder
+    });
+
+    styleSignatureRows(ws2, sigStart2, cols2);
+
+    ws2['!merges'] = merges2;
     ws2['!cols'] = [
-      { wch: 6 },
-      { wch: 11 },
-      { wch: 38 },
-      { wch: 10 },
-      { wch: 18 },
-      { wch: 24 },
-      { wch: 22 },
-      { wch: 36 },
-      { wch: 38 },
-      { wch: 18 }
+      { wch: 6 },   // ល.រ
+      { wch: 11 },  // កូដ
+      { wch: 36 },  // ឈ្មោះសម្ភារ
+      { wch: 10 },  // ឯកតា
+      { wch: 18 },  // សរុបរួមនាំចូល A
+      { wch: 22 },  // បានបើកផ្តល់ B
+      { wch: 22 },  // ស្តុកនៅសល់ក្នុងឃ្លាំង C
+      { wch: 36 },  // សាខា ឬអង្គភាពបានបើកយក
+      { wch: 38 },  // គោលបំណង និងកាលបរិច្ឆេទ
+      { wch: 18 }   // ស្ថានភាពស្តុក
     ];
+    ws2['!rows'] = [
+      { hpt: 20 },
+      { hpt: 20 },
+      { hpt: 19 },
+      { hpt: 19 },
+      { hpt: 28 },
+      { hpt: 24 },
+      { hpt: 20 },
+      { hpt: 22 },
+      { hpt: 26 },
+      { hpt: 10 },
+      { hpt: 36 },
+      ...consumableRows.map(() => ({ hpt: 32 })),
+      { hpt: 28 },
+      { hpt: 14 },
+      { hpt: 19 },
+      { hpt: 19 },
+      { hpt: 22 },
+      { hpt: 38 },
+      { hpt: 18 },
+      { hpt: 22 }
+    ];
+    ws2['!pageSetup'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
     XLSX.utils.book_append_sheet(wb, ws2, 'សម្ភារប្រើប្រាស់-អស់ទៅ');
+
+    // =========================================================================
+    // SHEET 3: "តារាងម៉ាទ្រីសតាមទីតាំង" (Cross-Tab Stock Distribution Matrix)
+    // =========================================================================
+    const cols3 = 5 + unifiedLocations.length;
+    const merges3: any[] = [];
+    const buildHeaderRow3 = (leftTxt: string, rightTxt: string) => {
+      const arr = new Array(cols3).fill('');
+      arr[0] = leftTxt;
+      arr[Math.max(4, cols3 - 8)] = rightTxt;
+      return arr;
+    };
+    const buildFullMergedRow3 = (txt: string) => {
+      const arr = new Array(cols3).fill('');
+      arr[0] = txt;
+      return arr;
+    };
+
+    const sheet3AoA: (string | number)[][] = [
+      buildHeaderRow3('ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', 'ព្រះរាជាណាចក្រកម្ពុជា'),
+      buildHeaderRow3('អគ្គនាយកដ្ឋានពន្ធដារ', 'ជាតិ សាសនា ព្រះមហាក្សត្រ'),
+      buildHeaderRow3('នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '✦ ✦ ✦'),
+      buildHeaderRow3('លេខ៖ ........................... អពដ/នបព', ''),
+      buildFullMergedRow3('របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់'),
+      buildFullMergedRow3('តារាងម៉ាទ្រីសបែងចែកស្តុកតាមបណ្តាទីតាំងទាំងអស់ (Cross-Tab Stock Distribution Matrix)'),
+      buildFullMergedRow3(`ទីតាំងស្តុក៖ គ្រប់ទីតាំងស្តុកទាំង ${unifiedLocations.length}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`),
+      buildFullMergedRow3('បង្ហាញបរិមាណសម្ភារនីមួយៗតាមជួរឈរទីតាំងស្តុកទាំងអស់ (ឃ្លាំងកណ្តាល HQ-ITSB → ថ្នាក់កណ្តាល → សាខាពន្ធដារខណ្ឌ → សាខាពន្ធដារខេត្ត)'),
+      new Array(cols3).fill(''), // Row 8 spacer
+      [
+        'ល.រ',
+        'កូដ',
+        'ឈ្មោះសម្ភារៈ',
+        'ខ្នាត',
+        'សរុបរួម',
+        ...unifiedLocations.map(loc => getShortLocationHeader(loc))
+      ]
+    ];
+
+    const headerRowIdx3 = 9;
+    const dataStartRow3 = 10;
+
+    matrixData.rows.forEach(r => {
+      sheet3AoA.push([
+        r.no,
+        r.itemCode,
+        r.nameKh,
+        r.unitKh,
+        r.totalQty,
+        ...unifiedLocations.map(loc => {
+          const val = r.locationQuantities[loc.id] || 0;
+          return val > 0 ? val : '-';
+        })
+      ]);
+    });
+
+    const subtotalRowIdx3 = sheet3AoA.length;
+    sheet3AoA.push([
+      'សរុបតាមទីតាំងនីមួយៗ (COLUMN TOTALS)៖',
+      '',
+      '',
+      '',
+      matrixData.grandTotal,
+      ...unifiedLocations.map(loc => {
+        const colSum = matrixData.columnTotals[loc.id] || 0;
+        return colSum > 0 ? colSum : '-';
+      })
+    ]);
+    merges3.push({ s: { r: subtotalRowIdx3, c: 0 }, e: { r: subtotalRowIdx3, c: 3 } });
+
+    const sigStart3 = appendAndStyleSignatureBlock(sheet3AoA, merges3, cols3);
+    const ws3 = XLSX.utils.aoa_to_sheet(sheet3AoA);
+
+    // Custom header merges for wide Matrix sheet
+    const rightStart3 = Math.max(4, cols3 - 8);
+    for (let r = 0; r <= 3; r++) {
+      merges3.push({ s: { r, c: 0 }, e: { r, c: 3 } });
+      merges3.push({ s: { r, c: rightStart3 }, e: { r, c: cols3 - 1 } });
+    }
+    for (let r = 4; r <= 7; r++) {
+      merges3.push({ s: { r, c: 0 }, e: { r, c: cols3 - 1 } });
+    }
+
+    styleRange(ws3, 0, 0, 1, 3, {
+      font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    styleRange(ws3, 2, 0, 2, 3, {
+      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '1E293B' } },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    styleRange(ws3, 3, 0, 3, cols3 - 1, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '475569' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+      border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
+    });
+    styleRange(ws3, 0, rightStart3, 1, cols3 - 1, {
+      font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    });
+    styleRange(ws3, 2, rightStart3, 2, cols3 - 1, {
+      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: 'D4AF37' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    });
+    styleRange(ws3, 4, 0, 4, cols3 - 1, {
+      font: { name: 'Khmer OS Muol Light', sz: 12.5, bold: true, color: { rgb: '05402D' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    });
+    styleRange(ws3, 5, 0, 5, cols3 - 1, {
+      font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'ECFDF5' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('A7F3D0')
+    });
+    styleRange(ws3, 6, 0, 6, cols3 - 1, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E293B' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    });
+    styleRange(ws3, 7, 0, 7, cols3 - 1, {
+      font: { name: 'Khmer OS Siemreap', sz: 9, italic: true, color: { rgb: '334155' } },
+      fill: { fgColor: { rgb: 'F8FAFC' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: thinBorder('E2E8F0')
+    });
+
+    // Style Matrix Table Header (Row 9) — Fixed Columns 0..4 horizontal, Location Columns 5..N rotated 90 deg!
+    styleRange(ws3, headerRowIdx3, 0, headerRowIdx3, 3, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '05402D' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+    styleRange(ws3, headerRowIdx3, 4, headerRowIdx3, 4, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'D4AF37' } },
+      fill: { fgColor: { rgb: '022C22' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: headerBorder
+    });
+    unifiedLocations.forEach((_, idx) => {
+      const c = 5 + idx;
+      const isCentral = idx === 0;
+      styleRange(ws3, headerRowIdx3, c, headerRowIdx3, c, {
+        font: {
+          name: 'Khmer OS Siemreap',
+          sz: 9,
+          bold: true,
+          color: { rgb: isCentral ? 'D4AF37' : 'FFFFFF' }
+        },
+        fill: { fgColor: { rgb: isCentral ? '022C22' : '05402D' } },
+        alignment: { horizontal: 'center', vertical: 'bottom', textRotation: 90 },
+        border: headerBorder
+      });
+    });
+
+    // Style Matrix Data Rows
+    matrixData.rows.forEach((row, rIdx) => {
+      const r = dataStartRow3 + rIdx;
+      const zebraFill = rIdx % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+
+      styleRange(ws3, r, 0, r, 0, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      styleRange(ws3, r, 1, r, 1, {
+        font: { name: 'Consolas', sz: 9, bold: true, color: { rgb: '05402D' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      styleRange(ws3, r, 2, r, 2, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '0F172A' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'left', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      styleRange(ws3, r, 3, r, 3, {
+        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '334155' } },
+        fill: { fgColor: { rgb: zebraFill } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: thinBorder('CBD5E1')
+      });
+      styleRange(ws3, r, 4, r, 4, {
+        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
+        fill: { fgColor: { rgb: 'ECFDF5' } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        numFmt: '#,##0',
+        border: thinBorder('CBD5E1')
+      });
+
+      unifiedLocations.forEach((loc, cIdx) => {
+        const c = 5 + cIdx;
+        const val = row.locationQuantities[loc.id] || 0;
+        const isCentral = cIdx === 0;
+        styleRange(ws3, r, c, r, c, {
+          font: {
+            name: 'Consolas',
+            sz: 9,
+            bold: val > 0,
+            color: { rgb: val > 0 ? (isCentral ? '05402D' : '0F172A') : 'CBD5E1' }
+          },
+          fill: {
+            fgColor: {
+              rgb: val > 0 ? (isCentral ? 'FEF3C7' : 'ECFDF5') : zebraFill
+            }
+          },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: thinBorder('CBD5E1')
+        });
+      });
+    });
+
+    // Style Matrix Subtotal Row
+    styleRange(ws3, subtotalRowIdx3, 0, subtotalRowIdx3, 3, {
+      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'E2E8F0' } },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      border: subtotalBorder
+    });
+    styleRange(ws3, subtotalRowIdx3, 4, subtotalRowIdx3, 4, {
+      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
+      fill: { fgColor: { rgb: 'FEF3C7' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      numFmt: '#,##0',
+      border: subtotalBorder
+    });
+    unifiedLocations.forEach((loc, cIdx) => {
+      const c = 5 + cIdx;
+      const colSum = matrixData.columnTotals[loc.id] || 0;
+      styleRange(ws3, subtotalRowIdx3, c, subtotalRowIdx3, c, {
+        font: {
+          name: 'Consolas',
+          sz: 9,
+          bold: colSum > 0,
+          color: { rgb: colSum > 0 ? '05402D' : '94A3B8' }
+        },
+        fill: { fgColor: { rgb: 'E2E8F0' } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: subtotalBorder
+      });
+    });
+
+    styleSignatureRows(ws3, sigStart3, cols3);
+
+    ws3['!merges'] = merges3;
+    ws3['!cols'] = [
+      { wch: 5 },   // ល.រ
+      { wch: 10 },  // កូដ
+      { wch: 30 },  // ឈ្មោះសម្ភារៈ
+      { wch: 8 },   // ខ្នាត
+      { wch: 10 },  // សរុបរួម
+      ...unifiedLocations.map(() => ({ wch: 5.5 }))
+    ];
+    ws3['!rows'] = [
+      { hpt: 20 },
+      { hpt: 20 },
+      { hpt: 19 },
+      { hpt: 19 },
+      { hpt: 28 },
+      { hpt: 24 },
+      { hpt: 20 },
+      { hpt: 22 },
+      { hpt: 10 },
+      { hpt: 145 }, // Rotated 90-degree location header row height
+      ...matrixData.rows.map(() => ({ hpt: 22 })),
+      { hpt: 26 },
+      { hpt: 14 },
+      { hpt: 19 },
+      { hpt: 19 },
+      { hpt: 22 },
+      { hpt: 38 },
+      { hpt: 18 },
+      { hpt: 22 }
+    ];
+    ws3['!pageSetup'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
+    XLSX.utils.book_append_sheet(wb, ws3, 'តារាងម៉ាទ្រីសតាមទីតាំង');
 
     XLSX.writeFile(wb, `GDT_Executive_Stock_Report_${todayStr}.xlsx`);
   };
+
+  const handleExportExcel = exportToExcel;
 
   // Trigger A4 Landscape Print
   const handlePrintA4 = () => {
