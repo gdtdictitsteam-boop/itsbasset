@@ -113,20 +113,31 @@ function getShortLocationHeader(loc: Location | string | undefined): string {
   if (typeof loc === 'string') {
     const clean = loc.trim();
     if (clean.includes('HQ-ITSB') || clean.includes('ស្តុកសម្ភារបច្ចេកទេស')) return 'ឃ្លាំងកណ្តាល (HQ-ITSB)';
+    if (clean.includes('Tech-HQ') || clean.includes('ថ្នាក់កណ្តាល')) return 'ថ្នាក់កណ្តាល (Tech-HQ)';
     return clean
+      .replace(/^\[.*?\]\s*/, '')
       .replace(/^សាខាពន្ធដារខណ្ឌ\s*/, 'ខណ្ឌ')
       .replace(/^សាខាពន្ធដារខេត្ត\s*/, 'ខេត្ត')
-      .replace(/^សាខាពន្ធដារ\s*/, 'សាខា');
+      .replace(/^សាខាពន្ធដារ\s*/, 'សាខា')
+      .replace(/\s*\([A-Za-z0-9-]+\)\s*$/, '')
+      .trim();
   }
   const code = String(loc.code || '').trim();
+  const codeUpper = code.toUpperCase();
   const nameKh = String(loc.name_kh || loc.name_en || code).trim();
-  if (code === 'HQ-ITSB' || loc.type === 'HQ' || loc.id === '1') {
+  if (codeUpper === 'HQ-ITSB' || loc.type === 'HQ' || loc.id === '1') {
     return 'ឃ្លាំងកណ្តាល (HQ-ITSB)';
   }
+  if (codeUpper === 'TECH-HQ' || loc.id === '35' || nameKh.includes('ថ្នាក់កណ្តាល')) {
+    return 'ថ្នាក់កណ្តាល (Tech-HQ)';
+  }
   return nameKh
+    .replace(/^\[.*?\]\s*/, '')
     .replace(/^សាខាពន្ធដារខណ្ឌ\s*/, 'ខណ្ឌ')
     .replace(/^សាខាពន្ធដារខេត្ត\s*/, 'ខេត្ត')
-    .replace(/^សាខាពន្ធដារ\s*/, 'សាខា');
+    .replace(/^សាខាពន្ធដារ\s*/, 'សាខា')
+    .replace(/\s*\([A-Za-z0-9-]+\)\s*$/, '')
+    .trim();
 }
 
 function isNonConsumableItem(item: Item): boolean {
@@ -1586,70 +1597,68 @@ export function ExecutiveReportView() {
               <table className="w-full text-left border-collapse matrix-table">
                 <thead>
                   <tr className="bg-[#05402D] text-white font-bold">
-                    <th className="py-2 px-1.5 border border-slate-400 text-center text-[10px] w-7 align-bottom">
+                    <th className="py-2 px-1.5 border border-slate-400 text-center text-[11px] min-w-[32px] w-8 align-middle">
                       ល.រ
                     </th>
-                    <th className="py-2 px-1.5 border border-slate-400 text-center text-[10px] w-14 align-bottom">
+                    <th className="py-2 px-1.5 border border-slate-400 text-center text-[11px] min-w-[56px] w-14 align-middle">
                       កូដ
                     </th>
-                    <th className="py-2 px-2 border border-slate-400 text-left text-[10px] min-w-[145px] align-bottom">
+                    <th className="py-2 px-2.5 border border-slate-400 text-left text-[11px] min-w-[175px] align-middle">
                       ឈ្មោះសម្ភារៈ
                     </th>
-                    <th className="py-2 px-1 border border-slate-400 text-center text-[10px] w-11 align-bottom">
+                    <th className="py-2 px-1.5 border border-slate-400 text-center text-[11px] min-w-[46px] w-12 align-middle">
                       ខ្នាត
                     </th>
-                    <th className="py-2 px-1.5 border border-slate-400 text-center text-[10px] w-14 align-bottom bg-[#03291E] text-[#D4AF37]">
+                    <th className="py-2 px-1.5 border border-slate-400 text-center text-[11px] min-w-[58px] w-15 align-middle bg-[#03291E] text-[#D4AF37]">
                       សរុបរួម
                     </th>
                     {unifiedLocations.map((loc, idx) => {
                       const shortName = getShortLocationHeader(loc);
                       const isCentral = idx === 0;
+                      const isTechHq =
+                        idx === 1 &&
+                        (String(loc.code || '').toUpperCase() === 'TECH-HQ' || String(loc.id) === '35');
                       return (
                         <th
                           key={loc.id}
-                          title={loc.name_kh}
-                          className={`border border-slate-400 p-0 align-bottom relative h-36 min-w-[26px] max-w-[30px] ${
-                            isCentral ? 'bg-emerald-950 text-[#D4AF37]' : 'bg-[#05402D] text-white'
+                          title={formatLocationOption(loc, 'kh')}
+                          className={`border border-slate-400 p-0 align-middle min-w-[34px] w-[34px] h-[175px] ${
+                            isCentral
+                              ? 'bg-emerald-950 text-[#D4AF37]'
+                              : isTechHq
+                                ? 'bg-[#03291E] text-amber-200'
+                                : 'bg-[#05402D] text-white'
                           }`}
                         >
-                          <div className="w-full h-full flex items-end justify-center pb-2">
-                            <span
-                              className="inline-block whitespace-nowrap text-[9px] font-semibold leading-none tracking-tight origin-bottom-left"
-                              style={{
-                                writingMode: 'vertical-rl',
-                                transform: 'rotate(180deg)',
-                                maxHeight: '132px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}
-                            >
+                          <div className="w-full h-[175px] flex items-center justify-center">
+                            <div className="matrix-header-cell">
                               {shortName}
-                            </span>
+                            </div>
                           </div>
                         </th>
                       );
                     })}
                   </tr>
                 </thead>
-                <tbody className="text-[10px] divide-y divide-slate-300">
+                <tbody className="text-[11px] divide-y divide-slate-300">
                   {matrixData.rows.map((row, rIdx) => (
                     <tr
                       key={row.itemCode}
                       className={`${rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'} hover:bg-emerald-50/50`}
                     >
-                      <td className="py-1 px-1 border border-slate-300 text-center font-semibold text-slate-700">
+                      <td className="py-1.5 px-1 border border-slate-300 text-center font-semibold text-slate-700">
                         {row.no}
                       </td>
-                      <td className="py-1 px-1 border border-slate-300 text-center font-mono font-bold text-[#05402D]">
+                      <td className="py-1.5 px-1 border border-slate-300 text-center font-mono font-bold text-[#05402D]">
                         {row.itemCode}
                       </td>
-                      <td className="py-1 px-1.5 border border-slate-300 font-bold text-slate-900 truncate max-w-[165px]" title={`${row.nameKh} (${row.nameEn})`}>
+                      <td className="py-1.5 px-2 border border-slate-300 font-bold text-slate-900 min-w-[175px]" title={`${row.nameKh} (${row.nameEn})`}>
                         {row.nameKh}
                       </td>
-                      <td className="py-1 px-1 border border-slate-300 text-center text-slate-700">
+                      <td className="py-1.5 px-1 border border-slate-300 text-center text-slate-700">
                         {row.unitKh}
                       </td>
-                      <td className="py-1 px-1.5 border border-slate-300 text-center font-extrabold text-[#05402D] bg-emerald-50/80">
+                      <td className="py-1.5 px-1.5 border border-slate-300 text-center font-extrabold text-[#05402D] bg-emerald-50/80">
                         {row.totalQty.toLocaleString()}
                       </td>
                       {unifiedLocations.map((loc, cIdx) => {
@@ -1659,7 +1668,7 @@ export function ExecutiveReportView() {
                           <td
                             key={loc.id}
                             title={`${row.nameKh} @ ${loc.name_kh}: ${val}`}
-                            className={`py-1 px-0.5 border border-slate-300 text-center font-mono ${
+                            className={`py-1.5 px-1 border border-slate-300 text-center font-mono min-w-[34px] ${
                               val > 0
                                 ? isCentral
                                   ? 'font-extrabold text-[#05402D] bg-amber-50/50'
@@ -1675,11 +1684,11 @@ export function ExecutiveReportView() {
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-slate-200 font-extrabold text-[10px] text-slate-900 border-t-2 border-[#05402D]">
-                    <td colSpan={4} className="py-1.5 px-2 border border-slate-400 text-right text-[#05402D]">
+                  <tr className="bg-slate-200 font-extrabold text-[11px] text-slate-900 border-t-2 border-[#05402D]">
+                    <td colSpan={4} className="py-2 px-2.5 border border-slate-400 text-right text-[#05402D]">
                       សរុបតាមទីតាំងនីមួយៗ (COLUMN TOTALS)៖
                     </td>
-                    <td className="py-1.5 px-1.5 border border-slate-400 text-center text-[#05402D] bg-amber-100/80">
+                    <td className="py-2 px-1.5 border border-slate-400 text-center text-[#05402D] bg-amber-100/80">
                       {matrixData.grandTotal.toLocaleString()}
                     </td>
                     {unifiedLocations.map(loc => {
@@ -1687,7 +1696,7 @@ export function ExecutiveReportView() {
                       return (
                         <td
                           key={loc.id}
-                          className="py-1.5 px-0.5 border border-slate-400 text-center font-mono text-[9px] text-[#05402D]"
+                          className="py-2 px-1 border border-slate-400 text-center font-mono text-[10px] text-[#05402D] min-w-[34px]"
                         >
                           {colSum > 0 ? colSum : '-'}
                         </td>
