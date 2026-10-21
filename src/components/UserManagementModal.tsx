@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig } from '../lib/supabase';
 import { UserProfile } from '../types';
 import { 
   Settings, 
@@ -143,18 +144,20 @@ BEGIN
         NOW()
     );
 
-    -- Ensure security metadata columns exist in public.user_profiles (No plaintext password stored)
+    -- Ensure security metadata columns exist in public.user_profiles
+    ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS password TEXT DEFAULT 'GDT@2026';
     ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS is_default_password BOOLEAN DEFAULT true;
     ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ;
 
     -- Ensure public.user_profiles exists and is in sync
-    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, is_default_password, password_updated_at, created_at)
+    INSERT INTO public.user_profiles (id, email, full_name, role, location_id, password, is_default_password, password_updated_at, created_at)
     VALUES (
         v_user_id,
         lower(p_email),
         p_full_name,
         p_role,
         v_location_id,
+        p_password,
         (p_password = 'GDT@2026'),
         NOW(),
         NOW()
@@ -165,6 +168,7 @@ BEGIN
         full_name = EXCLUDED.full_name,
         role = EXCLUDED.role,
         location_id = EXCLUDED.location_id,
+        password = EXCLUDED.password,
         is_default_password = EXCLUDED.is_default_password,
         password_updated_at = NOW();
 
@@ -210,8 +214,8 @@ END;
 $$;
 
 -- Grant execution permissions
-GRANT EXECUTE ON FUNCTION public.create_or_update_gdt_user TO postgres, service_role;
-GRANT EXECUTE ON FUNCTION public.admin_secure_set_password TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.create_or_update_gdt_user TO authenticated, service_role, anon, postgres;
+GRANT EXECUTE ON FUNCTION public.admin_secure_set_password TO authenticated, service_role, anon, postgres;
 
 -- 4. BATCH SEED ALL EXISTING OFFICERS WITH DEFAULT PASSWORD: GDT@2026
 DO $$
@@ -525,26 +529,96 @@ export function UserManagementModal() {
       }
 
       if (isCreatingNew || !editUser.id) {
-        const generatedUuid =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-                const r = (Math.random() * 16) | 0;
-                const v = c === 'x' ? r : (r & 0x3) | 0x8;
-                return v.toString(16);
-              });
+        const cleanEmail = editUser.email.trim().toLowerCase();
+        const effectivePassword =
+          newPassword && newPassword.trim() !== '' ? newPassword.trim() : 'GDT@2026';
+        const isDefaultPassword =
+          !newPassword || newPassword.trim() === '' || effectivePassword === 'GDT@2026';
+        const nowIso = new Date().toISOString();
+        const locationCodeForRpc = matchedBranch?.code || targetCode || String(formLocationId);
 
+        let authUserId: string | null = null;
+
+        // ជំហានទី ១ (ជម្រើស RPC): សាកល្បងហៅ Database Function `create_or_update_gdt_user` បើមានក្នុងប្រព័ន្ធ
+        try {
+          const { data: rpcUuid, error: rpcErr } = await supabase.rpc('create_or_update_gdt_user', {
+            p_email: cleanEmail,
+            p_password: effectivePassword,
+            p_full_name: editUser.full_name.trim(),
+            p_role: editUser.role,
+            p_location_code: locationCodeForRpc,
+          });
+          if (!rpcErr && rpcUuid && typeof rpcUuid === 'string') {
+            authUserId = rpcUuid;
+          }
+        } catch {
+          // បន្តទៅជំហានទី ២ ប្រសិនបើ RPC មិនទាន់បានបង្កើត
+        }
+
+        // ជំហានទី ២: បង្កើត User ក្នុង `auth.users` តាមរយៈ Supabase Auth `signUp` (ប្រើ Isolated Client ដើម្បីកុំឱ្យប៉ះពាល់ Session របស់ Admin)
+        if (!authUserId) {
+          const { url, anonKey } = getSupabaseConfig();
+          const tempAuthClient = createClient(url, anonKey, {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+              detectSessionInUrl: false,
+              storageKey: 'gdt_isolated_admin_create_user',
+            },
+          });
+
+          const { data: authData, error: authErr } = await tempAuthClient.auth.signUp({
+            email: cleanEmail,
+            password: effectivePassword,
+            options: {
+              data: {
+                full_name: editUser.full_name.trim(),
+                role: editUser.role,
+                location_id: editUser.location_id,
+              },
+            },
+          });
+
+          if (authErr) {
+            // ពិនិត្យមើលថាតើ Email នេះមានរួចហើយនៅក្នុង user_profiles ឬទេ
+            const { data: existingProfile } = await supabase
+              .from('user_profiles')
+              .select('id')
+              .ilike('email', cleanEmail)
+              .maybeSingle();
+
+            if (existingProfile?.id) {
+              authUserId = existingProfile.id;
+            } else {
+              alert('កំហុសក្នុងការបង្កើតគណនី Supabase Auth៖ ' + authErr.message);
+              setErrorMessage('កំហុសក្នុងការបង្កើតគណនី Supabase Auth៖ ' + authErr.message);
+              setSaving(false);
+              return;
+            }
+          } else if (authData?.user?.id) {
+            authUserId = authData.user.id;
+          }
+        }
+
+        if (!authUserId) {
+          alert('មិនអាចទាញយក User UUID ពី Supabase Auth បានឡើយ!');
+          setErrorMessage('មិនអាចទាញយក User UUID ពី Supabase Auth បានឡើយ!');
+          setSaving(false);
+          return;
+        }
+
+        // ជំហានទី ៣: យក `authData.user.id` (UUID ពិតប្រាកដពី `auth.users`) មក Upsert/Insert ចូលតារាង `user_profiles`
         const insertPayload = {
           ...updatePayload,
-          id: generatedUuid,
-          password: (newPassword && newPassword.trim() !== '') ? newPassword.trim() : 'GDT@2026',
-          is_default_password: !newPassword || newPassword.trim() === '' || newPassword.trim() === 'GDT@2026',
-          password_updated_at: new Date().toISOString(),
+          id: authUserId,
+          password: effectivePassword,
+          is_default_password: isDefaultPassword,
+          password_updated_at: nowIso,
         };
 
         const { error: insertErr } = await supabase
           .from('user_profiles')
-          .insert([insertPayload]);
+          .upsert([insertPayload], { onConflict: 'id' });
 
         if (insertErr) {
           alert('កំហុសក្នុងការបង្កើតមន្ត្រីថ្មី៖ ' + insertErr.message);

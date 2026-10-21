@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { User, Session, createClient } from '@supabase/supabase-js';
+import { supabase, isSupabaseConfigured, getSupabaseConfig } from '../lib/supabase';
 import { UserProfile } from '../types';
 
 export const INITIAL_USER_PROFILES: UserProfile[] = [
@@ -646,25 +646,91 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Create new user profile directly in public.user_profiles
+  // Create new user profile in auth.users first, then upsert into public.user_profiles
   const createUserProfile = async (profileData: Omit<UserProfile, 'id'>): Promise<{ success: boolean; error?: string }> => {
     try {
-      const newId =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-              const r = (Math.random() * 16) | 0;
-              const v = c === 'x' ? r : (r & 0x3) | 0x8;
-              return v.toString(16);
-            });
+      const cleanEmail = (profileData.email || '').trim().toLowerCase();
       const rawPwd = (profileData.password || '').trim() || 'GDT@2026';
       const isDefaultPwd = typeof profileData.is_default_password === 'boolean' 
         ? profileData.is_default_password 
         : (rawPwd === 'GDT@2026');
       const nowIso = new Date().toISOString();
 
+      let newId: string | null = null;
+
+      if (configured) {
+        // 1. Try existing Admin RPC `create_or_update_gdt_user`
+        try {
+          const { data: rpcUuid, error: rpcErr } = await supabase.rpc('create_or_update_gdt_user', {
+            p_email: cleanEmail,
+            p_password: rawPwd,
+            p_full_name: profileData.full_name,
+            p_role: profileData.role,
+            p_location_code: String(profileData.location_id || 'HQ-ITSB'),
+          });
+          if (!rpcErr && rpcUuid && typeof rpcUuid === 'string') {
+            newId = rpcUuid;
+          }
+        } catch {
+          // continue to signUp
+        }
+
+        // 2. Create user in auth.users via isolated Supabase Auth client (does not overwrite Admin session)
+        if (!newId) {
+          const { url, anonKey } = getSupabaseConfig();
+          const tempAuthClient = createClient(url, anonKey, {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+              detectSessionInUrl: false,
+              storageKey: 'gdt_isolated_admin_create_user',
+            },
+          });
+
+          const { data: authData, error: authErr } = await tempAuthClient.auth.signUp({
+            email: cleanEmail,
+            password: rawPwd,
+            options: {
+              data: {
+                full_name: profileData.full_name,
+                role: profileData.role,
+                location_id: profileData.location_id,
+              },
+            },
+          });
+
+          if (authErr) {
+            const { data: existingProfile } = await supabase
+              .from('user_profiles')
+              .select('id')
+              .ilike('email', cleanEmail)
+              .maybeSingle();
+
+            if (existingProfile?.id) {
+              newId = existingProfile.id;
+            } else {
+              return { success: false, error: authErr.message };
+            }
+          } else if (authData?.user?.id) {
+            newId = authData.user.id;
+          }
+        }
+      }
+
+      if (!newId) {
+        newId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                const r = (Math.random() * 16) | 0;
+                const v = c === 'x' ? r : (r & 0x3) | 0x8;
+                return v.toString(16);
+              });
+      }
+
       const newProfile: UserProfile = {
         ...profileData,
+        email: cleanEmail,
         password: rawPwd,
         is_default_password: isDefaultPwd,
         password_updated_at: nowIso,
@@ -673,28 +739,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updated_at: nowIso
       };
 
-      const updatedList = [newProfile, ...usersList];
+      if (configured) {
+        const { error } = await supabase
+          .from('user_profiles')
+          .upsert([{
+            id: newId,
+            email: newProfile.email,
+            full_name: newProfile.full_name,
+            role: newProfile.role,
+            location_id: newProfile.location_id,
+            password: rawPwd,
+            is_default_password: isDefaultPwd,
+            password_updated_at: nowIso
+          }], { onConflict: 'id' });
+        if (error) {
+          return { success: false, error: error.message };
+        }
+      }
+
+      const updatedList = [newProfile, ...usersList.filter(u => u.id !== newId)];
       setUsersList(updatedList);
       try {
         localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(updatedList));
       } catch {
         // ignore
-      }
-
-      if (configured) {
-        const { error } = await supabase.from('user_profiles').insert([{
-          id: newId,
-          email: newProfile.email,
-          full_name: newProfile.full_name,
-          role: newProfile.role,
-          location_id: newProfile.location_id,
-          password: rawPwd,
-          is_default_password: isDefaultPwd,
-          password_updated_at: nowIso
-        }]);
-        if (error) {
-          return { success: false, error: error.message };
-        }
       }
 
       return { success: true };
