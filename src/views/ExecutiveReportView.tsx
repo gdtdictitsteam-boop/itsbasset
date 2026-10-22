@@ -786,10 +786,6 @@ export function ExecutiveReportView() {
       month: 'long',
       year: 'numeric'
     });
-    const locationLabel =
-      reportLocationId === 'ALL' || !activeSelectedLocationObj
-        ? 'គ្រប់ទីតាំងស្តុកទាំងអស់ (ឃ្លាំងកណ្តាល HQ-ITSB និង ៣៣ សាខាពន្ធដារ)'
-        : formatLocationOption(activeSelectedLocationObj, 'kh');
     const dateRangeLabel =
       startDate || endDate
         ? `ចាប់ពីថ្ងៃទី ${startDate || '...'} ដល់ថ្ងៃទី ${endDate || '...'}`
@@ -1066,7 +1062,7 @@ export function ExecutiveReportView() {
       ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', '', ''],
       ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', '', ''],
       ['ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (Tools)»', '', '', '', '', '', '', '', '', '', ''],
-      [`ទីតាំងស្តុក៖ ${locationLabel}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', '', ''],
+      [`កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', '', ''],
       ['និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។', '', '', '', '', '', '', '', '', '', ''],
       // Row 8: KPI Summary Banner for Part 1
       [
@@ -1399,7 +1395,7 @@ export function ExecutiveReportView() {
       ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', ''],
       ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', ''],
       ['ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារប្រើប្រាស់ (Suppliers)»', '', '', '', '', '', '', '', '', ''],
-      [`ទីតាំងស្តុក៖ ${locationLabel}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', ''],
+      [`កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', ''],
       ['និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។', '', '', '', '', '', '', '', '', ''],
       // Row 8: KPI Summary Banner for Part 2
       [
@@ -1717,7 +1713,7 @@ export function ExecutiveReportView() {
       buildHeaderRow3('លេខ៖ ........................... អពដ/នបព', ''),
       buildFullMergedRow3('របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់'),
       buildFullMergedRow3('តារាងម៉ាទ្រីសបែងចែកស្តុកតាមបណ្តាទីតាំងទាំងអស់ (Cross-Tab Stock Distribution Matrix)'),
-      buildFullMergedRow3(`ទីតាំងស្តុក៖ គ្រប់ទីតាំងស្តុកទាំង ${unifiedLocations.length}   •   កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`),
+      buildFullMergedRow3(`កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`),
       buildFullMergedRow3('បង្ហាញបរិមាណសម្ភារនីមួយៗតាមជួរឈរទីតាំងស្តុកទាំងអស់ (ឃ្លាំងកណ្តាល HQ-ITSB → ថ្នាក់កណ្តាល → សាខាពន្ធដារខណ្ឌ → សាខាពន្ធដារខេត្ត)'),
       new Array(cols3).fill(''), // Row 8 spacer
       [
@@ -2184,30 +2180,30 @@ export function ExecutiveReportView() {
         {/* ----------------------------------------------------------------- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-3 border-b-2 border-[#05402D]">
           {/* Left Side: Ministry & General Department */}
-          <div className="text-left space-y-0.5">
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+          <div className="text-left space-y-0.5 w-[260px] -ml-[17px]">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ
             </p>
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               អគ្គនាយកដ្ឋានពន្ធដារ
             </p>
-            <p className="font-siemreap text-xs font-bold text-slate-800">
+            <p className="font-siemreap text-xs font-bold text-slate-800 text-center">
               នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន
             </p>
-            <p className="text-[11px] text-slate-600 font-medium">
+            <p className="text-[11px] text-slate-600 font-medium text-center">
               លេខ៖ ........................... អពដ/នបព
             </p>
           </div>
 
           {/* Right Side: Kingdom of Cambodia Motto */}
-          <div className="text-left sm:text-right space-y-0.5">
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+          <div className="space-y-0.5 h-[84px] w-[300px] pl-[10px] pt-0 text-center leading-[25px] ml-[400px]">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ព្រះរាជាណាចក្រកម្ពុជា
             </p>
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ជាតិ សាសនា ព្រះមហាក្សត្រ
             </p>
-            <div className="text-[#D4AF37] font-bold tracking-[0.25em] text-xs select-none">
+            <div className="text-[#D4AF37] font-bold tracking-[0.25em] text-xs select-none text-center">
               ✦ ✦ ✦
             </div>
           </div>
@@ -2218,19 +2214,7 @@ export function ExecutiveReportView() {
           <h1 className="font-moul text-sm sm:text-base lg:text-lg text-[#05402D] leading-snug">
             របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់
           </h1>
-          <p className="text-[11px] font-bold text-slate-600 uppercase tracking-widest">
-            EXECUTIVE CONSOLIDATED STOCK BALANCE REPORT (TWO-PART OFFICIAL FORMAT)
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs font-semibold text-slate-700 pt-0.5">
-            <span>
-              ទីតាំងស្តុក៖{' '}
-              <strong className="text-[#05402D]">
-                {reportLocationId === 'ALL' || !activeSelectedLocationObj
-                  ? 'គ្រប់ទីតាំងស្តុកទាំងអស់ (ឃ្លាំងកណ្តាល HQ-ITSB និង ៣៣ សាខាពន្ធដារ)'
-                  : formatLocationOption(activeSelectedLocationObj, 'kh')}
-              </strong>
-            </span>
-            <span>•</span>
+          <div className="flex flex-wrap items-center justify-center text-xs font-semibold text-slate-700 pt-0.5">
             <span>
               កាលបរិច្ឆេទរបាយការណ៍៖{' '}
               <strong className="text-[#05402D]">
@@ -2274,25 +2258,25 @@ export function ExecutiveReportView() {
                     <tr className="bg-[#05402D] text-white text-[10px] sm:text-[11px] font-bold">
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-9">ល.រ</th>
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-16">កូដ</th>
-                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px]">ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស</th>
+                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px] text-center">ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស</th>
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-14">ឯកតា</th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-24 bg-[#03291E]">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-24 bg-[#03291E]">
                         សរុបរួម (A=B+C)
                       </th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-28">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-28">
                         កំពុងប្រើប្រាស់ / បានប្រគល់ជូន (B)
                       </th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-24">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-24">
                         ខូច / បាត់បង់ / កែតម្រូវ (C)
                       </th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-28 bg-emerald-950 text-[#D4AF37]">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-28 bg-emerald-950 text-[#D4AF37]">
                         ស្តុកនៅសល់ក្នុងឃ្លាំង (D)
                         <div className="text-[9px] font-normal text-emerald-200">(D = A - B - C)</div>
                       </th>
-                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[175px]">
+                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[175px] text-center">
                         សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង
                       </th>
-                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px]">
+                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px] text-center">
                         គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ
                       </th>
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-28">
