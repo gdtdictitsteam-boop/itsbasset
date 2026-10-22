@@ -2200,7 +2200,7 @@ export function ExecutiveReportView() {
           </div>
 
           {/* Right Side: Kingdom of Cambodia Motto */}
-          <div className="space-y-0.5 h-[84px] w-[300px] pl-[10px] pt-0 text-center leading-[25px] ml-[230px]">
+          <div className="space-y-0.5 h-[84px] w-[300px] pl-[10px] pt-0 text-center leading-[25px] ml-[310px]">
             <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ព្រះរាជាណាចក្រកម្ពុជា
             </p>
