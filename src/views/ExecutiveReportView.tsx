@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Item, InventoryItem, Location } from '../types';
 // @ts-ignore - xlsx-js-style is a drop-in build of SheetJS that writes cell styles (.s)
 import XLSX from 'xlsx-js-style';
+import gdtLogo from '../gdtlogo.png';
 import {
   FileSpreadsheet,
   Printer,
@@ -2178,9 +2179,9 @@ export function ExecutiveReportView() {
         {/* ----------------------------------------------------------------- */}
         {/* ១. ក្បាលទំព័រផ្លូវការ (OFFICIAL ROYAL GOVERNMENT HEADER)          */}
         {/* ----------------------------------------------------------------- */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-3 border-b-2 border-[#05402D]">
+        <div className="grid grid-cols-3 items-start gap-4 pb-3 border-b-2 border-[#05402D]">
           {/* Left Side: Ministry & General Department */}
-          <div className="text-left space-y-0.5 w-[260px] -ml-[17px]">
+          <div className="justify-self-start text-center space-y-0.5 w-[260px]">
             <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ
             </p>
@@ -2195,8 +2196,23 @@ export function ExecutiveReportView() {
             </p>
           </div>
 
+          {/* Center Column: Official GDT Logo */}
+          <div className="flex flex-col items-center justify-center justify-self-center">
+            <img
+              src={gdtLogo || '/gdtlogo.png'}
+              alt="អគ្គនាយកដ្ឋានពន្ធដារ - General Department of Taxation"
+              className="w-20 h-20 sm:w-24 sm:h-24 object-contain select-none"
+              onError={e => {
+                const target = e.currentTarget;
+                if (!target.src.endsWith('/gdtlogo.png')) {
+                  target.src = '/gdtlogo.png';
+                }
+              }}
+            />
+          </div>
+
           {/* Right Side: Kingdom of Cambodia Motto */}
-          <div className="space-y-0.5 h-[84px] w-[300px] pl-[10px] pt-0 text-center leading-[25px] ml-[400px]">
+          <div className="justify-self-end space-y-0.5 w-[280px] text-center leading-[25px]">
             <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ព្រះរាជាណាចក្រកម្ពុជា
             </p>
