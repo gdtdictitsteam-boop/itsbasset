@@ -2184,30 +2184,30 @@ export function ExecutiveReportView() {
         {/* ----------------------------------------------------------------- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-3 border-b-2 border-[#05402D]">
           {/* Left Side: Ministry & General Department */}
-          <div className="text-left space-y-0.5">
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+          <div className="text-left space-y-0.5 w-[260px] -ml-[17px]">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ
             </p>
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               អគ្គនាយកដ្ឋានពន្ធដារ
             </p>
-            <p className="font-siemreap text-xs font-bold text-slate-800">
+            <p className="font-siemreap text-xs font-bold text-slate-800 text-center">
               នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន
             </p>
-            <p className="text-[11px] text-slate-600 font-medium">
+            <p className="text-[11px] text-slate-600 font-medium text-center">
               លេខ៖ ........................... អពដ/នបព
             </p>
           </div>
 
           {/* Right Side: Kingdom of Cambodia Motto */}
-          <div className="text-left sm:text-right space-y-0.5">
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+          <div className="text-left sm:text-right space-y-0.5 h-[84px] w-[300px] pl-[10px] pt-0 ml-[185px]">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ព្រះរាជាណាចក្រកម្ពុជា
             </p>
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed">
+            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ជាតិ សាសនា ព្រះមហាក្សត្រ
             </p>
-            <div className="text-[#D4AF37] font-bold tracking-[0.25em] text-xs select-none">
+            <div className="text-[#D4AF37] font-bold tracking-[0.25em] text-xs select-none text-center">
               ✦ ✦ ✦
             </div>
           </div>
