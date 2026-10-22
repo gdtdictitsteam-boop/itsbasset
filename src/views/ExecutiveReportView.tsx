@@ -5,8 +5,7 @@ import { useLocationContext, formatLocationOption } from '../contexts/LocationCo
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Item, InventoryItem, Location } from '../types';
-// @ts-ignore - xlsx-js-style is a drop-in build of SheetJS that writes cell styles (.s)
-import XLSX from 'xlsx-js-style';
+import ExcelJS from 'exceljs';
 import gdtLogo from '../gdtlogo.png';
 import {
   FileSpreadsheet,
@@ -778,9 +777,9 @@ export function ExecutiveReportView() {
   }, [unifiedItems, unifiedInventory, unifiedLocations, searchQuery, findLocationByIdOrCode]);
 
   // ===========================================================================
-  // EXPORT TO EXCEL (.xlsx) — STYLED TO MATCH OFFICIAL A4 LANDSCAPE PRINT PREVIEW
+  // EXPORT TO EXCEL (.xlsx) — EXCELJS WITH EMBEDDED GDT LOGO & EXACT PREVIEW LAYOUT
   // ===========================================================================
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const formattedKhDate = new Date().toLocaleDateString('km-KH', {
       day: '2-digit',
@@ -792,1181 +791,971 @@ export function ExecutiveReportView() {
         ? `ចាប់ពីថ្ងៃទី ${startDate || '...'} ដល់ថ្ងៃទី ${endDate || '...'}`
         : `គិតត្រឹមថ្ងៃទី ${formattedKhDate}`;
 
-    // Reusable border helpers
-    const thinBorder = (color = 'CBD5E1') => ({
-      top: { style: 'thin', color: { rgb: color } },
-      bottom: { style: 'thin', color: { rgb: color } },
-      left: { style: 'thin', color: { rgb: color } },
-      right: { style: 'thin', color: { rgb: color } }
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'GDT Inventory Management System';
+    workbook.created = new Date();
+
+    // Fetch /gdtlogo.png and register as Base64 PNG in Workbook
+    let logoImageId: number | null = null;
+    try {
+      const fetchLogoBuffer = async (): Promise<ArrayBuffer | null> => {
+        const candidateUrls = [gdtLogo, '/gdtlogo.png'].filter(Boolean);
+        for (const url of candidateUrls) {
+          try {
+            const res = await fetch(url);
+            if (res.ok) {
+              return await res.arrayBuffer();
+            }
+          } catch {
+            // Try next candidate URL
+          }
+        }
+        return null;
+      };
+
+      const arrayBuffer = await fetchLogoBuffer();
+      if (arrayBuffer && arrayBuffer.byteLength > 0) {
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64Logo = window.btoa(binary);
+        logoImageId = workbook.addImage({
+          base64: base64Logo,
+          extension: 'png'
+        });
+      }
+    } catch (err) {
+      console.warn('Could not embed GDT logo into Excel workbook:', err);
+    }
+
+    const thinBorder = (argb = 'FFCBD5E1'): Partial<ExcelJS.Borders> => ({
+      top: { style: 'thin', color: { argb } },
+      bottom: { style: 'thin', color: { argb } },
+      left: { style: 'thin', color: { argb } },
+      right: { style: 'thin', color: { argb } }
     });
 
-    const headerBorder = {
-      top: { style: 'medium', color: { rgb: '05402D' } },
-      bottom: { style: 'medium', color: { rgb: 'D4AF37' } },
-      left: { style: 'thin', color: { rgb: '475569' } },
-      right: { style: 'thin', color: { rgb: '475569' } }
+    const headerBorder: Partial<ExcelJS.Borders> = {
+      top: { style: 'medium', color: { argb: 'FF0B3D2E' } },
+      bottom: { style: 'medium', color: { argb: 'FFD4AF37' } },
+      left: { style: 'thin', color: { argb: 'FF475569' } },
+      right: { style: 'thin', color: { argb: 'FF475569' } }
     };
 
-    const subtotalBorder = {
-      top: { style: 'medium', color: { rgb: '05402D' } },
-      bottom: { style: 'double', color: { rgb: '05402D' } },
-      left: { style: 'thin', color: { rgb: '94A3B8' } },
-      right: { style: 'thin', color: { rgb: '94A3B8' } }
+    const subtotalBorder: Partial<ExcelJS.Borders> = {
+      top: { style: 'medium', color: { argb: 'FF0B3D2E' } },
+      bottom: { style: 'double', color: { argb: 'FF0B3D2E' } },
+      left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin', color: { argb: 'FF94A3B8' } }
     };
 
-    // Helper to apply style to a range of cells (inclusive, 0-indexed)
-    const styleRange = (
-      ws: Record<string, any>,
-      sR: number,
-      sC: number,
-      eR: number,
-      eC: number,
-      styleObj: Record<string, any>
+    const styleRowRange = (
+      ws: ExcelJS.Worksheet,
+      rowNumber: number,
+      startCol: number,
+      endCol: number,
+      opts: {
+        font?: Partial<ExcelJS.Font>;
+        fillArgb?: string;
+        alignment?: Partial<ExcelJS.Alignment>;
+        border?: Partial<ExcelJS.Borders>;
+        numFmt?: string;
+      }
     ) => {
-      for (let r = sR; r <= eR; r++) {
-        for (let c = sC; c <= eC; c++) {
-          const ref = XLSX.utils.encode_cell({ r, c });
-          if (!ws[ref]) {
-            ws[ref] = { t: 's', v: '' };
-          }
-          ws[ref].s = {
-            ...(ws[ref].s || {}),
-            ...styleObj
+      const row = ws.getRow(rowNumber);
+      for (let c = startCol; c <= endCol; c++) {
+        const cell = row.getCell(c);
+        if (opts.font) cell.font = opts.font;
+        if (opts.fillArgb) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: opts.fillArgb }
           };
         }
+        if (opts.alignment) cell.alignment = opts.alignment;
+        if (opts.border) cell.border = opts.border;
+        if (opts.numFmt) cell.numFmt = opts.numFmt;
       }
     };
 
-    // Helper to build the official Royal Government header + KPI summary block
-    const applyOfficialSheetHeader = (
-      ws: Record<string, any>,
-      merges: any[],
+    // Helper: Build Rows 1..8 matching Preview Report 100%
+    const buildOfficialHeaderRows = (
+      ws: ExcelJS.Worksheet,
       totalCols: number,
       sectionTitleKh: string,
-      definitionKh: string
+      totalItemsBadgeKh: string,
+      definitionKh: string,
+      logoColZeroIndexed: number
     ) => {
-      const lastCol = totalCols - 1;
-      const leftSpanEnd = Math.min(3, Math.floor(totalCols / 2) - 1);
-      const rightSpanStart = Math.max(leftSpanEnd + 1, totalCols - 4);
+      const leftEndCol = 3; // Columns A-C (1..3)
+      const rightStartCol = totalCols >= 11 ? 9 : totalCols === 10 ? 8 : Math.max(5, totalCols - 5); // Columns I-K on Sheet 1 (9..11)
 
-      // Merges for Row 0..3 (Left Ministry & Right Kingdom Motto)
-      for (let r = 0; r <= 3; r++) {
-        merges.push({ s: { r, c: 0 }, e: { r, c: leftSpanEnd } });
-        merges.push({ s: { r, c: rightSpanStart }, e: { r, c: lastCol } });
+      // Row 1..4 Values
+      ws.getCell(1, 1).value = 'ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ';
+      ws.getCell(1, rightStartCol).value = 'ព្រះរាជាណាចក្រកម្ពុជា';
+
+      ws.getCell(2, 1).value = 'អគ្គនាយកដ្ឋានពន្ធដារ';
+      ws.getCell(2, rightStartCol).value = 'ជាតិ សាសនា ព្រះមហាក្សត្រ';
+
+      ws.getCell(3, 1).value = 'នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន';
+      ws.getCell(3, rightStartCol).value = '✦ ✦ ✦';
+
+      ws.getCell(4, 1).value = 'លេខ៖ ........................... អពដ/នបព';
+
+      // Merge Left (Cols A-C, Rows 1-4) and Right (Cols I-K / H-J, Rows 1-4)
+      for (let r = 1; r <= 4; r++) {
+        ws.mergeCells(r, 1, r, leftEndCol);
+        ws.mergeCells(r, rightStartCol, r, totalCols);
       }
 
-      // Merges for Centerpiece Title, Section Title, Scope/Date, Definition (Rows 4..7)
-      merges.push({ s: { r: 4, c: 0 }, e: { r: 4, c: lastCol } });
-      merges.push({ s: { r: 5, c: 0 }, e: { r: 5, c: lastCol } });
-      merges.push({ s: { r: 6, c: 0 }, e: { r: 6, c: lastCol } });
-      merges.push({ s: { r: 7, c: 0 }, e: { r: 7, c: lastCol } });
-
-      // Style Left Official Header (Rows 0..1: Moul, Row 2: Dept Bold, Row 3: Ref No)
-      styleRange(ws, 0, 0, 1, leftSpanEnd, {
-        font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-        alignment: { horizontal: 'left', vertical: 'center' }
+      // Style Left Official Block (Rows 1-4)
+      for (let r = 1; r <= 2; r++) {
+        styleRowRange(ws, r, 1, leftEndCol, {
+          font: { name: 'Khmer OS Muol Light', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
+          alignment: { horizontal: 'center', vertical: 'middle' }
+        });
+      }
+      styleRowRange(ws, 3, 1, leftEndCol, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF1E293B' } },
+        alignment: { horizontal: 'center', vertical: 'middle' }
       });
-      styleRange(ws, 2, 0, 2, leftSpanEnd, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '1E293B' } },
-        alignment: { horizontal: 'left', vertical: 'center' }
-      });
-      styleRange(ws, 3, 0, 3, leftSpanEnd, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '475569' } },
-        alignment: { horizontal: 'left', vertical: 'center' },
-        border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
+      styleRowRange(ws, 4, 1, leftEndCol, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF475569' } },
+        alignment: { horizontal: 'center', vertical: 'middle' }
       });
 
-      // Style Middle Empty Header Row 3 Bottom Border
-      if (rightSpanStart > leftSpanEnd + 1) {
-        styleRange(ws, 3, leftSpanEnd + 1, 3, rightSpanStart - 1, {
-          border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
+      // Style Right Motto Block (Rows 1-3)
+      for (let r = 1; r <= 2; r++) {
+        styleRowRange(ws, r, rightStartCol, totalCols, {
+          font: { name: 'Khmer OS Muol Light', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
+          alignment: { horizontal: 'center', vertical: 'middle' }
+        });
+      }
+      styleRowRange(ws, 3, rightStartCol, totalCols, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FFD4AF37' } },
+        alignment: { horizontal: 'center', vertical: 'middle' }
+      });
+
+      // Dark Green Divider Border below Row 4 across all columns
+      for (let c = 1; c <= totalCols; c++) {
+        ws.getCell(4, c).border = {
+          bottom: { style: 'medium', color: { argb: 'FF05402D' } }
+        };
+      }
+
+      // Set Row Heights for Rows 1..4 so 85x85 Logo fits cleanly in center
+      ws.getRow(1).height = 22;
+      ws.getRow(2).height = 22;
+      ws.getRow(3).height = 21;
+      ws.getRow(4).height = 22;
+
+      // Embed GDT Logo in Center (Columns E-F, Rows 1-4)
+      if (logoImageId !== null) {
+        ws.addImage(logoImageId, {
+          tl: { col: logoColZeroIndexed, row: 0.12 },
+          ext: { width: 85, height: 85 }
         });
       }
 
-      // Style Right Kingdom Motto (Rows 0..1: Moul, Row 2: Gold Divider, Row 3: Bottom Border)
-      styleRange(ws, 0, rightSpanStart, 1, lastCol, {
-        font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      });
-      styleRange(ws, 2, rightSpanStart, 2, lastCol, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: 'D4AF37' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      });
-      styleRange(ws, 3, rightSpanStart, 3, lastCol, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '64748B' } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
+      // Row 5: Main Report Title (Centered)
+      ws.getCell(5, 1).value = 'របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់';
+      ws.mergeCells(5, 1, 5, totalCols);
+      ws.getRow(5).height = 28;
+      styleRowRange(ws, 5, 1, totalCols, {
+        font: { name: 'Khmer OS Muol Light', size: 12.5, bold: true, color: { argb: 'FF05402D' } },
+        alignment: { horizontal: 'center', vertical: 'middle' }
       });
 
-      // Row 4: Main Report Title
-      styleRange(ws, 4, 0, 4, lastCol, {
-        font: { name: 'Khmer OS Muol Light', sz: 12.5, bold: true, color: { rgb: '05402D' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
+      // Row 6: Report Date (Centered, directly above Section Title)
+      ws.getCell(6, 1).value = `កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`;
+      ws.mergeCells(6, 1, 6, totalCols);
+      ws.getRow(6).height = 21;
+      styleRowRange(ws, 6, 1, totalCols, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF05402D' } },
+        alignment: { horizontal: 'center', vertical: 'middle' }
       });
 
-      // Row 5: Section Subtitle
-      const secCell = XLSX.utils.encode_cell({ r: 5, c: 0 });
-      if (ws[secCell]) ws[secCell].v = sectionTitleKh;
-      styleRange(ws, 5, 0, 5, lastCol, {
-        font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-        fill: { fgColor: { rgb: 'ECFDF5' } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('A7F3D0')
-      });
+      // Row 7: Section Title (Left) + Item Count Badge (Right) with Soft Green/Gray Fill & Thick Left Green Bar
+      const badgeStartCol = Math.max(2, totalCols - 1);
+      ws.getCell(7, 1).value = sectionTitleKh;
+      ws.mergeCells(7, 1, 7, badgeStartCol - 1);
 
-      // Row 6: Location Scope & Date Range
-      styleRange(ws, 6, 0, 6, lastCol, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E293B' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      });
+      ws.getCell(7, badgeStartCol).value = totalItemsBadgeKh;
+      ws.mergeCells(7, badgeStartCol, 7, totalCols);
+      ws.getRow(7).height = 25;
 
-      // Row 7: Definition Banner
-      const defCell = XLSX.utils.encode_cell({ r: 7, c: 0 });
-      if (ws[defCell]) ws[defCell].v = definitionKh;
-      styleRange(ws, 7, 0, 7, lastCol, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, italic: true, color: { rgb: '334155' } },
-        fill: { fgColor: { rgb: 'F8FAFC' } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: thinBorder('E2E8F0')
+      styleRowRange(ws, 7, 1, badgeStartCol - 1, {
+        font: { name: 'Khmer OS Muol Light', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: 'FFECFDF5',
+        alignment: { horizontal: 'left', vertical: 'middle', indent: 1 },
+        border: {
+          top: { style: 'thin', color: { argb: 'FFA7F3D0' } },
+          bottom: { style: 'hair', color: { argb: 'FFA7F3D0' } }
+        }
       });
+      styleRowRange(ws, 7, badgeStartCol, totalCols, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: 'FFECFDF5',
+        alignment: { horizontal: 'right', vertical: 'middle' },
+        border: {
+          top: { style: 'thin', color: { argb: 'FFA7F3D0' } },
+          bottom: { style: 'hair', color: { argb: 'FFA7F3D0' } },
+          right: { style: 'thin', color: { argb: 'FFA7F3D0' } }
+        }
+      });
+      ws.getCell(7, 1).border = {
+        top: { style: 'thin', color: { argb: 'FFA7F3D0' } },
+        bottom: { style: 'hair', color: { argb: 'FFA7F3D0' } },
+        left: { style: 'thick', color: { argb: 'FF05402D' } }
+      };
+
+      // Row 8: Definition Row (with matching Left Green Accent Bar)
+      ws.getCell(8, 1).value = definitionKh;
+      ws.mergeCells(8, 1, 8, totalCols);
+      ws.getRow(8).height = 22;
+      styleRowRange(ws, 8, 1, totalCols, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, italic: true, color: { argb: 'FF334155' } },
+        fillArgb: 'FFF8FAFC',
+        alignment: { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: true },
+        border: {
+          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+        }
+      });
+      ws.getCell(8, 1).border = {
+        bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        left: { style: 'thick', color: { argb: 'FF05402D' } }
+      };
     };
 
-    // Helper to style the 3-column signature block at the bottom of a sheet
-    const appendAndStyleSignatureBlock = (
-      sheetAoA: (string | number)[][],
-      merges: any[],
-      totalCols: number
-    ): number => {
-      const emptyRow = new Array(totalCols).fill('');
-      sheetAoA.push([...emptyRow]); // Blank spacer row
+    // Helper: Append & Style 3-Column Official Signature Block at Bottom of Worksheet
+    const appendOfficialSignatureBlock = (ws: ExcelJS.Worksheet, startRow: number, totalCols: number) => {
+      // Blank spacer row before signatures
+      ws.getRow(startRow).height = 14;
 
-      const sigStartRow = sheetAoA.length;
-      const lastCol = totalCols - 1;
-
-      // Align the 3 signature blocks cleanly with the table column groups:
-      // Sheet 1 (11 cols): Left = Cols 0..3, Center = Cols 4..7, Right = Cols 8..10
-      // Sheet 2 (10 cols): Left = Cols 0..3, Center = Cols 4..6, Right = Cols 7..9
+      const sigRow1 = startRow + 1;
       let g1End: number;
       let g2Start: number;
       let g2End: number;
       let g3Start: number;
 
       if (totalCols === 11) {
-        g1End = 3;
-        g2Start = 4;
+        g1End = 4;
+        g2Start = 5;
+        g2End = 8;
+        g3Start = 9;
+      } else if (totalCols === 10) {
+        g1End = 4;
+        g2Start = 5;
         g2End = 7;
         g3Start = 8;
-      } else if (totalCols === 10) {
-        g1End = 3;
-        g2Start = 4;
-        g2End = 6;
-        g3Start = 7;
       } else {
-        g1End = Math.max(3, Math.floor(totalCols / 3) - 1);
+        g1End = Math.max(4, Math.floor(totalCols / 3));
         g2Start = g1End + 1;
-        g2End = Math.max(g2Start + 2, Math.floor((totalCols * 2) / 3) - 1);
+        g2End = Math.max(g2Start + 2, Math.floor((totalCols * 2) / 3));
         g3Start = g2End + 1;
       }
 
-      const buildSigRow = (leftText: string, midText: string, rightText: string) => {
-        const row = new Array(totalCols).fill('');
-        row[0] = leftText;
-        row[g2Start] = midText;
-        row[g3Start] = rightText;
-        return row;
-      };
-
-      // 6 structured rows for the 3-Column Official Signature Block:
-      // Left: អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក) -> មន្ត្រីគ្រប់គ្រងស្តុក
-      // Center: បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ) -> ប្រធានការិយាល័យទទួលបន្ទុក
-      // Right: បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន) -> ប្រធាននាយកដ្ឋាន
-      sheetAoA.push(
-        buildSigRow(
+      const sigLines: [string, string, string][] = [
+        [
           'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩',
           'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩',
           'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩'
-        )
-      );
-      sheetAoA.push(
-        buildSigRow(
+        ],
+        [
           'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦',
           'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦',
           'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦'
-        )
-      );
-      sheetAoA.push(
-        buildSigRow(
+        ],
+        [
           'អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)',
           'បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ)',
           'បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)'
-        )
-      );
-      sheetAoA.push([...emptyRow]); // Space for physical stamp & signature
-      sheetAoA.push(
-        buildSigRow(
+        ],
+        ['', '', ''],
+        [
           '...................................................',
           '...................................................',
           '...................................................'
-        )
-      );
-      sheetAoA.push(
-        buildSigRow(
+        ],
+        [
           'មន្ត្រីគ្រប់គ្រងស្តុក',
           'ប្រធានការិយាល័យទទួលបន្ទុក',
           'ប្រធាននាយកដ្ឋាន'
-        )
-      );
+        ]
+      ];
 
-      for (let r = sigStartRow; r < sigStartRow + 6; r++) {
-        merges.push({ s: { r, c: 0 }, e: { r, c: g1End } });
-        merges.push({ s: { r, c: g2Start }, e: { r, c: g2End } });
-        merges.push({ s: { r, c: g3Start }, e: { r, c: lastCol } });
-      }
+      const rowHeights = [19, 19, 22, 38, 18, 22];
 
-      return sigStartRow;
+      sigLines.forEach(([leftTxt, midTxt, rightTxt], idx) => {
+        const r = sigRow1 + idx;
+        ws.getRow(r).height = rowHeights[idx];
+        ws.getCell(r, 1).value = leftTxt;
+        ws.getCell(r, g2Start).value = midTxt;
+        ws.getCell(r, g3Start).value = rightTxt;
+
+        ws.mergeCells(r, 1, r, g1End);
+        ws.mergeCells(r, g2Start, r, g2End);
+        ws.mergeCells(r, g3Start, r, totalCols);
+
+        if (idx === 0 || idx === 1) {
+          styleRowRange(ws, r, 1, totalCols, {
+            font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF334155' } },
+            alignment: { horizontal: 'center', vertical: 'middle' }
+          });
+        } else if (idx === 2) {
+          styleRowRange(ws, r, 1, totalCols, {
+            font: { name: 'Khmer OS Muol Light', size: 10, bold: true, color: { argb: 'FF05402D' } },
+            alignment: { horizontal: 'center', vertical: 'middle' }
+          });
+        } else if (idx === 4) {
+          styleRowRange(ws, r, 1, totalCols, {
+            font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF94A3B8' } },
+            alignment: { horizontal: 'center', vertical: 'bottom' }
+          });
+        } else if (idx === 5) {
+          styleRowRange(ws, r, 1, totalCols, {
+            font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF0F172A' } },
+            alignment: { horizontal: 'center', vertical: 'middle' }
+          });
+        }
+      });
     };
-
-    const styleSignatureRows = (ws: Record<string, any>, sigStartRow: number, totalCols: number) => {
-      const lastCol = totalCols - 1;
-      // Lunar & Solar date rows
-      styleRange(ws, sigStartRow, 0, sigStartRow + 1, lastCol, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '334155' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      });
-      // Role Title row (Moul font)
-      styleRange(ws, sigStartRow + 2, 0, sigStartRow + 2, lastCol, {
-        font: { name: 'Khmer OS Muol Light', sz: 10, bold: true, color: { rgb: '05402D' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      });
-      // Dotted line & Signer Title/Name rows
-      styleRange(ws, sigStartRow + 4, 0, sigStartRow + 4, lastCol, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '94A3B8' } },
-        alignment: { horizontal: 'center', vertical: 'bottom' }
-      });
-      styleRange(ws, sigStartRow + 5, 0, sigStartRow + 5, lastCol, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '0F172A' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      });
-    };
-
-    const wb = XLSX.utils.book_new();
 
     // =========================================================================
-    // SHEET 1: "ឧបករណ៍បច្ចេកទេស-មិនអស់" (11 Columns — Part 1)
+    // SHEET 1: "ឧបករណ៍បច្ចេកទេស-មិនអស់" (11 Columns — Part 1: Tools)
     // =========================================================================
     const cols1 = 11;
-    const merges1: any[] = [];
-    const sheet1AoA: (string | number)[][] = [
-      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា', '', '', ''],
-      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ', '', '', ''],
-      ['នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '', '', '', '', '', '', '✦ ✦ ✦', '', '', ''],
-      ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', '', ''],
-      ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', '', ''],
-      ['ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (Tools)»', '', '', '', '', '', '', '', '', '', ''],
-      [`កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', '', ''],
-      ['និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។', '', '', '', '', '', '', '', '', '', ''],
-      // Row 8: KPI Summary Banner for Part 1
-      [
-        `១. ឧបករណ៍បច្ចេកទេសសរុប (A)៖ ${part1Totals.totalInboundA.toLocaleString()} គ្រឿង (${nonConsumableRows.length} មុខ)`,
-        '',
-        '',
-        `២. កំពុងប្រើប្រាស់ជាក់ស្តែង (B)៖ ${part1Totals.inUseB.toLocaleString()} គ្រឿង`,
-        '',
-        '',
-        `៣. ខូច / កែតម្រូវ (C)៖ ${part1Totals.damagedAdjustedC.toLocaleString()} គ្រឿង`,
-        '',
-        `៤. ស្តុកនៅសល់ក្នុងឃ្លាំង (D = A - B - C)៖ ${part1Totals.warehouseAvailD.toLocaleString()} គ្រឿង`,
-        '',
-        ''
-      ],
-      new Array(cols1).fill(''), // Row 9: Spacer
-      // Row 10: Table Header
-      [
-        'ល.រ',
-        'កូដ',
-        'ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស',
-        'ឯកតា',
-        'សរុបរួម\n(A = B + C + D)',
-        'កំពុងប្រើប្រាស់ /\nបានប្រគល់ជូន (B)',
-        'ខូច / បាត់បង់ /\nកែតម្រូវ (C)',
-        'ស្តុកនៅសល់ក្នុងឃ្លាំង\n(D = A - B - C)',
-        'សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង',
-        'គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ',
-        'ស្ថានភាពស្តុក'
-      ]
-    ];
-
-    // Merges for Row 8 KPI cards on Sheet 1
-    merges1.push(
-      { s: { r: 8, c: 0 }, e: { r: 8, c: 2 } },
-      { s: { r: 8, c: 3 }, e: { r: 8, c: 5 } },
-      { s: { r: 8, c: 6 }, e: { r: 8, c: 7 } },
-      { s: { r: 8, c: 8 }, e: { r: 8, c: 10 } }
-    );
-
-    const headerRowIdx1 = 10;
-    const dataStartRow1 = 11;
-
-    nonConsumableRows.forEach(r => {
-      sheet1AoA.push([
-        r.no,
-        r.itemCode,
-        `${r.nameKh}\n(${r.nameEn})`,
-        r.unitKh,
-        r.totalInboundA,
-        r.inUseB,
-        r.damagedAdjustedC,
-        r.warehouseAvailD,
-        r.assignedHolders,
-        r.purposeAndDate,
-        r.statusLabelKh
-      ]);
+    const ws1 = workbook.addWorksheet('ឧបករណ៍បច្ចេកទេស-មិនអស់', {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
     });
 
-    const subtotalRowIdx1 = sheet1AoA.length;
-    sheet1AoA.push([
-      'សរុបរួមផ្នែកទី ១ (SUBTOTAL - សម្ភារឧបករណ៍បច្ចេកទេសប្រើប្រាស់មិនអស់)៖',
-      '',
-      '',
-      '',
-      part1Totals.totalInboundA,
-      part1Totals.inUseB,
-      part1Totals.damagedAdjustedC,
-      part1Totals.warehouseAvailD,
-      `តុល្យភាពស្តុកឧបករណ៍បច្ចេកទេស៖ D (${part1Totals.warehouseAvailD.toLocaleString()}) = A (${part1Totals.totalInboundA.toLocaleString()}) - B (${part1Totals.inUseB.toLocaleString()}) - C (${part1Totals.damagedAdjustedC.toLocaleString()})`,
-      '',
-      ''
-    ]);
-    merges1.push(
-      { s: { r: subtotalRowIdx1, c: 0 }, e: { r: subtotalRowIdx1, c: 3 } },
-      { s: { r: subtotalRowIdx1, c: 8 }, e: { r: subtotalRowIdx1, c: 10 } }
-    );
+    ws1.columns = [
+      { width: 6 },   // Col A: ល.រ
+      { width: 11 },  // Col B: កូដ
+      { width: 36 },  // Col C: ឈ្មោះឧបករណ៍
+      { width: 10 },  // Col D: ឯកតា
+      { width: 16 },  // Col E: សរុបរួម A
+      { width: 20 },  // Col F: កំពុងប្រើប្រាស់ B
+      { width: 17 },  // Col G: ខូច/កែតម្រូវ C
+      { width: 20 },  // Col H: ស្តុកនៅសល់ក្នុងឃ្លាំង D
+      { width: 36 },  // Col I: សាខា ឬមន្ត្រីទទួលកាន់កាប់
+      { width: 38 },  // Col J: គោលបំណង និងកាលបរិច្ឆេទ
+      { width: 18 }   // Col K: ស្ថានភាពស្តុក
+    ];
 
-    const sigStart1 = appendAndStyleSignatureBlock(sheet1AoA, merges1, cols1);
-    const ws1 = XLSX.utils.aoa_to_sheet(sheet1AoA);
-
-    applyOfficialSheetHeader(
+    buildOfficialHeaderRows(
       ws1,
-      merges1,
       cols1,
       'ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (Tools)»',
-      'និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។'
+      `សរុប ${nonConsumableRows.length} មុខឧបករណ៍`,
+      'និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។',
+      4.55 // Centered between Columns E & F (0-indexed col 4 and 5)
     );
 
-    // Style KPI Row 8 on Sheet 1
-    styleRange(ws1, 8, 0, 8, 2, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
-      fill: { fgColor: { rgb: 'F1F5F9' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('94A3B8')
-    });
-    styleRange(ws1, 8, 3, 8, 5, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E40AF' } },
-      fill: { fgColor: { rgb: 'EFF6FF' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('93C5FD')
-    });
-    styleRange(ws1, 8, 6, 8, 7, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '9F1239' } },
-      fill: { fgColor: { rgb: 'FFF1F2' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('FDA4AF')
-    });
-    styleRange(ws1, 8, 8, 8, 10, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'ECFDF5' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('6EE7B7')
-    });
-
-    // Style Table Header Row 10 on Sheet 1
-    styleRange(ws1, headerRowIdx1, 0, headerRowIdx1, cols1 - 1, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '05402D' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    // Row 9: Table Headers for Sheet 1
+    const headerRow1 = ws1.getRow(9);
+    headerRow1.values = [
+      'ល.រ',
+      'កូដ',
+      'ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស',
+      'ឯកតា',
+      'សរុបរួម\n(A = B + C + D)',
+      'កំពុងប្រើប្រាស់ /\nបានប្រគល់ជូន (B)',
+      'ខូច / បាត់បង់ /\nកែតម្រូវ (C)',
+      'ស្តុកនៅសល់ក្នុងឃ្លាំង\n(D = A - B - C)',
+      'សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង',
+      'គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ',
+      'ស្ថានភាពស្តុក'
+    ];
+    headerRow1.height = 36;
+    styleRowRange(ws1, 9, 1, cols1, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } },
+      fillArgb: 'FF0B3D2E',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
-    // Highlight Col 4 (Inbound A) & Col 7 (Warehouse D) in Header
-    styleRange(ws1, headerRowIdx1, 4, headerRowIdx1, 4, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '03291E' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    styleRowRange(ws1, 9, 5, 5, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } },
+      fillArgb: 'FF03291E',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
-    styleRange(ws1, headerRowIdx1, 7, headerRowIdx1, 7, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'D4AF37' } },
-      fill: { fgColor: { rgb: '022C22' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    styleRowRange(ws1, 9, 8, 8, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFD4AF37' } },
+      fillArgb: 'FF022C22',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
 
-    // Style Data Rows on Sheet 1
+    // Data Rows for Sheet 1 (starting at Row 10)
+    const dataStartRow1 = 10;
     nonConsumableRows.forEach((row, idx) => {
       const r = dataStartRow1 + idx;
-      const zebraFill = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+      const excelRow = ws1.getRow(r);
+      excelRow.values = [
+        row.no,
+        row.itemCode,
+        `${row.nameKh}\n(${row.nameEn})`,
+        row.unitKh,
+        row.totalInboundA,
+        row.inUseB,
+        row.damagedAdjustedC,
+        row.warehouseAvailD,
+        row.assignedHolders,
+        row.purposeAndDate,
+        row.statusLabelKh
+      ];
+      excelRow.height = 32;
 
-      // Base row style
-      styleRange(ws1, r, 0, r, cols1 - 1, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '1E293B' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { vertical: 'center', wrapText: true },
-        border: thinBorder('CBD5E1')
-      });
+      const zebraFill = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFC';
 
-      // Col 0: No (Center)
-      styleRange(ws1, r, 0, r, 0, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '334155' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+      // Col 1: No
+      styleRowRange(ws1, r, 1, 1, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF334155' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
-      // Col 1: Code (Center, Bold Green)
-      styleRange(ws1, r, 1, r, 1, {
-        font: { name: 'Consolas', sz: 9.5, bold: true, color: { rgb: '05402D' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+      // Col 2: Code
+      styleRowRange(ws1, r, 2, 2, {
+        font: { name: 'Consolas', size: 9.5, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
-      // Col 2: Name (Left, Bold)
-      styleRange(ws1, r, 2, r, 2, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
-        border: thinBorder('CBD5E1')
+      // Col 3: Item Name
+      styleRowRange(ws1, r, 3, 3, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF0F172A' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+        border: thinBorder()
       });
-      // Col 3: Unit (Center)
-      styleRange(ws1, r, 3, r, 3, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '334155' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+      // Col 4: Unit
+      styleRowRange(ws1, r, 4, 4, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF334155' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
-      // Col 4: Inbound A (Right, Bold Slate, Light Gray Fill)
-      styleRange(ws1, r, 4, r, 4, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '0F172A' } },
-        fill: { fgColor: { rgb: 'F1F5F9' } },
-        alignment: { horizontal: 'right', vertical: 'center' },
+      // Col 5: Total Inbound A
+      styleRowRange(ws1, r, 5, 5, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF0F172A' } },
+        fillArgb: 'FFF1F5F9',
+        alignment: { horizontal: 'right', vertical: 'middle' },
         numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
+        border: thinBorder()
       });
-      // Col 5: In-Use B (Right, Bold Blue)
-      styleRange(ws1, r, 5, r, 5, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '1D4ED8' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'right', vertical: 'center' },
+      // Col 6: In-Use B
+      styleRowRange(ws1, r, 6, 6, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF1D4ED8' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'right', vertical: 'middle' },
         numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
+        border: thinBorder()
       });
-      // Col 6: Damaged/Adjusted C (Right, Rose)
-      styleRange(ws1, r, 6, r, 6, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: row.damagedAdjustedC > 0, color: { rgb: row.damagedAdjustedC > 0 ? 'BE123C' : '64748B' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'right', vertical: 'center' },
+      // Col 7: Damaged C
+      styleRowRange(ws1, r, 7, 7, {
+        font: {
+          name: 'Khmer OS Siemreap',
+          size: 9.5,
+          bold: row.damagedAdjustedC > 0,
+          color: { argb: row.damagedAdjustedC > 0 ? 'FFBE123C' : 'FF64748B' }
+        },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'right', vertical: 'middle' },
         numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
+        border: thinBorder()
       });
-      // Col 7: Warehouse Available D (Right, Bold GDT Green, Soft Emerald Fill)
-      styleRange(ws1, r, 7, r, 7, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
-        fill: { fgColor: { rgb: 'ECFDF5' } },
-        alignment: { horizontal: 'right', vertical: 'center' },
+      // Col 8: Warehouse Available D
+      styleRowRange(ws1, r, 8, 8, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: 'FFECFDF5',
+        alignment: { horizontal: 'right', vertical: 'middle' },
         numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
+        border: thinBorder()
       });
-      // Col 8 & 9: Assigned Holders & Purpose (Left, Wrap)
-      styleRange(ws1, r, 8, r, 9, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '1E293B' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
-        border: thinBorder('CBD5E1')
+      // Col 9 & 10: Holders & Purpose
+      styleRowRange(ws1, r, 9, 10, {
+        font: { name: 'Khmer OS Siemreap', size: 9, color: { argb: 'FF1E293B' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+        border: thinBorder()
       });
-      // Col 10: Status Badge
+      // Col 11: Status Badge
       const statusFill =
         row.statusCode === 'sufficient'
-          ? 'DCFCE7'
+          ? 'FFDCFCE7'
           : row.statusCode === 'low_stock'
-            ? 'FEF3C7'
-            : 'FFE4E6';
+            ? 'FFFEF3C7'
+            : 'FFFFE4E6';
       const statusColor =
         row.statusCode === 'sufficient'
-          ? '166534'
+          ? 'FF166534'
           : row.statusCode === 'low_stock'
-            ? '92400E'
-            : '9F1239';
-      styleRange(ws1, r, 10, r, 10, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: statusColor } },
-        fill: { fgColor: { rgb: statusFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+            ? 'FF92400E'
+            : 'FF9F1239';
+      styleRowRange(ws1, r, 11, 11, {
+        font: { name: 'Khmer OS Siemreap', size: 9, bold: true, color: { argb: statusColor } },
+        fillArgb: statusFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
     });
 
-    // Style Subtotal Row on Sheet 1
-    styleRange(ws1, subtotalRowIdx1, 0, subtotalRowIdx1, 3, {
-      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    // Subtotal Row for Sheet 1
+    const subtotalRow1 = dataStartRow1 + nonConsumableRows.length;
+    ws1.getRow(subtotalRow1).height = 28;
+    ws1.getCell(subtotalRow1, 1).value = 'សរុបរួមផ្នែកទី ១ (SUBTOTAL - សម្ភារឧបករណ៍បច្ចេកទេសប្រើប្រាស់មិនអស់)៖';
+    ws1.getCell(subtotalRow1, 5).value = part1Totals.totalInboundA;
+    ws1.getCell(subtotalRow1, 6).value = part1Totals.inUseB;
+    ws1.getCell(subtotalRow1, 7).value = part1Totals.damagedAdjustedC;
+    ws1.getCell(subtotalRow1, 8).value = part1Totals.warehouseAvailD;
+    ws1.getCell(subtotalRow1, 9).value = `តុល្យភាពស្តុកឧបករណ៍បច្ចេកទេស៖ D (${part1Totals.warehouseAvailD.toLocaleString()}) = A (${part1Totals.totalInboundA.toLocaleString()}) - B (${part1Totals.inUseB.toLocaleString()}) - C (${part1Totals.damagedAdjustedC.toLocaleString()})`;
+
+    ws1.mergeCells(subtotalRow1, 1, subtotalRow1, 4);
+    ws1.mergeCells(subtotalRow1, 9, subtotalRow1, 11);
+
+    styleRowRange(ws1, subtotalRow1, 1, 4, {
+      font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF05402D' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       border: subtotalBorder
     });
-    styleRange(ws1, subtotalRowIdx1, 4, subtotalRowIdx1, 4, {
-      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '0F172A' } },
-      fill: { fgColor: { rgb: 'CBD5E1' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    styleRowRange(ws1, subtotalRow1, 5, 5, {
+      font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF0F172A' } },
+      fillArgb: 'FFCBD5E1',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
-    styleRange(ws1, subtotalRowIdx1, 5, subtotalRowIdx1, 5, {
-      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '1E40AF' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    styleRowRange(ws1, subtotalRow1, 6, 6, {
+      font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF1E40AF' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
-    styleRange(ws1, subtotalRowIdx1, 6, subtotalRowIdx1, 6, {
-      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '9F1239' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    styleRowRange(ws1, subtotalRow1, 7, 7, {
+      font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF9F1239' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
-    styleRange(ws1, subtotalRowIdx1, 7, subtotalRowIdx1, 7, {
-      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'D1FAE5' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    styleRowRange(ws1, subtotalRow1, 8, 8, {
+      font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
+      fillArgb: 'FFD1FAE5',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
-    styleRange(ws1, subtotalRowIdx1, 8, subtotalRowIdx1, 10, {
-      font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '334155' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'left', vertical: 'center' },
+    styleRowRange(ws1, subtotalRow1, 9, 11, {
+      font: { name: 'Khmer OS Siemreap', size: 9, bold: true, color: { argb: 'FF334155' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'left', vertical: 'middle' },
       border: subtotalBorder
     });
 
-    styleSignatureRows(ws1, sigStart1, cols1);
-
-    ws1['!merges'] = merges1;
-    ws1['!cols'] = [
-      { wch: 6 },   // ល.រ
-      { wch: 11 },  // កូដ
-      { wch: 36 },  // ឈ្មោះឧបករណ៍
-      { wch: 10 },  // ឯកតា
-      { wch: 16 },  // សរុបរួម A
-      { wch: 20 },  // កំពុងប្រើប្រាស់ B
-      { wch: 17 },  // ខូច/កែតម្រូវ C
-      { wch: 20 },  // ស្តុកនៅសល់ក្នុងឃ្លាំង D
-      { wch: 36 },  // សាខា ឬមន្ត្រីទទួលកាន់កាប់
-      { wch: 38 },  // គោលបំណង និងកាលបរិច្ឆេទ
-      { wch: 18 }   // ស្ថានភាពស្តុក
-    ];
-    ws1['!rows'] = [
-      { hpt: 20 }, // Row 0
-      { hpt: 20 }, // Row 1
-      { hpt: 19 }, // Row 2
-      { hpt: 19 }, // Row 3
-      { hpt: 28 }, // Row 4 Main Title
-      { hpt: 24 }, // Row 5 Section Title
-      { hpt: 20 }, // Row 6 Scope & Date
-      { hpt: 22 }, // Row 7 Definition
-      { hpt: 26 }, // Row 8 KPI Cards
-      { hpt: 10 }, // Row 9 Spacer
-      { hpt: 36 }, // Row 10 Table Header
-      ...nonConsumableRows.map(() => ({ hpt: 32 })),
-      { hpt: 28 }, // Subtotal
-      { hpt: 14 }, // Spacer
-      { hpt: 19 }, // Sig Lunar
-      { hpt: 19 }, // Sig Solar
-      { hpt: 22 }, // Sig Title
-      { hpt: 38 }, // Sig Stamp Space
-      { hpt: 18 }, // Sig Dotted
-      { hpt: 22 }  // Sig Officer Name
-    ];
-    ws1['!pageSetup'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
-    XLSX.utils.book_append_sheet(wb, ws1, 'ឧបករណ៍បច្ចេកទេស-មិនអស់');
+    appendOfficialSignatureBlock(ws1, subtotalRow1 + 1, cols1);
 
     // =========================================================================
-    // SHEET 2: "សម្ភារប្រើប្រាស់-អស់ទៅ" (10 Columns — Part 2)
+    // SHEET 2: "សម្ភារប្រើប្រាស់-អស់ទៅ" (10 Columns — Part 2: Suppliers)
     // =========================================================================
     const cols2 = 10;
-    const merges2: any[] = [];
-    const sheet2AoA: (string | number)[][] = [
-      ['ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', '', '', '', '', '', 'ព្រះរាជាណាចក្រកម្ពុជា', '', '', ''],
-      ['អគ្គនាយកដ្ឋានពន្ធដារ', '', '', '', '', '', 'ជាតិ សាសនា ព្រះមហាក្សត្រ', '', '', ''],
-      ['នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '', '', '', '', '', '✦ ✦ ✦', '', '', ''],
-      ['លេខ៖ ........................... អពដ/នបព', '', '', '', '', '', '', '', '', ''],
-      ['របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់', '', '', '', '', '', '', '', '', ''],
-      ['ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារប្រើប្រាស់ (Suppliers)»', '', '', '', '', '', '', '', '', ''],
-      [`កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`, '', '', '', '', '', '', '', '', ''],
-      ['និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។', '', '', '', '', '', '', '', '', ''],
-      // Row 8: KPI Summary Banner for Part 2
-      [
-        `១. មុខសម្ភារប្រើប្រាស់អស់ទៅសរុប៖ ${consumableRows.length} មុខសម្ភារ`,
-        '',
-        '',
-        `២. បរិមាណសរុបរួមនាំចូល (A)៖ ${part2Totals.totalInboundA.toLocaleString()} ឯកតា`,
-        '',
-        `៣. បានបើកផ្តល់ និងប្រើប្រាស់សរុប (B)៖ ${part2Totals.totalIssuedB.toLocaleString()} ឯកតា`,
-        '',
-        `៤. ស្តុកនៅសល់ក្នុងឃ្លាំង (C = A - B)៖ ${part2Totals.remainingStockC.toLocaleString()} ឯកតា`,
-        '',
-        ''
-      ],
-      new Array(cols2).fill(''), // Row 9: Spacer
-      // Row 10: Table Header
-      [
-        'ល.រ',
-        'កូដ',
-        'ឈ្មោះសម្ភារប្រើប្រាស់អស់ទៅ',
-        'ឯកតា',
-        'សរុបរួមនាំចូល\n(A)',
-        'បានបើកផ្តល់ និង\nប្រើប្រាស់សរុប (B)',
-        'ស្តុកនៅសល់ក្នុងឃ្លាំង\n(C = A - B)',
-        'សាខា ឬអង្គភាពបានបើកយកទៅប្រើប្រាស់',
-        'គោលបំណង និងកាលបរិច្ឆេទបើកបែក',
-        'ស្ថានភាពស្តុក'
-      ]
-    ];
-
-    merges2.push(
-      { s: { r: 8, c: 0 }, e: { r: 8, c: 2 } },
-      { s: { r: 8, c: 3 }, e: { r: 8, c: 4 } },
-      { s: { r: 8, c: 5 }, e: { r: 8, c: 6 } },
-      { s: { r: 8, c: 7 }, e: { r: 8, c: 9 } }
-    );
-
-    const headerRowIdx2 = 10;
-    const dataStartRow2 = 11;
-
-    consumableRows.forEach(r => {
-      sheet2AoA.push([
-        r.no,
-        r.itemCode,
-        `${r.nameKh}\n(${r.nameEn})`,
-        r.unitKh,
-        r.totalInboundA,
-        r.totalIssuedB,
-        r.remainingStockC,
-        r.issuedRecipients,
-        r.purposeAndDate,
-        r.statusLabelKh
-      ]);
+    const ws2 = workbook.addWorksheet('សម្ភារប្រើប្រាស់-អស់ទៅ', {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
     });
 
-    const subtotalRowIdx2 = sheet2AoA.length;
-    sheet2AoA.push([
-      'សរុបរួមផ្នែកទី ២ (SUBTOTAL - សម្ភារប្រើប្រាស់អស់ទៅ)៖',
-      '',
-      '',
-      '',
-      part2Totals.totalInboundA,
-      part2Totals.totalIssuedB,
-      part2Totals.remainingStockC,
-      `តុល្យភាពស្តុកសម្ភារប្រើប្រាស់អស់ទៅ៖ C (${part2Totals.remainingStockC.toLocaleString()}) = A (${part2Totals.totalInboundA.toLocaleString()}) - B (${part2Totals.totalIssuedB.toLocaleString()})`,
-      '',
-      ''
-    ]);
-    merges2.push(
-      { s: { r: subtotalRowIdx2, c: 0 }, e: { r: subtotalRowIdx2, c: 3 } },
-      { s: { r: subtotalRowIdx2, c: 7 }, e: { r: subtotalRowIdx2, c: 9 } }
-    );
+    ws2.columns = [
+      { width: 6 },   // Col A: ល.រ
+      { width: 11 },  // Col B: កូដ
+      { width: 36 },  // Col C: ឈ្មោះសម្ភារ
+      { width: 10 },  // Col D: ឯកតា
+      { width: 18 },  // Col E: សរុបរួមនាំចូល A
+      { width: 22 },  // Col F: បានបើកផ្តល់ B
+      { width: 22 },  // Col G: ស្តុកនៅសល់ក្នុងឃ្លាំង C
+      { width: 36 },  // Col H: សាខា ឬអង្គភាពបានបើកយក
+      { width: 38 },  // Col I: គោលបំណង និងកាលបរិច្ឆេទ
+      { width: 18 }   // Col J: ស្ថានភាពស្តុក
+    ];
 
-    const sigStart2 = appendAndStyleSignatureBlock(sheet2AoA, merges2, cols2);
-    const ws2 = XLSX.utils.aoa_to_sheet(sheet2AoA);
-
-    applyOfficialSheetHeader(
+    buildOfficialHeaderRows(
       ws2,
-      merges2,
       cols2,
       'ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារប្រើប្រាស់ (Suppliers)»',
-      'និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។'
+      `សរុប ${consumableRows.length} មុខសម្ភារ`,
+      'និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។',
+      4.35 // Centered between Columns E & F (0-indexed col 4 and 5)
     );
 
-    // Style KPI Row 8 on Sheet 2
-    styleRange(ws2, 8, 0, 8, 2, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
-      fill: { fgColor: { rgb: 'F1F5F9' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('94A3B8')
-    });
-    styleRange(ws2, 8, 3, 8, 4, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E293B' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('94A3B8')
-    });
-    styleRange(ws2, 8, 5, 8, 6, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '92400E' } },
-      fill: { fgColor: { rgb: 'FFFBEB' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('FCD34D')
-    });
-    styleRange(ws2, 8, 7, 8, 9, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'ECFDF5' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('6EE7B7')
-    });
-
-    // Style Table Header Row 10 on Sheet 2
-    styleRange(ws2, headerRowIdx2, 0, headerRowIdx2, cols2 - 1, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '05402D' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    // Row 9: Table Headers for Sheet 2
+    const headerRow2 = ws2.getRow(9);
+    headerRow2.values = [
+      'ល.រ',
+      'កូដ',
+      'ឈ្មោះសម្ភារប្រើប្រាស់អស់ទៅ',
+      'ឯកតា',
+      'សរុបរួមនាំចូល\n(A)',
+      'បានបើកផ្តល់ និង\nប្រើប្រាស់សរុប (B)',
+      'ស្តុកនៅសល់ក្នុងឃ្លាំង\n(C = A - B)',
+      'សាខា ឬអង្គភាពបានបើកយកទៅប្រើប្រាស់',
+      'គោលបំណង និងកាលបរិច្ឆេទបើកបែក',
+      'ស្ថានភាពស្តុក'
+    ];
+    headerRow2.height = 36;
+    styleRowRange(ws2, 9, 1, cols2, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } },
+      fillArgb: 'FF0B3D2E',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
-    styleRange(ws2, headerRowIdx2, 4, headerRowIdx2, 4, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '03291E' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    styleRowRange(ws2, 9, 5, 5, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } },
+      fillArgb: 'FF03291E',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
-    styleRange(ws2, headerRowIdx2, 6, headerRowIdx2, 6, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'D4AF37' } },
-      fill: { fgColor: { rgb: '022C22' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    styleRowRange(ws2, 9, 7, 7, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFD4AF37' } },
+      fillArgb: 'FF022C22',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
 
-    // Style Data Rows on Sheet 2
+    // Data Rows for Sheet 2 (starting at Row 10)
+    const dataStartRow2 = 10;
     consumableRows.forEach((row, idx) => {
       const r = dataStartRow2 + idx;
-      const zebraFill = idx % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+      const excelRow = ws2.getRow(r);
+      excelRow.values = [
+        row.no,
+        row.itemCode,
+        `${row.nameKh}\n(${row.nameEn})`,
+        row.unitKh,
+        row.totalInboundA,
+        row.totalIssuedB,
+        row.remainingStockC,
+        row.issuedRecipients,
+        row.purposeAndDate,
+        row.statusLabelKh
+      ];
+      excelRow.height = 32;
 
-      styleRange(ws2, r, 0, r, cols2 - 1, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '1E293B' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { vertical: 'center', wrapText: true },
-        border: thinBorder('CBD5E1')
+      const zebraFill = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFC';
+
+      styleRowRange(ws2, r, 1, 1, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF334155' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
+      });
+      styleRowRange(ws2, r, 2, 2, {
+        font: { name: 'Consolas', size: 9.5, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
+      });
+      styleRowRange(ws2, r, 3, 3, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF0F172A' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+        border: thinBorder()
+      });
+      styleRowRange(ws2, r, 4, 4, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF334155' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
+      });
+      styleRowRange(ws2, r, 5, 5, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF0F172A' } },
+        fillArgb: 'FFF1F5F9',
+        alignment: { horizontal: 'right', vertical: 'middle' },
+        numFmt: '#,##0',
+        border: thinBorder()
+      });
+      styleRowRange(ws2, r, 6, 6, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FFB45309' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'right', vertical: 'middle' },
+        numFmt: '#,##0',
+        border: thinBorder()
+      });
+      styleRowRange(ws2, r, 7, 7, {
+        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: 'FFECFDF5',
+        alignment: { horizontal: 'right', vertical: 'middle' },
+        numFmt: '#,##0',
+        border: thinBorder()
+      });
+      styleRowRange(ws2, r, 8, 9, {
+        font: { name: 'Khmer OS Siemreap', size: 9, color: { argb: 'FF1E293B' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+        border: thinBorder()
       });
 
-      styleRange(ws2, r, 0, r, 0, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '334155' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
-      });
-      styleRange(ws2, r, 1, r, 1, {
-        font: { name: 'Consolas', sz: 9.5, bold: true, color: { rgb: '05402D' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
-      });
-      styleRange(ws2, r, 2, r, 2, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '0F172A' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
-        border: thinBorder('CBD5E1')
-      });
-      styleRange(ws2, r, 3, r, 3, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '334155' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
-      });
-      // Col 4: Inbound A
-      styleRange(ws2, r, 4, r, 4, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '0F172A' } },
-        fill: { fgColor: { rgb: 'F1F5F9' } },
-        alignment: { horizontal: 'right', vertical: 'center' },
-        numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
-      });
-      // Col 5: Issued B (Amber)
-      styleRange(ws2, r, 5, r, 5, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: 'B45309' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'right', vertical: 'center' },
-        numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
-      });
-      // Col 6: Remaining Stock C (GDT Green)
-      styleRange(ws2, r, 6, r, 6, {
-        font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
-        fill: { fgColor: { rgb: 'ECFDF5' } },
-        alignment: { horizontal: 'right', vertical: 'center' },
-        numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
-      });
-      // Col 7 & 8: Recipients & Purpose
-      styleRange(ws2, r, 7, r, 8, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '1E293B' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
-        border: thinBorder('CBD5E1')
-      });
-      // Col 9: Status Badge
       const statusFill =
         row.statusCode === 'sufficient'
-          ? 'DCFCE7'
+          ? 'FFDCFCE7'
           : row.statusCode === 'low_stock'
-            ? 'FEF3C7'
-            : 'FFE4E6';
+            ? 'FFFEF3C7'
+            : 'FFFFE4E6';
       const statusColor =
         row.statusCode === 'sufficient'
-          ? '166534'
+          ? 'FF166534'
           : row.statusCode === 'low_stock'
-            ? '92400E'
-            : '9F1239';
-      styleRange(ws2, r, 9, r, 9, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: statusColor } },
-        fill: { fgColor: { rgb: statusFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+            ? 'FF92400E'
+            : 'FF9F1239';
+      styleRowRange(ws2, r, 10, 10, {
+        font: { name: 'Khmer OS Siemreap', size: 9, bold: true, color: { argb: statusColor } },
+        fillArgb: statusFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
     });
 
-    // Style Subtotal Row on Sheet 2
-    styleRange(ws2, subtotalRowIdx2, 0, subtotalRowIdx2, 3, {
-      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    // Subtotal Row for Sheet 2
+    const subtotalRow2 = dataStartRow2 + consumableRows.length;
+    ws2.getRow(subtotalRow2).height = 28;
+    ws2.getCell(subtotalRow2, 1).value = 'សរុបរួមផ្នែកទី ២ (SUBTOTAL - សម្ភារប្រើប្រាស់អស់ទៅ)៖';
+    ws2.getCell(subtotalRow2, 5).value = part2Totals.totalInboundA;
+    ws2.getCell(subtotalRow2, 6).value = part2Totals.totalIssuedB;
+    ws2.getCell(subtotalRow2, 7).value = part2Totals.remainingStockC;
+    ws2.getCell(subtotalRow2, 8).value = `តុល្យភាពស្តុកសម្ភារប្រើប្រាស់អស់ទៅ៖ C (${part2Totals.remainingStockC.toLocaleString()}) = A (${part2Totals.totalInboundA.toLocaleString()}) - B (${part2Totals.totalIssuedB.toLocaleString()})`;
+
+    ws2.mergeCells(subtotalRow2, 1, subtotalRow2, 4);
+    ws2.mergeCells(subtotalRow2, 8, subtotalRow2, 10);
+
+    styleRowRange(ws2, subtotalRow2, 1, 4, {
+      font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF05402D' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       border: subtotalBorder
     });
-    styleRange(ws2, subtotalRowIdx2, 4, subtotalRowIdx2, 4, {
-      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '0F172A' } },
-      fill: { fgColor: { rgb: 'CBD5E1' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    styleRowRange(ws2, subtotalRow2, 5, 5, {
+      font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF0F172A' } },
+      fillArgb: 'FFCBD5E1',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
-    styleRange(ws2, subtotalRowIdx2, 5, subtotalRowIdx2, 5, {
-      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '92400E' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    styleRowRange(ws2, subtotalRow2, 6, 6, {
+      font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF92400E' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
-    styleRange(ws2, subtotalRowIdx2, 6, subtotalRowIdx2, 6, {
-      font: { name: 'Khmer OS Siemreap', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'D1FAE5' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    styleRowRange(ws2, subtotalRow2, 7, 7, {
+      font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
+      fillArgb: 'FFD1FAE5',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
-    styleRange(ws2, subtotalRowIdx2, 7, subtotalRowIdx2, 9, {
-      font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '334155' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'left', vertical: 'center' },
+    styleRowRange(ws2, subtotalRow2, 8, 10, {
+      font: { name: 'Khmer OS Siemreap', size: 9, bold: true, color: { argb: 'FF334155' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'left', vertical: 'middle' },
       border: subtotalBorder
     });
 
-    styleSignatureRows(ws2, sigStart2, cols2);
-
-    ws2['!merges'] = merges2;
-    ws2['!cols'] = [
-      { wch: 6 },   // ល.រ
-      { wch: 11 },  // កូដ
-      { wch: 36 },  // ឈ្មោះសម្ភារ
-      { wch: 10 },  // ឯកតា
-      { wch: 18 },  // សរុបរួមនាំចូល A
-      { wch: 22 },  // បានបើកផ្តល់ B
-      { wch: 22 },  // ស្តុកនៅសល់ក្នុងឃ្លាំង C
-      { wch: 36 },  // សាខា ឬអង្គភាពបានបើកយក
-      { wch: 38 },  // គោលបំណង និងកាលបរិច្ឆេទ
-      { wch: 18 }   // ស្ថានភាពស្តុក
-    ];
-    ws2['!rows'] = [
-      { hpt: 20 },
-      { hpt: 20 },
-      { hpt: 19 },
-      { hpt: 19 },
-      { hpt: 28 },
-      { hpt: 24 },
-      { hpt: 20 },
-      { hpt: 22 },
-      { hpt: 26 },
-      { hpt: 10 },
-      { hpt: 36 },
-      ...consumableRows.map(() => ({ hpt: 32 })),
-      { hpt: 28 },
-      { hpt: 14 },
-      { hpt: 19 },
-      { hpt: 19 },
-      { hpt: 22 },
-      { hpt: 38 },
-      { hpt: 18 },
-      { hpt: 22 }
-    ];
-    ws2['!pageSetup'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
-    XLSX.utils.book_append_sheet(wb, ws2, 'សម្ភារប្រើប្រាស់-អស់ទៅ');
+    appendOfficialSignatureBlock(ws2, subtotalRow2 + 1, cols2);
 
     // =========================================================================
     // SHEET 3: "តារាងម៉ាទ្រីសតាមទីតាំង" (Cross-Tab Stock Distribution Matrix)
     // =========================================================================
     const cols3 = 5 + unifiedLocations.length;
-    const merges3: any[] = [];
-    const buildHeaderRow3 = (leftTxt: string, rightTxt: string) => {
-      const arr = new Array(cols3).fill('');
-      arr[0] = leftTxt;
-      arr[Math.max(4, cols3 - 8)] = rightTxt;
-      return arr;
-    };
-    const buildFullMergedRow3 = (txt: string) => {
-      const arr = new Array(cols3).fill('');
-      arr[0] = txt;
-      return arr;
-    };
+    const ws3 = workbook.addWorksheet('តារាងម៉ាទ្រីសតាមទីតាំង', {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    });
 
-    const sheet3AoA: (string | number)[][] = [
-      buildHeaderRow3('ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ', 'ព្រះរាជាណាចក្រកម្ពុជា'),
-      buildHeaderRow3('អគ្គនាយកដ្ឋានពន្ធដារ', 'ជាតិ សាសនា ព្រះមហាក្សត្រ'),
-      buildHeaderRow3('នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន', '✦ ✦ ✦'),
-      buildHeaderRow3('លេខ៖ ........................... អពដ/នបព', ''),
-      buildFullMergedRow3('របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់'),
-      buildFullMergedRow3('តារាងម៉ាទ្រីសបែងចែកស្តុកតាមបណ្តាទីតាំងទាំងអស់ (Cross-Tab Stock Distribution Matrix)'),
-      buildFullMergedRow3(`កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`),
-      buildFullMergedRow3('បង្ហាញបរិមាណសម្ភារនីមួយៗតាមជួរឈរទីតាំងស្តុកទាំងអស់ (ឃ្លាំងកណ្តាល HQ-ITSB → ថ្នាក់កណ្តាល → សាខាពន្ធដារខណ្ឌ → សាខាពន្ធដារខេត្ត)'),
-      new Array(cols3).fill(''), // Row 8 spacer
-      [
-        'ល.រ',
-        'កូដ',
-        'ឈ្មោះសម្ភារៈ',
-        'ខ្នាត',
-        'សរុបរួម',
-        ...unifiedLocations.map(loc => getShortLocationHeader(loc))
-      ]
+    ws3.columns = [
+      { width: 5 },   // ល.រ
+      { width: 10 },  // កូដ
+      { width: 30 },  // ឈ្មោះសម្ភារៈ
+      { width: 8 },   // ខ្នាត
+      { width: 10 },  // សរុបរួម
+      ...unifiedLocations.map(() => ({ width: 5.5 }))
     ];
 
-    const headerRowIdx3 = 9;
-    const dataStartRow3 = 10;
+    buildOfficialHeaderRows(
+      ws3,
+      cols3,
+      'តារាងម៉ាទ្រីសបែងចែកស្តុកតាមបណ្តាទីតាំងទាំងអស់ (Cross-Tab Stock Distribution Matrix)',
+      `សរុប ${matrixData.rows.length} មុខសម្ភារ × ${unifiedLocations.length} ទីតាំង`,
+      'បង្ហាញបរិមាណសម្ភារនីមួយៗតាមជួរឈរទីតាំងស្តុកទាំងអស់ (ឃ្លាំងកណ្តាល HQ-ITSB → ថ្នាក់កណ្តាល → សាខាពន្ធដារខណ្ឌ → សាខាពន្ធដារខេត្ត)',
+      Math.max(4.5, Math.floor(cols3 / 2) - 1)
+    );
 
-    matrixData.rows.forEach(r => {
-      sheet3AoA.push([
-        r.no,
-        r.itemCode,
-        r.nameKh,
-        r.unitKh,
-        r.totalQty,
-        ...unifiedLocations.map(loc => {
-          const val = r.locationQuantities[loc.id] || 0;
-          return val > 0 ? val : '-';
-        })
-      ]);
-    });
+    // Row 9: Matrix Table Header
+    const headerRow3 = ws3.getRow(9);
+    headerRow3.values = [
+      'ល.រ',
+      'កូដ',
+      'ឈ្មោះសម្ភារៈ',
+      'ខ្នាត',
+      'សរុបរួម',
+      ...unifiedLocations.map(loc => getShortLocationHeader(loc))
+    ];
+    headerRow3.height = 145;
 
-    const subtotalRowIdx3 = sheet3AoA.length;
-    sheet3AoA.push([
-      'សរុបតាមទីតាំងនីមួយៗ (COLUMN TOTALS)៖',
-      '',
-      '',
-      '',
-      matrixData.grandTotal,
-      ...unifiedLocations.map(loc => {
-        const colSum = matrixData.columnTotals[loc.id] || 0;
-        return colSum > 0 ? colSum : '-';
-      })
-    ]);
-    merges3.push({ s: { r: subtotalRowIdx3, c: 0 }, e: { r: subtotalRowIdx3, c: 3 } });
-
-    const sigStart3 = appendAndStyleSignatureBlock(sheet3AoA, merges3, cols3);
-    const ws3 = XLSX.utils.aoa_to_sheet(sheet3AoA);
-
-    // Custom header merges for wide Matrix sheet
-    const rightStart3 = Math.max(4, cols3 - 8);
-    for (let r = 0; r <= 3; r++) {
-      merges3.push({ s: { r, c: 0 }, e: { r, c: 3 } });
-      merges3.push({ s: { r, c: rightStart3 }, e: { r, c: cols3 - 1 } });
-    }
-    for (let r = 4; r <= 7; r++) {
-      merges3.push({ s: { r, c: 0 }, e: { r, c: cols3 - 1 } });
-    }
-
-    styleRange(ws3, 0, 0, 1, 3, {
-      font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-      alignment: { horizontal: 'left', vertical: 'center' }
-    });
-    styleRange(ws3, 2, 0, 2, 3, {
-      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '1E293B' } },
-      alignment: { horizontal: 'left', vertical: 'center' }
-    });
-    styleRange(ws3, 3, 0, 3, cols3 - 1, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, color: { rgb: '475569' } },
-      alignment: { horizontal: 'left', vertical: 'center' },
-      border: { bottom: { style: 'medium', color: { rgb: '05402D' } } }
-    });
-    styleRange(ws3, 0, rightStart3, 1, cols3 - 1, {
-      font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-      alignment: { horizontal: 'center', vertical: 'center' }
-    });
-    styleRange(ws3, 2, rightStart3, 2, cols3 - 1, {
-      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: 'D4AF37' } },
-      alignment: { horizontal: 'center', vertical: 'center' }
-    });
-    styleRange(ws3, 4, 0, 4, cols3 - 1, {
-      font: { name: 'Khmer OS Muol Light', sz: 12.5, bold: true, color: { rgb: '05402D' } },
-      alignment: { horizontal: 'center', vertical: 'center' }
-    });
-    styleRange(ws3, 5, 0, 5, cols3 - 1, {
-      font: { name: 'Khmer OS Muol Light', sz: 10.5, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'ECFDF5' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('A7F3D0')
-    });
-    styleRange(ws3, 6, 0, 6, cols3 - 1, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '1E293B' } },
-      alignment: { horizontal: 'center', vertical: 'center' }
-    });
-    styleRange(ws3, 7, 0, 7, cols3 - 1, {
-      font: { name: 'Khmer OS Siemreap', sz: 9, italic: true, color: { rgb: '334155' } },
-      fill: { fgColor: { rgb: 'F8FAFC' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: thinBorder('E2E8F0')
-    });
-
-    // Style Matrix Table Header (Row 9) — Fixed Columns 0..4 horizontal, Location Columns 5..N rotated 90 deg!
-    styleRange(ws3, headerRowIdx3, 0, headerRowIdx3, 3, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '05402D' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    styleRowRange(ws3, 9, 1, 4, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } },
+      fillArgb: 'FF0B3D2E',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
-    styleRange(ws3, headerRowIdx3, 4, headerRowIdx3, 4, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: 'D4AF37' } },
-      fill: { fgColor: { rgb: '022C22' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    styleRowRange(ws3, 9, 5, 5, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFD4AF37' } },
+      fillArgb: 'FF022C22',
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: headerBorder
     });
     unifiedLocations.forEach((_, idx) => {
-      const c = 5 + idx;
+      const c = 6 + idx;
       const isCentral = idx === 0;
-      styleRange(ws3, headerRowIdx3, c, headerRowIdx3, c, {
+      styleRowRange(ws3, 9, c, c, {
         font: {
           name: 'Khmer OS Siemreap',
-          sz: 9,
+          size: 9,
           bold: true,
-          color: { rgb: isCentral ? 'D4AF37' : 'FFFFFF' }
+          color: { argb: isCentral ? 'FFD4AF37' : 'FFFFFFFF' }
         },
-        fill: { fgColor: { rgb: isCentral ? '022C22' : '05402D' } },
+        fillArgb: isCentral ? 'FF022C22' : 'FF0B3D2E',
         alignment: { horizontal: 'center', vertical: 'bottom', textRotation: 90 },
         border: headerBorder
       });
     });
 
-    // Style Matrix Data Rows
+    const dataStartRow3 = 10;
     matrixData.rows.forEach((row, rIdx) => {
       const r = dataStartRow3 + rIdx;
-      const zebraFill = rIdx % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+      const excelRow = ws3.getRow(r);
+      excelRow.values = [
+        row.no,
+        row.itemCode,
+        row.nameKh,
+        row.unitKh,
+        row.totalQty,
+        ...unifiedLocations.map(loc => {
+          const val = row.locationQuantities[loc.id] || 0;
+          return val > 0 ? val : '-';
+        })
+      ];
+      excelRow.height = 22;
 
-      styleRange(ws3, r, 0, r, 0, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '334155' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+      const zebraFill = rIdx % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFC';
+
+      styleRowRange(ws3, r, 1, 1, {
+        font: { name: 'Khmer OS Siemreap', size: 9, bold: true, color: { argb: 'FF334155' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
-      styleRange(ws3, r, 1, r, 1, {
-        font: { name: 'Consolas', sz: 9, bold: true, color: { rgb: '05402D' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+      styleRowRange(ws3, r, 2, 2, {
+        font: { name: 'Consolas', size: 9, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
-      styleRange(ws3, r, 2, r, 2, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, bold: true, color: { rgb: '0F172A' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'left', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+      styleRowRange(ws3, r, 3, 3, {
+        font: { name: 'Khmer OS Siemreap', size: 9, bold: true, color: { argb: 'FF0F172A' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'left', vertical: 'middle' },
+        border: thinBorder()
       });
-      styleRange(ws3, r, 3, r, 3, {
-        font: { name: 'Khmer OS Siemreap', sz: 9, color: { rgb: '334155' } },
-        fill: { fgColor: { rgb: zebraFill } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: thinBorder('CBD5E1')
+      styleRowRange(ws3, r, 4, 4, {
+        font: { name: 'Khmer OS Siemreap', size: 9, color: { argb: 'FF334155' } },
+        fillArgb: zebraFill,
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: thinBorder()
       });
-      styleRange(ws3, r, 4, r, 4, {
-        font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
-        fill: { fgColor: { rgb: 'ECFDF5' } },
-        alignment: { horizontal: 'center', vertical: 'center' },
+      styleRowRange(ws3, r, 5, 5, {
+        font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: 'FFECFDF5',
+        alignment: { horizontal: 'center', vertical: 'middle' },
         numFmt: '#,##0',
-        border: thinBorder('CBD5E1')
+        border: thinBorder()
       });
 
       unifiedLocations.forEach((loc, cIdx) => {
-        const c = 5 + cIdx;
+        const c = 6 + cIdx;
         const val = row.locationQuantities[loc.id] || 0;
         const isCentral = cIdx === 0;
-        styleRange(ws3, r, c, r, c, {
+        styleRowRange(ws3, r, c, c, {
           font: {
             name: 'Consolas',
-            sz: 9,
+            size: 9,
             bold: val > 0,
-            color: { rgb: val > 0 ? (isCentral ? '05402D' : '0F172A') : 'CBD5E1' }
+            color: { argb: val > 0 ? (isCentral ? 'FF05402D' : 'FF0F172A') : 'FFCBD5E1' }
           },
-          fill: {
-            fgColor: {
-              rgb: val > 0 ? (isCentral ? 'FEF3C7' : 'ECFDF5') : zebraFill
-            }
-          },
-          alignment: { horizontal: 'center', vertical: 'center' },
-          border: thinBorder('CBD5E1')
+          fillArgb: val > 0 ? (isCentral ? 'FFFEF3C7' : 'FFECFDF5') : zebraFill,
+          alignment: { horizontal: 'center', vertical: 'middle' },
+          border: thinBorder()
         });
       });
     });
 
-    // Style Matrix Subtotal Row
-    styleRange(ws3, subtotalRowIdx3, 0, subtotalRowIdx3, 3, {
-      font: { name: 'Khmer OS Siemreap', sz: 9.5, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'E2E8F0' } },
-      alignment: { horizontal: 'right', vertical: 'center' },
+    const subtotalRow3 = dataStartRow3 + matrixData.rows.length;
+    ws3.getRow(subtotalRow3).height = 26;
+    ws3.getCell(subtotalRow3, 1).value = 'សរុបតាមទីតាំងនីមួយៗ (COLUMN TOTALS)៖';
+    ws3.getCell(subtotalRow3, 5).value = matrixData.grandTotal;
+    unifiedLocations.forEach((loc, cIdx) => {
+      const colSum = matrixData.columnTotals[loc.id] || 0;
+      ws3.getCell(subtotalRow3, 6 + cIdx).value = colSum > 0 ? colSum : '-';
+    });
+    ws3.mergeCells(subtotalRow3, 1, subtotalRow3, 4);
+
+    styleRowRange(ws3, subtotalRow3, 1, 4, {
+      font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF05402D' } },
+      fillArgb: 'FFE2E8F0',
+      alignment: { horizontal: 'right', vertical: 'middle' },
       border: subtotalBorder
     });
-    styleRange(ws3, subtotalRowIdx3, 4, subtotalRowIdx3, 4, {
-      font: { name: 'Khmer OS Siemreap', sz: 10, bold: true, color: { rgb: '05402D' } },
-      fill: { fgColor: { rgb: 'FEF3C7' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
+    styleRowRange(ws3, subtotalRow3, 5, 5, {
+      font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF05402D' } },
+      fillArgb: 'FFFEF3C7',
+      alignment: { horizontal: 'center', vertical: 'middle' },
       numFmt: '#,##0',
       border: subtotalBorder
     });
     unifiedLocations.forEach((loc, cIdx) => {
-      const c = 5 + cIdx;
+      const c = 6 + cIdx;
       const colSum = matrixData.columnTotals[loc.id] || 0;
-      styleRange(ws3, subtotalRowIdx3, c, subtotalRowIdx3, c, {
+      styleRowRange(ws3, subtotalRow3, c, c, {
         font: {
           name: 'Consolas',
-          sz: 9,
+          size: 9,
           bold: colSum > 0,
-          color: { rgb: colSum > 0 ? '05402D' : '94A3B8' }
+          color: { argb: colSum > 0 ? 'FF05402D' : 'FF94A3B8' }
         },
-        fill: { fgColor: { rgb: 'E2E8F0' } },
-        alignment: { horizontal: 'center', vertical: 'center' },
+        fillArgb: 'FFE2E8F0',
+        alignment: { horizontal: 'center', vertical: 'middle' },
         border: subtotalBorder
       });
     });
 
-    styleSignatureRows(ws3, sigStart3, cols3);
+    appendOfficialSignatureBlock(ws3, subtotalRow3 + 1, cols3);
 
-    ws3['!merges'] = merges3;
-    ws3['!cols'] = [
-      { wch: 5 },   // ល.រ
-      { wch: 10 },  // កូដ
-      { wch: 30 },  // ឈ្មោះសម្ភារៈ
-      { wch: 8 },   // ខ្នាត
-      { wch: 10 },  // សរុបរួម
-      ...unifiedLocations.map(() => ({ wch: 5.5 }))
-    ];
-    ws3['!rows'] = [
-      { hpt: 20 },
-      { hpt: 20 },
-      { hpt: 19 },
-      { hpt: 19 },
-      { hpt: 28 },
-      { hpt: 24 },
-      { hpt: 20 },
-      { hpt: 22 },
-      { hpt: 10 },
-      { hpt: 145 }, // Rotated 90-degree location header row height
-      ...matrixData.rows.map(() => ({ hpt: 22 })),
-      { hpt: 26 },
-      { hpt: 14 },
-      { hpt: 19 },
-      { hpt: 19 },
-      { hpt: 22 },
-      { hpt: 38 },
-      { hpt: 18 },
-      { hpt: 22 }
-    ];
-    ws3['!pageSetup'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
-    XLSX.utils.book_append_sheet(wb, ws3, 'តារាងម៉ាទ្រីសតាមទីតាំង');
-
-    XLSX.writeFile(wb, `GDT_Executive_Stock_Report_${todayStr}.xlsx`);
+    // Write Workbook Buffer & Trigger Browser Download
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `GDT_Executive_Stock_Report_${todayStr}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportExcel = exportToExcel;
