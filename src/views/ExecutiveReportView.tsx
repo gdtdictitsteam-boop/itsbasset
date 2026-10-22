@@ -795,7 +795,7 @@ export function ExecutiveReportView() {
     workbook.creator = 'GDT Inventory Management System';
     workbook.created = new Date();
 
-    // Fetch /gdtlogo.png and register as Base64 PNG in Workbook
+    // Fetch /gdtlogo.png, normalize to a true 1:1 square PNG so the circular seal is never oval/stretched, and register in Workbook
     let logoImageId: number | null = null;
     try {
       const fetchLogoBuffer = async (): Promise<ArrayBuffer | null> => {
@@ -820,7 +820,36 @@ export function ExecutiveReportView() {
         for (let i = 0; i < bytes.byteLength; i++) {
           binary += String.fromCharCode(bytes[i]);
         }
-        const base64Logo = window.btoa(binary);
+        let base64Logo = window.btoa(binary);
+
+        // Normalize rectangular source PNG (e.g. 282x220 with horizontal padding) into a true 1:1 square PNG
+        try {
+          const dataUrl = `data:image/png;base64,${base64Logo}`;
+          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const imageEl = new Image();
+            imageEl.onload = () => resolve(imageEl);
+            imageEl.onerror = reject;
+            imageEl.src = dataUrl;
+          });
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            const size = Math.min(img.naturalWidth, img.naturalHeight);
+            const sx = (img.naturalWidth - size) / 2;
+            const sy = (img.naturalHeight - size) / 2;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillRect(0, 0, size, size);
+              ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+              base64Logo = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+            }
+          }
+        } catch {
+          // Fallback to raw base64Logo if canvas fails
+        }
+
         logoImageId = workbook.addImage({
           base64: base64Logo,
           extension: 'png'
@@ -893,6 +922,19 @@ export function ExecutiveReportView() {
       const leftEndCol = 3; // Columns A-C (1..3)
       const rightStartCol = totalCols >= 11 ? 9 : totalCols === 10 ? 8 : Math.max(5, totalCols - 5); // Columns I-K on Sheet 1 (9..11)
 
+      // 1) Fill ALL cells in Rows 1..6 (Col 1..totalCols) with pure solid white (FFFFFFFF) and no grid borders
+      for (let r = 1; r <= 6; r++) {
+        for (let c = 1; c <= totalCols; c++) {
+          const cell = ws.getCell(r, c);
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFFFFF' }
+          };
+          cell.border = {};
+        }
+      }
+
       // Row 1..4 Values
       ws.getCell(1, 1).value = 'ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ';
       ws.getCell(1, rightStartCol).value = 'ព្រះរាជាណាចក្រកម្ពុជា';
@@ -901,7 +943,7 @@ export function ExecutiveReportView() {
       ws.getCell(2, rightStartCol).value = 'ជាតិ សាសនា ព្រះមហាក្សត្រ';
 
       ws.getCell(3, 1).value = 'នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន';
-      ws.getCell(3, rightStartCol).value = '✦ ✦ ✦';
+      ws.getCell(3, rightStartCol).value = '✦  ✦  ✦';
 
       ws.getCell(4, 1).value = 'លេខ៖ ........................... អពដ/នបព';
 
@@ -914,67 +956,75 @@ export function ExecutiveReportView() {
       // Style Left Official Block (Rows 1-4)
       for (let r = 1; r <= 2; r++) {
         styleRowRange(ws, r, 1, leftEndCol, {
-          font: { name: 'Khmer OS Muol Light', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
+          font: { name: 'Khmer OS Muol Light', size: 11, bold: true, color: { argb: 'FF05402D' } },
+          fillArgb: 'FFFFFFFF',
           alignment: { horizontal: 'center', vertical: 'middle' }
         });
       }
       styleRowRange(ws, 3, 1, leftEndCol, {
-        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF1E293B' } },
+        font: { name: 'Khmer OS Siemreap', size: 10.5, bold: true, color: { argb: 'FF1E293B' } },
+        fillArgb: 'FFFFFFFF',
         alignment: { horizontal: 'center', vertical: 'middle' }
       });
       styleRowRange(ws, 4, 1, leftEndCol, {
         font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF475569' } },
+        fillArgb: 'FFFFFFFF',
         alignment: { horizontal: 'center', vertical: 'middle' }
       });
 
       // Style Right Motto Block (Rows 1-3)
       for (let r = 1; r <= 2; r++) {
         styleRowRange(ws, r, rightStartCol, totalCols, {
-          font: { name: 'Khmer OS Muol Light', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
+          font: { name: 'Khmer OS Muol Light', size: 11, bold: true, color: { argb: 'FF05402D' } },
+          fillArgb: 'FFFFFFFF',
           alignment: { horizontal: 'center', vertical: 'middle' }
         });
       }
       styleRowRange(ws, 3, rightStartCol, totalCols, {
-        font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FFD4AF37' } },
+        font: { name: 'Khmer OS Siemreap', size: 11, bold: true, color: { argb: 'FFD4AF37' } },
+        fillArgb: 'FFFFFFFF',
         alignment: { horizontal: 'center', vertical: 'middle' }
       });
 
-      // Dark Green Divider Border below Row 4 across all columns
+      // Dark Green Divider Border below Row 4 across all columns (Column A to K)
       for (let c = 1; c <= totalCols; c++) {
         ws.getCell(4, c).border = {
-          bottom: { style: 'medium', color: { argb: 'FF05402D' } }
+          bottom: { style: 'medium', color: { argb: 'FF0B3D2E' } }
         };
       }
 
-      // Set Row Heights for Rows 1..4 so 85x85 Logo fits cleanly in center
+      // Set Row Heights for Rows 1..8
       ws.getRow(1).height = 22;
-      ws.getRow(2).height = 22;
-      ws.getRow(3).height = 21;
-      ws.getRow(4).height = 22;
+      ws.getRow(2).height = 20;
+      ws.getRow(3).height = 20;
+      ws.getRow(4).height = 28;
 
-      // Embed GDT Logo in Center (Columns E-F, Rows 1-4)
+      // Embed GDT Logo in True Visual Center with 1:1 Fixed Aspect Ratio (editAs: 'oneCell')
       if (logoImageId !== null) {
         ws.addImage(logoImageId, {
-          tl: { col: logoColZeroIndexed, row: 0.12 },
-          ext: { width: 85, height: 85 }
+          tl: { col: logoColZeroIndexed, row: 0.15 } as any,
+          ext: { width: 82, height: 82 },
+          editAs: 'oneCell'
         });
       }
 
       // Row 5: Main Report Title (Centered)
       ws.getCell(5, 1).value = 'របាយការណ៍សង្ខេបស្តុកសម្ភារឧបករណ៍បច្ចេកទេស និងសម្ភារប្រើប្រាស់';
       ws.mergeCells(5, 1, 5, totalCols);
-      ws.getRow(5).height = 28;
+      ws.getRow(5).height = 32;
       styleRowRange(ws, 5, 1, totalCols, {
         font: { name: 'Khmer OS Muol Light', size: 12.5, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: 'FFFFFFFF',
         alignment: { horizontal: 'center', vertical: 'middle' }
       });
 
       // Row 6: Report Date (Centered, directly above Section Title)
       ws.getCell(6, 1).value = `កាលបរិច្ឆេទរបាយការណ៍៖ ${dateRangeLabel}`;
       ws.mergeCells(6, 1, 6, totalCols);
-      ws.getRow(6).height = 21;
+      ws.getRow(6).height = 22;
       styleRowRange(ws, 6, 1, totalCols, {
         font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF05402D' } },
+        fillArgb: 'FFFFFFFF',
         alignment: { horizontal: 'center', vertical: 'middle' }
       });
 
@@ -985,7 +1035,7 @@ export function ExecutiveReportView() {
 
       ws.getCell(7, badgeStartCol).value = totalItemsBadgeKh;
       ws.mergeCells(7, badgeStartCol, 7, totalCols);
-      ws.getRow(7).height = 25;
+      ws.getRow(7).height = 26;
 
       styleRowRange(ws, 7, 1, badgeStartCol - 1, {
         font: { name: 'Khmer OS Muol Light', size: 10.5, bold: true, color: { argb: 'FF05402D' } },
@@ -1015,7 +1065,7 @@ export function ExecutiveReportView() {
       // Row 8: Definition Row (with matching Left Green Accent Bar)
       ws.getCell(8, 1).value = definitionKh;
       ws.mergeCells(8, 1, 8, totalCols);
-      ws.getRow(8).height = 22;
+      ws.getRow(8).height = 24;
       styleRowRange(ws, 8, 1, totalCols, {
         font: { name: 'Khmer OS Siemreap', size: 9.5, italic: true, color: { argb: 'FF334155' } },
         fillArgb: 'FFF8FAFC',
@@ -1035,6 +1085,7 @@ export function ExecutiveReportView() {
     const appendOfficialSignatureBlock = (ws: ExcelJS.Worksheet, startRow: number, totalCols: number) => {
       // Blank spacer row before signatures
       ws.getRow(startRow).height = 14;
+      styleRowRange(ws, startRow, 1, totalCols, { fillArgb: 'FFFFFFFF' });
 
       const sigRow1 = startRow + 1;
       let g1End: number;
@@ -1104,21 +1155,29 @@ export function ExecutiveReportView() {
         if (idx === 0 || idx === 1) {
           styleRowRange(ws, r, 1, totalCols, {
             font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF334155' } },
+            fillArgb: 'FFFFFFFF',
             alignment: { horizontal: 'center', vertical: 'middle' }
           });
         } else if (idx === 2) {
           styleRowRange(ws, r, 1, totalCols, {
             font: { name: 'Khmer OS Muol Light', size: 10, bold: true, color: { argb: 'FF05402D' } },
+            fillArgb: 'FFFFFFFF',
             alignment: { horizontal: 'center', vertical: 'middle' }
+          });
+        } else if (idx === 3) {
+          styleRowRange(ws, r, 1, totalCols, {
+            fillArgb: 'FFFFFFFF'
           });
         } else if (idx === 4) {
           styleRowRange(ws, r, 1, totalCols, {
             font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF94A3B8' } },
+            fillArgb: 'FFFFFFFF',
             alignment: { horizontal: 'center', vertical: 'bottom' }
           });
         } else if (idx === 5) {
           styleRowRange(ws, r, 1, totalCols, {
             font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF0F172A' } },
+            fillArgb: 'FFFFFFFF',
             alignment: { horizontal: 'center', vertical: 'middle' }
           });
         }
@@ -1138,7 +1197,7 @@ export function ExecutiveReportView() {
       { width: 11 },  // Col B: កូដ
       { width: 36 },  // Col C: ឈ្មោះឧបករណ៍
       { width: 10 },  // Col D: ឯកតា
-      { width: 16 },  // Col E: សរុបរួម A
+      { width: 19 },  // Col E: សរុបរួម (A = B + C + D) — widened to >= 18 so (A = B + C + D) never truncates
       { width: 20 },  // Col F: កំពុងប្រើប្រាស់ B
       { width: 17 },  // Col G: ខូច/កែតម្រូវ C
       { width: 20 },  // Col H: ស្តុកនៅសល់ក្នុងឃ្លាំង D
@@ -1153,7 +1212,7 @@ export function ExecutiveReportView() {
       'ផ្នែកទី ១៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (Tools)»',
       `សរុប ${nonConsumableRows.length} មុខឧបករណ៍`,
       'និយមន័យ៖ ជាឧបករណ៍/សម្ភារដែលមានតម្លៃគង់វង្ស ពេលដកចេញគឺមិនអស់រូបរាងឡើយ គឺស្ថិតក្នុងស្ថានភាពកំពុងប្រើប្រាស់ជាក់ស្តែងក្នុងដៃមន្ត្រី ឬសាខា។',
-      4.55 // Centered between Columns E & F (0-indexed col 4 and 5)
+      6.6 // Visual center of Sheet 1 between Left (A-C) and Right (I-K)
     );
 
     // Row 9: Table Headers for Sheet 1
@@ -1171,7 +1230,7 @@ export function ExecutiveReportView() {
       'គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ',
       'ស្ថានភាពស្តុក'
     ];
-    headerRow1.height = 36;
+    headerRow1.height = 38;
     styleRowRange(ws1, 9, 1, cols1, {
       font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } },
       fillArgb: 'FF0B3D2E',
@@ -1389,7 +1448,7 @@ export function ExecutiveReportView() {
       'ផ្នែកទី ២៖ របាយការណ៍តុល្យភាពស្តុក «ប្រភេទទី២៖ សម្ភារបរិក្ខារប្រើប្រាស់ (Suppliers)»',
       `សរុប ${consumableRows.length} មុខសម្ភារ`,
       'និយមន័យ៖ ជាសម្ភារបរិក្ខារដែលពេលដកចេញ គឺបានបើកផ្តល់ និងប្រើប្រាស់អស់ទៅតាមការងារជាក់ស្តែង គ្មានការយកត្រឡប់ចូលឃ្លាំងវិញទេ។',
-      4.35 // Centered between Columns E & F (0-indexed col 4 and 5)
+      6.0 // Visual center of Sheet 2 between Left (A-C) and Right (H-J)
     );
 
     // Row 9: Table Headers for Sheet 2
@@ -1406,7 +1465,7 @@ export function ExecutiveReportView() {
       'គោលបំណង និងកាលបរិច្ឆេទបើកបែក',
       'ស្ថានភាពស្តុក'
     ];
-    headerRow2.height = 36;
+    headerRow2.height = 38;
     styleRowRange(ws2, 9, 1, cols2, {
       font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } },
       fillArgb: 'FF0B3D2E',
