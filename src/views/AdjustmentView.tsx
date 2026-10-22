@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
-import { formatLocationOption } from '../contexts/LocationContext';
+import { useLocationContext, formatLocationOption, getActiveWarehouseLocation } from '../contexts/LocationContext';
 import { 
   SlidersHorizontal, 
   Check, 
@@ -26,7 +26,7 @@ import {
 
 export function AdjustmentView() {
   const { t, language } = useLanguage();
-  const { userRole, isCentralAdmin, userDisplayName } = useAuth();
+  const { userRole, isCentralAdmin, isBranchUser, userDisplayName } = useAuth();
   const { 
     inventory, 
     items, 
@@ -35,10 +35,43 @@ export function AdjustmentView() {
     recordAdjustment, 
     refreshInventory 
   } = useInventoryContext();
+  const { selectedLocation: globalSelectedLoc, assignedBranchLocation, isLocationLocked } = useLocationContext();
 
-  // Selected Location (Defaults to HQ)
+  // Default Location (BranchUser -> assigned branch; CentralAdmin -> active global location or HQ)
   const defaultHq = locations.find(l => isHqLocationOrRow(l, locations)) || locations.find(l => l.code !== 'ALL') || locations[0];
-  const [selectedLocId, setSelectedLocId] = useState<string>(defaultHq?.id || '1');
+  const initialLocId =
+    isBranchUser && assignedBranchLocation
+      ? assignedBranchLocation.id
+      : globalSelectedLoc && globalSelectedLoc.code !== 'ALL' && globalSelectedLoc.id !== 'ALL'
+        ? globalSelectedLoc.id
+        : defaultHq?.id || '1';
+  const [selectedLocId, setSelectedLocId] = useState<string>(initialLocId);
+
+  // Sync with global location context & strictly lock BranchUser to their own branch (matching StockOutView)
+  useEffect(() => {
+    if (isBranchUser && assignedBranchLocation) {
+      setSelectedLocId(assignedBranchLocation.id);
+    } else if (globalSelectedLoc && globalSelectedLoc.code !== 'ALL' && globalSelectedLoc.id !== 'ALL') {
+      setSelectedLocId(globalSelectedLoc.id);
+    } else if (!selectedLocId && locations.length > 0) {
+      const activeLoc = getActiveWarehouseLocation(globalSelectedLoc, locations);
+      if (activeLoc) {
+        setSelectedLocId(activeLoc.id);
+      }
+    }
+  }, [isBranchUser, assignedBranchLocation, globalSelectedLoc, locations, selectedLocId]);
+
+  // Available locations for the dropdown (BranchUser: only their assigned branch; CentralAdmin: all locations)
+  const selectableLocations = useMemo(() => {
+    const physicalLocations = locations.filter(l => l.id !== 'ALL' && l.code !== 'ALL');
+    if (isBranchUser && assignedBranchLocation) {
+      const matched = physicalLocations.filter(
+        l => String(l.id) === String(assignedBranchLocation.id) || String(l.code)?.toUpperCase() === String(assignedBranchLocation.code)?.toUpperCase()
+      );
+      return matched.length > 0 ? matched : [assignedBranchLocation];
+    }
+    return physicalLocations;
+  }, [locations, isBranchUser, assignedBranchLocation]);
 
   // Selected Item
   const [selectedItemId, setSelectedItemId] = useState<string>('');
@@ -64,11 +97,14 @@ export function AdjustmentView() {
 
   // Selected Location Object
   const selectedLocation = useMemo(() => {
+    if (isBranchUser && assignedBranchLocation) {
+      return assignedBranchLocation;
+    }
     return locations.find(l => 
       l.id !== 'ALL' && l.code !== 'ALL' && 
       (String(l.id) === String(selectedLocId) || String(l.code)?.toUpperCase() === String(selectedLocId)?.toUpperCase())
     ) || defaultHq;
-  }, [locations, selectedLocId, defaultHq]);
+  }, [isBranchUser, assignedBranchLocation, locations, selectedLocId, defaultHq]);
 
   // Selected Item Object
   const selectedItem = useMemo(() => {
@@ -125,11 +161,13 @@ export function AdjustmentView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const effectiveLocationId = isBranchUser && assignedBranchLocation ? assignedBranchLocation.id : selectedLocId;
+
     if (!selectedItemId) {
       setNotice({ type: 'error', message: 'សូមជ្រើសរើសសម្ភារៈដែលត្រូវកែតម្រូវស្តុក!' });
       return;
     }
-    if (!selectedLocId) {
+    if (!effectiveLocationId) {
       setNotice({ type: 'error', message: 'សូមជ្រើសរើសទីតាំងឃ្លាំង ឬសាខា!' });
       return;
     }
@@ -143,7 +181,7 @@ export function AdjustmentView() {
 
     try {
       const res = await recordAdjustment({
-        locationId: selectedLocId,
+        locationId: effectiveLocationId,
         itemId: selectedItemId,
         actualQuantity: Number(actualQuantity),
         officerName: officerName || userDisplayName || 'Admin-GDT',
@@ -247,12 +285,17 @@ export function AdjustmentView() {
                 <span className="text-rose-500 font-bold">*</span>
               </label>
               <select
-                value={selectedLocId}
-                onChange={(e) => { setSelectedLocId(e.target.value); setActualQuantity(''); }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+                value={isBranchUser && assignedBranchLocation ? assignedBranchLocation.id : selectedLocId}
+                onChange={(e) => {
+                  if (isBranchUser || isLocationLocked) return;
+                  setSelectedLocId(e.target.value);
+                  setActualQuantity('');
+                }}
+                disabled={isBranchUser || isLocationLocked}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E] disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                 required
               >
-                {locations.filter(l => l.id !== 'ALL' && l.code !== 'ALL').map(loc => (
+                {selectableLocations.map(loc => (
                   <option key={loc.id} value={loc.id}>
                     {formatLocationOption(loc, language)} {isHqLocationOrRow(loc, locations) ? '(HQ)' : ''}
                   </option>
