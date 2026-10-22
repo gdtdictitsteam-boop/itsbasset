@@ -2200,7 +2200,7 @@ export function ExecutiveReportView() {
           </div>
 
           {/* Right Side: Kingdom of Cambodia Motto */}
-          <div className="text-left sm:text-right space-y-0.5 h-[84px] w-[300px] pl-[10px] pt-0 ml-[185px]">
+          <div className="space-y-0.5 h-[84px] w-[300px] pl-[10px] pt-0 text-center leading-[25px] ml-[230px]">
             <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
               ព្រះរាជាណាចក្រកម្ពុជា
             </p>
@@ -2274,25 +2274,25 @@ export function ExecutiveReportView() {
                     <tr className="bg-[#05402D] text-white text-[10px] sm:text-[11px] font-bold">
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-9">ល.រ</th>
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-16">កូដ</th>
-                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px]">ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស</th>
+                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px] text-center">ឈ្មោះឧបករណ៍ / សម្ភារបច្ចេកទេស</th>
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-14">ឯកតា</th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-24 bg-[#03291E]">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-24 bg-[#03291E]">
                         សរុបរួម (A=B+C)
                       </th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-28">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-28">
                         កំពុងប្រើប្រាស់ / បានប្រគល់ជូន (B)
                       </th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-24">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-24">
                         ខូច / បាត់បង់ / កែតម្រូវ (C)
                       </th>
-                      <th className="py-2.5 px-2 border border-slate-400 text-right w-28 bg-emerald-950 text-[#D4AF37]">
+                      <th className="py-2.5 px-2 border border-slate-400 text-center w-28 bg-emerald-950 text-[#D4AF37]">
                         ស្តុកនៅសល់ក្នុងឃ្លាំង (D)
                         <div className="text-[9px] font-normal text-emerald-200">(D = A - B - C)</div>
                       </th>
-                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[175px]">
+                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[175px] text-center">
                         សាខា ឬមន្ត្រីទទួលកាន់កាប់ជាក់ស្តែង
                       </th>
-                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px]">
+                      <th className="py-2.5 px-2.5 border border-slate-400 min-w-[180px] text-center">
                         គោលបំណងប្រើប្រាស់ និងកាលបរិច្ឆេទ
                       </th>
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-28">
