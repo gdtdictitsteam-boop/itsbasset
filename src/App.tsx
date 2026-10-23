@@ -25,6 +25,7 @@ import { useLanguage } from './contexts/LanguageContext';
 
 function MainLayout() {
   const [currentView, setCurrentView] = useState('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { t } = useLanguage();
   const { isBranchUser, isCentralAdmin } = useAuth();
 
@@ -96,15 +97,20 @@ function MainLayout() {
   return (
     <div className="flex flex-col h-screen bg-[#EBF4F0] text-[#0B3C2D] overflow-hidden font-siemreap app-shell">
       <div className="no-print">
-        <Header />
+        <Header onOpenMobileMenu={() => setIsMobileMenuOpen(true)} />
       </div>
       
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         <div className="no-print flex">
-          <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+          <Sidebar
+            currentView={currentView}
+            setCurrentView={setCurrentView}
+            isOpen={isMobileMenuOpen}
+            onClose={() => setIsMobileMenuOpen(false)}
+          />
         </div>
         
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 -ml-5 mr-0 -mt-[11px] bg-[#F4F7F6] print-main-container">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 ml-0 lg:-ml-5 mr-0 mt-0 lg:-mt-[11px] bg-[#F4F7F6] print-main-container">
           {renderView()}
         </main>
       </div>
@@ -114,13 +120,13 @@ function MainLayout() {
         <UserManagementModal />
       </div>
 
-      <footer className="no-print bg-[#D2EADF] border-t border-[#B8DEC8] py-2.5 px-6 flex justify-between items-center text-[11px] font-semibold text-[#124D3A] shrink-0">
-        <div className="flex items-center space-x-4">
+      <footer className="no-print bg-[#D2EADF] border-t border-[#B8DEC8] py-2 sm:py-2.5 px-3 sm:px-6 flex flex-col sm:flex-row justify-between items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-[#124D3A] shrink-0 text-center sm:text-left">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           <span>Version 2.4.0-stable</span>
           <span className="text-[#8BCAAD]">|</span>
           <span>Support: it-support@tax.gov.kh</span>
         </div>
-        <div>
+        <div className="truncate max-w-full">
           {t.copyright}
         </div>
       </footer>

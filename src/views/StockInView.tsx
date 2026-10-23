@@ -226,17 +226,17 @@ export function StockInView({ onNavigate }: StockInViewProps) {
       )}
 
       {/* Header */}
-      <div className="border-b border-slate-200/80 px-6 py-4 flex items-center justify-between bg-slate-50/90">
+      <div className="border-b border-slate-200/80 px-4 sm:px-6 py-4 flex items-center justify-between bg-slate-50/90">
         <div className="flex items-center space-x-3">
-          <div className="bg-emerald-100/80 p-2 rounded-xl text-emerald-800 shadow-2xs">
+          <div className="bg-emerald-100/80 p-2 rounded-xl text-emerald-800 shadow-2xs shrink-0">
             <PlusSquare size={22} />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{t.stockIn}</h2>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900">{t.stockIn}</h2>
             <p className="text-xs text-slate-500">បញ្ចូលស្តុកសម្ភារៈថ្មីទៅក្នុងប្រព័ន្ធ (បង្កើនចំនួនក្នុងស្តុកដោយស្វ័យប្រវត្តិ)</p>
           </div>
         </div>
-        <div className="text-right hidden sm:block">
+        <div className="text-right hidden sm:block shrink-0">
           <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
             លំហូរស្តុក៖ ចូលស្តុក (Stock In)
           </span>
@@ -245,7 +245,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
       
       {/* Form */}
       <form id="stock-in-form" onSubmit={handleSubmit} className="flex-1 flex flex-col">
-        <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white">
+        <div className="flex-1 p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 bg-white">
           {/* Left Column: Material & Location Selection */}
           <div className="space-y-4">
             <div>
@@ -259,7 +259,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                   setSelectedItemId(e.target.value);
                   setIsSubmittedSuccess(false);
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 min-h-[44px] text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required
               >
                 <option value="">-- {t.selectItem} --</option>
@@ -282,7 +282,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                   setSelectedLocId(e.target.value);
                   setIsSubmittedSuccess(false);
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 min-h-[44px] text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required
               >
                 <option value="">-- ជ្រើសរើសទីតាំង --</option>
@@ -294,7 +294,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               </select>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">
                   {t.quantity} <span className="text-rose-500">*</span>
@@ -308,7 +308,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                     setInputQuantity(Math.max(1, parseInt(e.target.value || '1', 10)));
                     setIsSubmittedSuccess(false);
                   }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 min-h-[44px] text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                   required 
                 />
               </div>
@@ -317,7 +317,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                 <input 
                   type="text" 
                   disabled 
-                  className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600" 
+                  className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 min-h-[44px] text-sm font-semibold text-slate-600" 
                   value={selectedItem?.unit || 'គ្រឿង'} 
                 />
               </div>
@@ -358,9 +358,9 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                   </div>
                 </div>
 
-                <div className="text-[11px] text-emerald-900 bg-emerald-100/50 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                <div className="text-[11px] text-emerald-900 bg-emerald-100/50 px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2">
                   <span>ទីតាំងទទួលស្តុក៖</span>
-                  <span className="font-bold">{selectedLocation.name_kh}</span>
+                  <span className="font-bold truncate">{selectedLocation.name_kh}</span>
                 </div>
               </div>
             )}
@@ -377,7 +377,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                 type="text" 
                 value={officerName}
                 onChange={(e) => setOfficerName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 min-h-[44px] text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 shadow-2xs" 
                 required 
               />
             </div>
@@ -401,7 +401,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
 
             <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-4 text-xs text-slate-600 space-y-2">
               <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <CheckCircle2 size={15} className="text-emerald-600" />
+                <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
                 <span>លក្ខខណ្ឌលំហូរស្តុក (Inventory Flow Rules)៖</span>
               </div>
               <ul className="list-disc list-inside space-y-1 text-slate-500 text-[11px] leading-relaxed">
@@ -414,11 +414,11 @@ export function StockInView({ onNavigate }: StockInViewProps) {
         </div>
 
         {/* Action Buttons */}
-        <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center text-xs text-slate-500 font-medium">
+        <div className="bg-slate-50 border-t border-slate-100 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center text-xs text-slate-500 font-medium text-center sm:text-left">
             សម្ភារៈនឹងត្រូវបានបង្កើនចំនួនក្នុងស្តុកភ្លាមៗបន្ទាប់ពីចុចបញ្ជាក់។
           </div>
-          <div className="flex space-x-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row gap-2.5 sm:space-x-3 w-full sm:w-auto">
             <button 
               type="button"
               onClick={() => {
@@ -428,14 +428,14 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                 setIsSubmittedSuccess(false);
                 setNotice(null);
               }}
-              className="flex-1 sm:flex-none px-6 py-2.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 hover:bg-white transition-colors cursor-pointer"
+              className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] border border-slate-300 rounded-xl text-sm font-bold text-slate-700 hover:bg-white transition-colors cursor-pointer"
             >
               បោះបង់ (Cancel)
             </button>
             <button 
               type="submit" 
               disabled={isSubmitting || !selectedItemId || inputQuantity <= 0}
-              className="flex-1 sm:flex-none px-8 py-2.5 bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-emerald-800 transition-all transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-8 py-2.5 min-h-[44px] bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-emerald-800 transition-all transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2 cursor-pointer"
             >
               {isSubmitting ? (
                 <>

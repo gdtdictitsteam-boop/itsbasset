@@ -257,13 +257,13 @@ export function DashboardView() {
       {/* Main Table Container */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         {/* Section Header */}
-        <div className="bg-slate-50/90 text-slate-900 border-b border-slate-200/80 px-5 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-1.5 bg-emerald-100/80 text-emerald-800 rounded-lg">
+        <div className="bg-slate-50/90 text-slate-900 border-b border-slate-200/80 px-4 sm:px-5 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center space-x-2.5 min-w-0">
+            <div className="p-1.5 bg-emerald-100/80 text-emerald-800 rounded-lg shrink-0">
               <MapPin size={18} />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
                 {language === 'kh' 
                   ? `ស្ថានភាពស្តុក៖ ${selectedLocation.name_kh}` 
                   : `Inventory Status: ${selectedLocation.name_en}`}
@@ -278,11 +278,11 @@ export function DashboardView() {
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <div className="flex space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="flex items-center justify-between sm:justify-end space-x-2 w-full md:w-auto overflow-x-auto pb-0.5 md:pb-0">
+            <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
               <button
                 onClick={() => setActiveTab('ALL')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap min-h-[36px] ${
                   activeTab === 'ALL' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
@@ -290,20 +290,20 @@ export function DashboardView() {
               </button>
               <button
                 onClick={() => setActiveTab('Tools')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap min-h-[36px] ${
                   activeTab === 'Tools' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
-                <Wrench size={14} />
+                <Wrench size={14} className="shrink-0" />
                 <span>សម្ភារ Tools</span>
               </button>
               <button
                 onClick={() => setActiveTab('Suppliers')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap min-h-[36px] ${
                   activeTab === 'Suppliers' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
-                <PackageIcon size={14} />
+                <PackageIcon size={14} className="shrink-0" />
                 <span>សម្ភារ Suppliers</span>
               </button>
             </div>
@@ -311,7 +311,7 @@ export function DashboardView() {
             <button
               onClick={refreshInventory}
               disabled={isLoading}
-              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-teal-800 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+              className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-teal-800 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer shrink-0"
               title="ទាញយកទិន្នន័យចុងក្រោយ"
             >
               <RefreshCw size={15} className={isLoading ? 'animate-spin text-teal-600' : ''} />
@@ -320,8 +320,8 @@ export function DashboardView() {
         </div>
 
         {/* Aggregated Inventory Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[760px] text-left border-collapse">
             <thead>
               <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
                 <th className="px-4 py-3 font-bold text-center w-12">ល.រ</th>

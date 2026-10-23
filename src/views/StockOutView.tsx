@@ -131,20 +131,20 @@ export function StockOutView() {
         </div>
       )}
 
-      <div className="border-b border-slate-200/80 px-6 py-4 flex items-center justify-between bg-slate-50/90">
-        <div className="flex items-center space-x-3">
-          <div className="bg-rose-100/80 p-2 rounded-lg">
+      <div className="border-b border-slate-200/80 px-4 sm:px-6 py-4 flex items-center justify-between bg-slate-50/90">
+        <div className="flex items-start sm:items-center space-x-3">
+          <div className="bg-rose-100/80 p-2 rounded-lg shrink-0">
             <MinusCircle size={24} className="text-rose-800" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{t.stockOut}</h2>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900">{t.stockOut}</h2>
             <p className="text-xs text-slate-500">បំពេញព័ត៌មានខាងក្រោមដើម្បីកាត់បន្ថយស្តុកបច្ចុប្បន្ន (កាត់ស្តុកចេញ)</p>
           </div>
         </div>
       </div>
       
       <form id="stock-out-form" onSubmit={handleSubmit} className="flex-1 flex flex-col">
-        <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white">
+        <div className="flex-1 p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 bg-white">
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.selectLocation} <span className="text-rose-500">*</span></label>
@@ -152,7 +152,7 @@ export function StockOutView() {
                 name="locationId" 
                 value={selectedLocId}
                 onChange={(e) => setSelectedLocId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 min-h-[44px] text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" 
                 required
               >
                 <option value="">-- {t.selectLocation} --</option>
@@ -169,7 +169,7 @@ export function StockOutView() {
               <select 
                 value={selectedItemId}
                 onChange={(e) => setSelectedItemId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required>
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 min-h-[44px] text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required>
                 <option value="">-- {t.selectItem} --</option>
                 {items.map(item => (
                   <option key={item.id || item.code} value={item.id}>
@@ -195,14 +195,14 @@ export function StockOutView() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.quantity} <span className="text-rose-500">*</span></label>
-                <input name="quantity" type="number" min="1" defaultValue={1} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
+                <input name="quantity" type="number" min="1" defaultValue={1} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 min-h-[44px] text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.unit}</label>
-                <input type="text" disabled className="w-full bg-slate-100 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-500" value={selectedItem?.unit || 'ឯកតា'} />
+                <input type="text" disabled className="w-full bg-slate-100 border border-slate-200 rounded-lg px-4 py-2.5 min-h-[44px] text-sm text-slate-500" value={selectedItem?.unit || 'ឯកតា'} />
               </div>
             </div>
           </div>
@@ -210,7 +210,7 @@ export function StockOutView() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.officerName} <span className="text-rose-500">*</span></label>
-              <input name="officerName" type="text" defaultValue={user?.fullName || 'Admin-GDT'} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
+              <input name="officerName" type="text" defaultValue={user?.fullName || 'Admin-GDT'} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 min-h-[44px] text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.purpose} <span className="text-rose-500">*</span></label>
@@ -219,11 +219,11 @@ export function StockOutView() {
           </div>
         </div>
 
-        <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center text-xs text-slate-500">
+        <div className="bg-slate-50 border-t border-slate-100 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center text-xs text-slate-500 text-center sm:text-left">
              ប្រតិបត្តិការនេះមិនអាចត្រឡប់ថយក្រោយបានទេ បន្ទាប់ពីការបញ្ជាក់។
           </div>
-          <div className="flex space-x-3">
+          <div className="flex flex-col sm:flex-row gap-2.5 sm:space-x-3 w-full sm:w-auto">
             <button 
               type="button"
               onClick={() => {
@@ -232,14 +232,14 @@ export function StockOutView() {
                 setSelectedItemId('');
                 setNotice(null);
               }}
-              className="px-6 py-2.5 border border-slate-300 rounded-lg text-sm font-bold hover:bg-white transition-colors"
+              className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] border border-slate-300 rounded-lg text-sm font-bold hover:bg-white transition-colors"
             >
               បោះបង់ (Cancel)
             </button>
             <button 
               type="submit" 
               disabled={loading}
-              className="px-8 py-2.5 bg-[#900033] text-white rounded-lg text-sm font-bold shadow-md hover:bg-[#700028] transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-8 py-2.5 min-h-[44px] bg-[#900033] text-white rounded-lg text-sm font-bold shadow-md hover:bg-[#700028] transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>

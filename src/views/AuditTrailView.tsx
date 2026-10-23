@@ -320,14 +320,14 @@ export function AuditTrailView() {
     <div className="space-y-6 font-siemreap">
 
       {/* Header Banner */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-emerald-100/90 text-emerald-900 rounded-2xl border border-emerald-200 shrink-0">
-            <History size={26} />
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="p-2.5 sm:p-3 bg-emerald-100/90 text-emerald-900 rounded-2xl border border-emerald-200 shrink-0">
+            <History size={24} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900">ប្រវត្តិសវនកម្ម និង របាយការណ៍ (Audit Trail & Reports)</h2>
+            <div className="flex items-center flex-wrap gap-2">
+              <h2 className="text-base sm:text-xl font-bold text-slate-900">ប្រវត្តិសវនកម្ម និង របាយការណ៍ (Audit Trail & Reports)</h2>
               <span className="bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full text-xs font-bold border border-emerald-300">
                 {filteredTransactions.length} ប្រតិបត្តិការ
               </span>
@@ -339,10 +339,10 @@ export function AuditTrailView() {
         </div>
 
         {/* Action Buttons: Export Excel & PDF */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
           <button
             onClick={exportToExcel}
-            className="flex items-center space-x-2 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 min-h-[42px] rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             <FileSpreadsheet size={16} />
             <span>Export Excel (CSV)</span>
@@ -350,7 +350,7 @@ export function AuditTrailView() {
 
           <button
             onClick={exportToPDF}
-            className="flex items-center space-x-2 bg-rose-700 hover:bg-rose-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-rose-700 hover:bg-rose-800 text-white px-4 py-2.5 min-h-[42px] rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             <FileText size={16} />
             <span>Export PDF</span>
@@ -358,7 +358,7 @@ export function AuditTrailView() {
 
           <button
             onClick={printHtmlReport}
-            className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2.5 min-h-[42px] rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
             title="បោះពុម្ពទំព័រ"
           >
             <Printer size={16} />
@@ -368,16 +368,16 @@ export function AuditTrailView() {
       </div>
 
       {/* RLS Security Indicator */}
-      <div className={`p-4 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+      <div className={`p-3.5 sm:p-4 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
         isCentralAdmin
           ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
           : 'bg-amber-50 border-amber-200 text-amber-950'
       }`}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-start sm:items-center gap-3">
           {isCentralAdmin ? (
-            <ShieldCheck size={20} className="text-emerald-700 shrink-0" />
+            <ShieldCheck size={20} className="text-emerald-700 shrink-0 mt-0.5 sm:mt-0" />
           ) : (
-            <ShieldAlert size={20} className="text-amber-700 shrink-0" />
+            <ShieldAlert size={20} className="text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
           )}
           <div>
             <span className="font-extrabold uppercase">សិទ្ធិមើលទិន្នន័យ (RLS Authorization): </span>
@@ -391,7 +391,7 @@ export function AuditTrailView() {
 
         <button
           onClick={fetchTransactions}
-          className="bg-white/80 hover:bg-white text-slate-800 p-2 rounded-xl border border-slate-200 shrink-0 transition-all"
+          className="bg-white/80 hover:bg-white text-slate-800 p-2 min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl border border-slate-200 shrink-0 transition-all cursor-pointer"
           title="Refresh Data"
         >
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -399,13 +399,13 @@ export function AuditTrailView() {
       </div>
 
       {/* Filter Toolbar */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-4">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-4">
         <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 uppercase tracking-wider border-b pb-2">
           <Filter size={15} className="text-emerald-700" />
           <span>តម្រងស្វែងរកទិន្នន័យ (Data Filters)</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-bold">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 text-xs font-bold">
           {/* Search Input */}
           <div className="space-y-1">
             <label className="text-slate-500 font-semibold">ស្វែងរកពាក្យគន្លឹះ</label>
@@ -416,7 +416,7 @@ export function AuditTrailView() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="ឈ្មោះសម្ភារៈ SKU មន្ត្រី..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 min-h-[42px] text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
               />
             </div>
           </div>
@@ -427,7 +427,7 @@ export function AuditTrailView() {
             <select
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 cursor-pointer"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[42px] text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 cursor-pointer"
             >
               <option value="ALL">-- ទាំងអស់ (All Types) --</option>
               <option value="STOCK_IN">STOCK_IN (ទិញចូលស្តុក)</option>
@@ -443,7 +443,7 @@ export function AuditTrailView() {
             <select
               value={selectedLocation}
               onChange={(e) => setSelectedLocation(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 cursor-pointer truncate"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[42px] text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 cursor-pointer truncate"
             >
               <option value="ALL">[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)</option>
               {locations.filter(l => l.code !== 'ALL').map(loc => (
@@ -462,14 +462,14 @@ export function AuditTrailView() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 min-h-[42px] text-[11px] font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
               />
               <span className="text-slate-400 font-normal">-</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 min-h-[42px] text-[11px] font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
               />
             </div>
           </div>
@@ -490,8 +490,8 @@ export function AuditTrailView() {
             <p className="text-xs text-slate-400">សូមសាកល្បងផ្លាស់ប្តូរលក្ខខណ្ឌតម្រង (Filter) ឬពាក្យគន្លឹះស្វែងរក។</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[960px] text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/90 border-b border-slate-200/90 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                   <th className="py-3 px-4">#</th>

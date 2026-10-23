@@ -106,20 +106,20 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
   const isConfigured = isSupabaseConfigured();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs font-siemreap animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs font-siemreap animate-in fade-in duration-200">
+      <div className="bg-white w-[95vw] sm:w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="bg-[#03291E] px-6 py-4 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="bg-emerald-500/20 p-2 rounded-xl border border-emerald-500/30 text-emerald-300">
+        <div className="bg-[#03291E] px-4 sm:px-6 py-4 text-white flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="bg-emerald-500/20 p-2 rounded-xl border border-emerald-500/30 text-emerald-300 shrink-0">
               <Database size={22} />
             </div>
-            <div>
-              <h3 className="text-base font-bold flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold flex items-center gap-2 truncate">
                 <span>ការតភ្ជាប់ Supabase Database (100% Real Database)</span>
               </h3>
-              <p className="text-xs text-emerald-200/80">
+              <p className="text-xs text-emerald-200/80 line-clamp-2">
                 ពិនិត្យស្ថានភាព ឬបញ្ចូល Supabase Project URL & Anon Key ដើម្បីដំណើរការទិន្នន័យពិតប្រាកដ
               </p>
             </div>
@@ -127,17 +127,17 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
           <button 
             type="button"
             onClick={onClose}
-            className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-5 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1">
 
           {/* Connection Status Banner */}
-          <div className={`p-4 rounded-xl border flex items-start justify-between gap-3 ${
+          <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${
             isConfigured && testResult?.connected
               ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
               : 'bg-amber-50 border-amber-200 text-amber-950'
@@ -166,7 +166,7 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
               type="button"
               onClick={runTest}
               disabled={testing || !url}
-              className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-1.5 shadow-2xs shrink-0 disabled:opacity-50"
+              className="w-full sm:w-auto justify-center min-h-[38px] px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-1.5 shadow-2xs shrink-0 disabled:opacity-50"
             >
               <RefreshCw size={13} className={testing ? 'animate-spin' : ''} />
               <span>{testing ? 'កំពុងតេស្ត...' : 'តេស្តឡើងវិញ'}</span>
@@ -209,7 +209,7 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
                     type="button"
                     onClick={handleSeed}
                     disabled={seeding}
-                    className="px-3.5 py-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs shrink-0"
+                    className="w-full sm:w-auto justify-center min-h-[40px] px-3.5 py-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs shrink-0"
                   >
                     {seeding ? (
                       <>
@@ -246,7 +246,7 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://your-project.supabase.co"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-medium outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+                className="w-full min-h-[42px] bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-medium outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
                 required
               />
             </div>
@@ -266,17 +266,17 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
               />
             </div>
 
-            <div className="flex items-center justify-end space-x-3 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors"
+                className="w-full sm:w-auto min-h-[42px] px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors"
               >
                 បិទ (Close)
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all flex items-center gap-1.5"
+                className="w-full sm:w-auto min-h-[42px] justify-center px-6 py-2 bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all flex items-center gap-1.5"
               >
                 <Check size={15} className="text-emerald-400" />
                 <span>រក្សាទុក និងតភ្ជាប់ (Save & Connect)</span>

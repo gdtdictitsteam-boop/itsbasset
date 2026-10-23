@@ -296,13 +296,13 @@ export function NewItemView() {
 
       <div className="bg-white rounded-2xl shadow-xs border border-slate-200/90 overflow-hidden">
         {/* Header Section */}
-        <div className="px-6 py-4 border-b border-slate-200/80 bg-slate-50/90 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-teal-100/80 text-teal-800 rounded-lg">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200/80 bg-slate-50/90 flex items-center justify-between">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2 bg-teal-100/80 text-teal-800 rounded-lg shrink-0">
               <PlusCircle size={20} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">
+              <h2 className="text-base sm:text-xl font-bold text-slate-900">
                 បញ្ចូលព័ត៌មានសម្ភារថ្មី (New Item Entry)
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -313,7 +313,7 @@ export function NewItemView() {
         </div>
 
         {/* Form Section */}
-        <form id="new-item-form" className="p-6 space-y-6" onSubmit={handleSubmit}>
+        <form id="new-item-form" className="p-4 sm:p-6 space-y-5 sm:space-y-6" onSubmit={handleSubmit}>
           {/* Material Image (Full Width) */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">រូបភាពសម្ភារ</label>
@@ -321,7 +321,7 @@ export function NewItemView() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-xl transition-colors cursor-pointer relative overflow-hidden group ${
+              className={`mt-1 flex justify-center px-4 sm:px-6 pt-5 pb-6 border-2 border-dashed rounded-xl transition-colors cursor-pointer relative overflow-hidden group ${
                 isDragging ? 'border-teal-500 bg-teal-50' : 'border-gray-300 hover:border-teal-500 hover:bg-teal-50/50'
               }`}
             >
@@ -330,7 +330,7 @@ export function NewItemView() {
                   <img src={imagePreview} alt="Preview" className="max-h-full max-w-full object-contain rounded-lg shadow-sm" />
                   <button 
                     onClick={handleRemoveImage} 
-                    className="absolute top-2 right-2 bg-white/90 text-red-600 p-1.5 rounded-full hover:bg-red-50 hover:text-red-700 transition-colors shadow-sm border border-red-100 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    className="absolute top-2 right-2 bg-white/90 text-red-600 p-1.5 rounded-full hover:bg-red-50 hover:text-red-700 transition-colors shadow-sm border border-red-100 opacity-100 sm:opacity-0 group-hover:opacity-100 focus:opacity-100"
                     title="លុបរូបភាព (Remove Image)"
                   >
                     <X size={18} />
@@ -341,7 +341,7 @@ export function NewItemView() {
                   <div className="mx-auto h-12 w-12 text-gray-400 bg-gray-50 rounded-full flex items-center justify-center group-hover:text-teal-500 group-hover:bg-teal-50 transition-colors">
                     <ImageIcon size={24} />
                   </div>
-                  <div className="flex text-sm text-gray-600 justify-center">
+                  <div className="flex flex-wrap text-sm text-gray-600 justify-center">
                     <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-teal-600 hover:text-teal-700 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-600">
                       <span>ជ្រើសរើសរូបភាព</span>
                       <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*" onChange={handleImageChange} />
@@ -355,7 +355,7 @@ export function NewItemView() {
           </div>
 
           {/* 2-Column Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* Material Code */}
             <div>
               <div className="flex justify-between items-center mb-2">
@@ -378,7 +378,7 @@ export function NewItemView() {
                 onChange={(e) => setMaterialCode(e.target.value)}
                 placeholder="ឧ. TOL-0001"
                 required
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 bg-gray-50 font-mono font-semibold"
+                className="w-full px-4 py-2.5 min-h-[44px] border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 bg-gray-50 font-mono font-semibold"
               />
             </div>
 
@@ -392,7 +392,7 @@ export function NewItemView() {
                 id="materialName" name="materialName"
                 placeholder="ឧ. ខ្សែបណ្តាញ Network Cat6"
                 required
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 font-medium"
+                className="w-full px-4 py-2.5 min-h-[44px] border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 font-medium"
               />
             </div>
 
@@ -405,7 +405,7 @@ export function NewItemView() {
                 type="text"
                 id="brand" name="brand"
                 placeholder="ឧ. Link Basic Cat6 UTP Cable"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
+                className="w-full px-4 py-2.5 min-h-[44px] border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
               />
             </div>
 
@@ -416,7 +416,7 @@ export function NewItemView() {
                 id="category"
                 value={category}
                 onChange={handleCategoryChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white font-medium"
+                className="w-full px-4 py-2.5 min-h-[44px] border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white font-medium"
               >
                 <option value="tools">សម្ភារ Tools</option>
                 <option value="suppliers">សម្ភារ Suppliers</option>
@@ -438,7 +438,7 @@ export function NewItemView() {
                   }}
                   onFocus={() => setIsUnitDropdownOpen(true)}
                   placeholder="ជ្រើសរើស ឬវាយបញ្ចូលឯកតាថ្មី"
-                  className="w-full px-4 py-2.5 pr-10 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 pr-10 min-h-[44px] border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
                   autoComplete="off"
                 />
                 <button
@@ -462,7 +462,7 @@ export function NewItemView() {
                         key={index}
                         type="button"
                         onClick={() => handleSelectUnit(unit)}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-700 flex items-center justify-between"
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-700 flex items-center justify-between"
                       >
                         {unit}
                         {unitSearch.toLowerCase() === unit.toLowerCase() && <Check size={16} className="text-teal-600" />}
@@ -476,7 +476,7 @@ export function NewItemView() {
                     <button
                       type="button"
                       onClick={handleAddUnit}
-                      className="w-full text-left px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 flex items-center border-t border-teal-100"
+                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 flex items-center border-t border-teal-100"
                     >
                       <PlusCircle size={16} className="mr-2" />
                       បន្ថែម "{unitSearch}" ជាឯកតាថ្មី
@@ -495,7 +495,7 @@ export function NewItemView() {
                 min="0"
                 defaultValue={5}
                 placeholder="ឧ. 5"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
+                className="w-full px-4 py-2.5 min-h-[44px] border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 placeholder-gray-400"
               />
             </div>
 
@@ -504,8 +504,8 @@ export function NewItemView() {
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 ស្ថានភាពស្តុកដំបូង (Initial Stock)
               </label>
-              <div className="flex items-center gap-2">
-                <span className="font-mono font-bold text-sm bg-white border border-slate-300 px-3 py-1 rounded text-slate-800">0 គ្រឿង</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono font-bold text-sm bg-white border border-slate-300 px-3 py-1 rounded text-slate-800 shrink-0">0 គ្រឿង</span>
                 <span className="text-[11px] text-slate-500 font-medium">
                   (បង្កើតតែទិន្នន័យមេ Master Data - សូមប្រើមុខងារ «បញ្ចូលស្តុកថ្មី» ដើម្បីបន្ថែមចំនួនស្តុកជាក់ស្តែង)
                 </span>
@@ -519,7 +519,7 @@ export function NewItemView() {
               <select
                 id="locationId"
                 name="locationId"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white"
+                className="w-full px-4 py-2.5 min-h-[44px] border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all text-gray-800 bg-white"
               >
                 {locations.length > 0 ? locations.filter(l => l.code !== 'ALL').map((loc) => (
                   <option key={loc.id} value={loc.id}>
@@ -543,19 +543,19 @@ export function NewItemView() {
           </div>
 
           {/* Actions */}
-          <div className="pt-4 mt-6 border-t border-gray-100 flex items-center justify-end space-x-3">
+          <div className="pt-4 mt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-end gap-2.5 sm:space-x-3">
             <button
               type="button"
               onClick={resetForm}
               disabled={isSubmitting}
-              className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-600 transition-colors disabled:opacity-50"
+              className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-600 transition-colors disabled:opacity-50"
             >
               បោះបង់
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2.5 rounded-lg bg-teal-700 text-white font-semibold hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 transition-colors shadow-sm disabled:opacity-70 flex items-center gap-2"
+              className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded-lg bg-teal-700 text-white font-semibold hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
                 <>

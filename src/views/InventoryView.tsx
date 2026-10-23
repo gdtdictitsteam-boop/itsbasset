@@ -161,7 +161,7 @@ export function InventoryView() {
       </div>
 
       {/* Quick Summary Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Card 1: Total SKUs */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
           <div>
@@ -228,13 +228,13 @@ export function InventoryView() {
       {/* Table Section */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
         {/* Filter, View Mode and Search Bar */}
-        <div className="bg-slate-50/90 border-b border-slate-200/80 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="bg-slate-50/90 border-b border-slate-200/80 px-4 sm:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-0.5 md:pb-0">
             {/* Category Filter */}
-            <div className="flex space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
               <button
                 onClick={() => setActiveTab('ALL')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap min-h-[36px] ${
                   activeTab === 'ALL' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
@@ -242,67 +242,67 @@ export function InventoryView() {
               </button>
               <button
                 onClick={() => setActiveTab('Tools')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap min-h-[36px] ${
                   activeTab === 'Tools' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
-                <Wrench size={13} />
+                <Wrench size={13} className="shrink-0" />
                 <span>សម្ភារ Tools</span>
               </button>
               <button
                 onClick={() => setActiveTab('Suppliers')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap min-h-[36px] ${
                   activeTab === 'Suppliers' ? 'bg-[#03291E] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200/60'
                 }`}
               >
-                <PackageIcon size={13} />
+                <PackageIcon size={13} className="shrink-0" />
                 <span>សម្ភារ Suppliers</span>
               </button>
             </div>
 
             {/* View Mode Toggle when viewing All Locations (CentralAdmin ONLY) */}
             {!isBranchView && selectedLocationId === 'ALL' && (
-              <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
                 <button
                   onClick={() => setViewMode('consolidated')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap min-h-[36px] ${
                     viewMode === 'consolidated' ? 'bg-white text-teal-900 shadow-2xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="សរុបស្តុកតាមមុខសម្ភារៈ"
                 >
-                  <Layers size={13} />
+                  <Layers size={13} className="shrink-0" />
                   <span>សរុបតាមសម្ភារៈ</span>
                 </button>
                 <button
                   onClick={() => setViewMode('byLocation')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap min-h-[36px] ${
                     viewMode === 'byLocation' ? 'bg-white text-teal-900 shadow-2xs border border-slate-200' : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="បំបែកលម្អិតតាមទីតាំងនីមួយៗ"
                 >
-                  <MapPin size={13} />
+                  <MapPin size={13} className="shrink-0" />
                   <span>បំបែកតាមទីតាំង</span>
                 </button>
               </div>
             )}
           </div>
 
-          <div className="relative">
+          <div className="relative w-full md:w-64">
             <input 
               type="text" 
               placeholder="ស្វែងរកតាមកូដ ឬឈ្មោះសម្ភារៈ..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600 w-full md:w-64 shadow-2xs font-medium" 
+              className="bg-white border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl px-4 py-2 min-h-[42px] text-sm outline-none focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600 w-full md:w-64 shadow-2xs font-medium" 
             />
           </div>
         </div>
 
         {/* Inventory Data Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto w-full">
           {viewMode === 'consolidated' || isBranchView ? (
             /* Consolidated Table */
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[740px] text-left border-collapse">
               <thead>
                 <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
                   <th className="px-4 py-3.5 font-bold text-center w-12">ល.រ</th>

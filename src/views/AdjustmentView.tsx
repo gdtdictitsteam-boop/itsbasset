@@ -215,14 +215,14 @@ export function AdjustmentView() {
     <div className="flex-1 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col overflow-hidden max-w-5xl mx-auto w-full font-siemreap">
       
       {/* Header */}
-      <div className="border-b border-slate-200/80 bg-slate-50/90 px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="bg-[#03291E] p-2.5 rounded-xl border border-emerald-800 text-[#A3D8C2] shadow-xs">
+      <div className="border-b border-slate-200/80 bg-slate-50/90 px-4 sm:px-6 py-4 sm:py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-start sm:items-center space-x-3">
+          <div className="bg-[#03291E] p-2.5 rounded-xl border border-emerald-800 text-[#A3D8C2] shadow-xs shrink-0">
             <SlidersHorizontal size={22} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-900">{t.adjustment}</h2>
+            <div className="flex items-center flex-wrap gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">{t.adjustment}</h2>
               <span className="text-[11px] bg-blue-100 text-blue-900 font-extrabold px-2.5 py-0.5 rounded-full border border-blue-300">
                 Reconciliation
               </span>
@@ -233,7 +233,7 @@ export function AdjustmentView() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <div className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-2xs ${
             isCentralAdmin 
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
@@ -273,10 +273,10 @@ export function AdjustmentView() {
 
       {/* Main Content Form */}
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-y-auto">
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white">
+        <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 bg-white">
           
           {/* Left Column: Location & Item Selection */}
-          <div className="space-y-5">
+          <div className="space-y-4 sm:space-y-5">
             
             {/* 1. Location Selector */}
             <div>
@@ -292,7 +292,7 @@ export function AdjustmentView() {
                   setActualQuantity('');
                 }}
                 disabled={isBranchUser || isLocationLocked}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E] disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E] disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                 required
               >
                 {selectableLocations.map(loc => (
@@ -312,7 +312,7 @@ export function AdjustmentView() {
               <select
                 value={selectedItemId}
                 onChange={(e) => { setSelectedItemId(e.target.value); setActualQuantity(''); }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
                 required
               >
                 <option value="">-- ជ្រើសរើសមុខសម្ភារ / សម្ភារៈបច្ចេកទេស --</option>
@@ -361,7 +361,7 @@ export function AdjustmentView() {
               <select
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
                 required
               >
                 <option value="រាប់ស្តុកប្រចាំត្រីមាស (Quarterly physical audit)">រាប់ស្តុកប្រចាំត្រីមាស (Quarterly physical audit)</option>
@@ -375,7 +375,7 @@ export function AdjustmentView() {
           </div>
 
           {/* Right Column: Physical Count Input & Live Delta */}
-          <div className="space-y-5">
+          <div className="space-y-4 sm:space-y-5">
             
             {/* 1. Actual Physical Count Input */}
             <div>
@@ -390,7 +390,7 @@ export function AdjustmentView() {
                   value={actualQuantity}
                   onChange={(e) => setActualQuantity(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                   placeholder="0"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 min-h-[48px] text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
                   required
                 />
                 <span className="absolute right-4 top-3.5 text-xs font-bold text-slate-400">
@@ -399,7 +399,7 @@ export function AdjustmentView() {
               </div>
 
               {/* Quick Adjustment Increment/Decrement helpers */}
-              <div className="flex items-center gap-1.5 mt-2">
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
                 <button
                   type="button"
                   onClick={() => setActualQuantity(0)}
@@ -505,7 +505,7 @@ export function AdjustmentView() {
                 value={officerName}
                 onChange={(e) => setOfficerName(e.target.value)}
                 placeholder="ឈ្មោះមន្ត្រី"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
                 required
               />
             </div>
@@ -515,13 +515,13 @@ export function AdjustmentView() {
         </div>
 
         {/* Footer Actions */}
-        <div className="bg-slate-50 border-t border-slate-200/80 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-            <Info size={14} className="text-slate-400" />
+        <div className="bg-slate-50 border-t border-slate-200/80 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-xs text-slate-500 font-medium flex items-center gap-1.5 text-center sm:text-left">
+            <Info size={14} className="text-slate-400 shrink-0" />
             <span>ការកែតម្រូវនឹង Update ចំនួនស្តុកចុងក្រោយក្នុង Database និងកត់ត្រាប្រវត្តិ Transaction ស្វ័យប្រវត្តិ</span>
           </div>
 
-          <div className="flex space-x-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row gap-2.5 sm:space-x-3 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => {
@@ -530,7 +530,7 @@ export function AdjustmentView() {
                 setRemark('');
                 setNotice(null);
               }}
-              className="px-5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold hover:bg-white transition-colors w-1/2 sm:w-auto text-slate-700"
+              className="px-5 py-2.5 min-h-[44px] border border-slate-300 rounded-xl text-xs font-bold hover:bg-white transition-colors w-full sm:w-auto text-slate-700"
             >
               សម្អាត (Clear)
             </button>
@@ -538,7 +538,7 @@ export function AdjustmentView() {
             <button
               type="submit"
               disabled={loading}
-              className="px-7 py-2.5 bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-1/2 sm:w-auto"
+              className="px-7 py-2.5 min-h-[44px] bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
             >
               {loading ? (
                 <>
@@ -560,21 +560,21 @@ export function AdjustmentView() {
       </form>
 
       {/* History of Adjustments */}
-      <div className="border-t border-slate-200/80 bg-slate-50/50 p-6 space-y-4">
+      <div className="border-t border-slate-200/80 bg-slate-50/50 p-4 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <History size={18} className="text-[#03291E]" />
+            <History size={18} className="text-[#03291E] shrink-0" />
             <h3 className="text-sm font-bold text-slate-900">ប្រវត្តិនៃការកែតម្រូវស្តុកថ្មីៗ (Recent Adjustment History)</h3>
           </div>
 
           <div className="relative w-full sm:w-64">
-            <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
               placeholder="ស្វែងរកតាម SKU ឬឈ្មោះសម្ភារៈ..."
-              className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+              className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 min-h-[40px] text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
             />
           </div>
         </div>
@@ -585,8 +585,8 @@ export function AdjustmentView() {
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-2xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full min-w-[680px] text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200/80 text-slate-700 font-bold uppercase text-[11px]">
                   <tr>
                     <th className="py-2.5 px-4">កាលបរិច្ឆេទ</th>

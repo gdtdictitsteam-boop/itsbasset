@@ -698,18 +698,18 @@ export function UserManagementModal() {
       onClick={handleClose}
     >
       <div 
-        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-[95vw] sm:w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#03291E] text-white px-6 py-4 flex items-center justify-between border-b border-[#1E6047] shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-[#A3D8C2]/20 text-[#A3D8C2] rounded-xl border border-[#A3D8C2]/30">
-              <Settings size={22} className="animate-spin-slow" />
+        <div className="bg-[#03291E] text-white px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between border-b border-[#1E6047] shrink-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+            <div className="p-2 sm:p-2.5 bg-[#A3D8C2]/20 text-[#A3D8C2] rounded-xl border border-[#A3D8C2]/30 shrink-0">
+              <Settings size={20} className="animate-spin-slow" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h3 className="text-sm sm:text-lg font-bold text-white tracking-wide truncate">
                   ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (User Management & RBAC)
                 </h3>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
@@ -723,7 +723,7 @@ export function UserManagementModal() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={handleClose}
@@ -736,7 +736,7 @@ export function UserManagementModal() {
         </div>
 
         {/* Info Banner for RBAC Role Counts */}
-        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-6 py-2.5 flex flex-wrap items-center justify-end gap-3 text-xs text-[#1E6047] shrink-0">
+        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-end gap-3 text-xs text-[#1E6047] shrink-0">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
               <ShieldCheck size={12} className="mr-1" /> CentralAdmin: {centralAdminCount}
@@ -749,7 +749,7 @@ export function UserManagementModal() {
 
         {/* BranchUser Notice and Switch to CentralAdmin */}
         {isBranchUser && (
-          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between text-xs text-amber-900 shrink-0">
+          <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900 shrink-0">
             <div className="flex items-center gap-2">
               <Building2 size={15} className="text-amber-700 shrink-0" />
               <span>
@@ -766,7 +766,7 @@ export function UserManagementModal() {
                   setTimeout(() => setSuccessMessage(null), 3500);
                 }
               }}
-              className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer self-start sm:self-auto"
             >
               <ArrowRightLeft size={13} />
               <span>ប្តូរទៅជា CentralAdmin</span>
@@ -776,24 +776,24 @@ export function UserManagementModal() {
 
         {/* Success / Error Messages */}
         {successMessage && (
-          <div className="mx-6 mt-3 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold animate-in fade-in">
+          <div className="mx-4 sm:mx-6 mt-3 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold animate-in fade-in">
             <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
         {errorMessage && (
-          <div className="mx-6 mt-3 bg-rose-50 border border-rose-200 text-rose-800 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold animate-in fade-in">
+          <div className="mx-4 sm:mx-6 mt-3 bg-rose-50 border border-rose-200 text-rose-800 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold animate-in fade-in">
             <AlertCircle size={16} className="text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
 
         {/* Main Content Area */}
-        <div className="p-6 flex-1 overflow-y-auto space-y-4">
+        <div className="p-4 sm:p-6 flex-1 overflow-y-auto space-y-4">
           
           {/* Edit / Create Form Modal if active */}
           {(editingUser || isCreatingNew) ? (
-            <div ref={editFormRef} className="bg-slate-50 p-5 rounded-2xl border-2 border-[#1E6047]/20 shadow-xs mb-4 animate-in fade-in">
+            <div ref={editFormRef} className="bg-slate-50 p-4 sm:p-5 rounded-2xl border-2 border-[#1E6047]/20 shadow-xs mb-4 animate-in fade-in">
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-[#1E6047] text-white rounded-lg">
@@ -825,7 +825,7 @@ export function UserManagementModal() {
                       value={formFullName}
                       onChange={(e) => setFormFullName(e.target.value)}
                       placeholder="ឧ. លោក សុខ ចាន់ថន"
-                      className="w-full text-xs font-semibold px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
+                      className="w-full min-h-[42px] text-xs font-semibold px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
                     />
                   </div>
 
@@ -835,14 +835,14 @@ export function UserManagementModal() {
                       អាសយដ្ឋានអ៊ីមែល (Email) <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <Mail size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                      <Mail size={14} className="absolute left-3 top-3.5 text-slate-400" />
                       <input
                         type="email"
                         required
                         value={formEmail}
                         onChange={(e) => setFormEmail(e.target.value)}
                         placeholder="officer@tax.gov.kh"
-                        className="w-full text-xs font-semibold pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
+                        className="w-full min-h-[42px] text-xs font-semibold pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
                       />
                     </div>
                   </div>
@@ -861,7 +861,7 @@ export function UserManagementModal() {
                           setFormLocationId('1');
                         }
                       }}
-                      className="w-full text-xs font-bold px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none cursor-pointer"
+                      className="w-full min-h-[42px] text-xs font-bold px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none cursor-pointer"
                     >
                       <option value="CentralAdmin">CentralAdmin (រដ្ឋបាលស្តុកកណ្តាល - សិទ្ធិពេញលេញ)</option>
                       <option value="BranchUser">BranchUser (មន្ត្រីប្រចាំសាខា - ចាក់សោតាមសាខា)</option>
@@ -879,11 +879,11 @@ export function UserManagementModal() {
                       សាខាប្រចាំការ (Assigned Branch) <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <MapPin size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                      <MapPin size={14} className="absolute left-3 top-3.5 text-slate-400" />
                       <select
                         value={formLocationId}
                         onChange={(e) => setFormLocationId(e.target.value)}
-                        className="w-full text-xs font-semibold pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none truncate cursor-pointer"
+                        className="w-full min-h-[42px] text-xs font-semibold pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none truncate cursor-pointer"
                       >
                         {formRole === 'CentralAdmin' && (
                           <option value="1">[HQ-ITSB] ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB (ស្តុកកណ្តាល)</option>
@@ -911,8 +911,8 @@ export function UserManagementModal() {
                   </div>
 
                   {/* Password Field (Enhanced for Admin setting & Reset) */}
-                  <div className="sm:col-span-2 bg-[#EBF7F2] p-4 rounded-xl border border-[#A3D8C2]">
-                    <div className="flex items-center justify-between mb-2">
+                  <div className="sm:col-span-2 bg-[#EBF7F2] p-3.5 sm:p-4 rounded-xl border border-[#A3D8C2]">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                       <label className="block text-xs font-bold text-[#03291E] uppercase flex items-center gap-1.5">
                         <KeyRound size={15} className="text-[#1E6047]" />
                         <span>
@@ -952,7 +952,7 @@ export function UserManagementModal() {
                         value={formPassword}
                         onChange={(e) => setFormPassword(e.target.value)}
                         placeholder={isCreatingNew ? 'ឧ. GDT@2026' : 'ទុកទទេ ប្រសិនបើមិនចង់ផ្លាស់ប្តូរពាក្យសម្ងាត់'}
-                        className="w-full text-xs font-mono font-semibold pl-3 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
+                        className="w-full min-h-[42px] text-xs font-mono font-semibold pl-3 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
                       />
                       <button
                         type="button"
@@ -976,18 +976,18 @@ export function UserManagementModal() {
                 </div>
 
                 {/* Form Buttons */}
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-200">
                   <button
                     type="button"
                     onClick={handleCancelForm}
-                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                    className="w-full sm:w-auto min-h-[42px] px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                   >
                     បោះបង់
                   </button>
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="flex items-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="w-full sm:w-auto min-h-[42px] flex items-center justify-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
                   >
                     <Save size={15} />
                     <span>{isSaving ? 'កំពុងរក្សាទុក...' : 'រក្សាទុកទិន្នន័យ (Save)'}</span>
@@ -999,22 +999,22 @@ export function UserManagementModal() {
 
           {/* Controls: Search, Filter, Add */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-1">
-              <div className="relative flex-1 max-w-sm">
-                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+              <div className="relative flex-1 sm:max-w-sm">
+                <Search size={14} className="absolute left-3 top-3.5 text-slate-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ស្វែងរកតាមឈ្មោះ ឬអ៊ីមែល..."
-                  className="w-full text-xs pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#1E6047]/20 focus:border-[#1E6047] outline-none"
+                  className="w-full min-h-[42px] text-xs pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#1E6047]/20 focus:border-[#1E6047] outline-none"
                 />
               </div>
 
               <select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value as any)}
-                className="text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none cursor-pointer"
+                className="min-h-[42px] text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none cursor-pointer"
               >
                 <option value="ALL">គ្រប់តួនាទីទាំងអស់ ({safeUsersList.length})</option>
                 <option value="CentralAdmin">CentralAdmin ({centralAdminCount})</option>
@@ -1026,7 +1026,7 @@ export function UserManagementModal() {
               <button
                 type="button"
                 onClick={handleStartCreate}
-                className="flex items-center justify-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+                className="w-full sm:w-auto min-h-[42px] flex items-center justify-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
               >
                 <Plus size={15} />
                 <span>បន្ថែមមន្ត្រីថ្មី (Add Officer)</span>
@@ -1042,8 +1042,8 @@ export function UserManagementModal() {
             </div>
           ) : (
             /* Officers Table */
-            <div className="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="border border-slate-200 rounded-xl overflow-x-auto w-full bg-white shadow-2xs">
+              <table className="w-full min-w-[740px] text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                     <th className="py-2.5 px-3 text-center w-10">#</th>

@@ -1857,15 +1857,15 @@ export function ExecutiveReportView() {
       {/* ================================================================= */}
       {/* TOP CONTROL BAR & FILTERS (HIDDEN ON PRINT: print:hidden)         */}
       {/* ================================================================= */}
-      <div className="no-print print:hidden bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+      <div className="no-print print:hidden bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-100 pb-4">
-          <div className="flex items-start gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-[#05402D] text-[#D4AF37] flex items-center justify-center shadow-sm shrink-0 border border-[#D4AF37]/40">
-              <ClipboardList className="w-6 h-6" />
+          <div className="flex items-start gap-3 sm:gap-3.5">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-[#05402D] text-[#D4AF37] flex items-center justify-center shadow-sm shrink-0 border border-[#D4AF37]/40">
+              <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-xl font-bold text-slate-900">
                   {language === 'kh'
                     ? 'របាយការណ៍សង្ខេបស្តុក (Executive Consolidated Report)'
                     : 'Executive Consolidated Stock Report (A4 Landscape)'}
@@ -1882,32 +1882,32 @@ export function ExecutiveReportView() {
           </div>
 
           {/* Primary Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
             <button
               type="button"
               onClick={fetchReportData}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+              className="flex-1 sm:flex-none justify-center inline-flex items-center gap-2 px-3.5 py-2.5 min-h-[42px] rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#05402D]' : ''}`} />
+              <RefreshCw className={`w-4 h-4 shrink-0 ${loading ? 'animate-spin text-[#05402D]' : ''}`} />
               <span>ធ្វើបច្ចុប្បន្នភាព</span>
             </button>
 
             <button
               type="button"
               onClick={handleExportExcel}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 shadow-sm transition-all cursor-pointer border border-emerald-600"
+              className="flex-1 sm:flex-none justify-center inline-flex items-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl text-xs sm:text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 shadow-sm transition-all cursor-pointer border border-emerald-600"
             >
-              <FileSpreadsheet className="w-4 h-4 text-amber-300" />
+              <FileSpreadsheet className="w-4 h-4 text-amber-300 shrink-0" />
               <span>📥 ទាញយកជា Excel (.xlsx)</span>
             </button>
 
             <button
               type="button"
               onClick={handlePrintA4}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-[#D4AF37] bg-[#05402D] hover:bg-[#03291E] shadow-sm transition-all cursor-pointer border border-[#D4AF37]/40"
+              className="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl text-xs sm:text-sm font-semibold text-[#D4AF37] bg-[#05402D] hover:bg-[#03291E] shadow-sm transition-all cursor-pointer border border-[#D4AF37]/40"
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-4 h-4 shrink-0" />
               <span>🖨️ បោះពុម្ពរបាយការណ៍ A4</span>
             </button>
           </div>
@@ -1916,29 +1916,29 @@ export function ExecutiveReportView() {
         {/* Report Mode Switcher & Filter Controls */}
         <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 pt-1">
           {/* View Mode Selector */}
-          <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
             <button
               type="button"
               onClick={() => setActiveReportTab('consolidated_two_part')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeReportTab === 'consolidated_two_part'
                   ? 'bg-[#05402D] text-[#D4AF37] shadow-sm'
                   : 'text-slate-700 hover:bg-white/70'
               }`}
             >
-              <LayoutList className="w-4 h-4" />
+              <LayoutList className="w-4 h-4 shrink-0" />
               <span>របាយការណ៍សង្ខេបស្តុក ២ ផ្នែក (ផ្នែកទី១ & ផ្នែកទី២)</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveReportTab('matrix_34')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeReportTab === 'matrix_34'
                   ? 'bg-[#05402D] text-[#D4AF37] shadow-sm'
                   : 'text-slate-700 hover:bg-white/70'
               }`}
             >
-              <Table2 className="w-4 h-4" />
+              <Table2 className="w-4 h-4 shrink-0" />
               <span>តារាងម៉ាទ្រីស ៣៤ ទីតាំង (34-Location Matrix)</span>
             </button>
           </div>
@@ -1956,7 +1956,7 @@ export function ExecutiveReportView() {
                   value={reportLocationId}
                   onChange={e => setReportLocationId(e.target.value)}
                   disabled={!isCentralAdmin}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D] disabled:opacity-70"
+                  className="w-full min-h-[42px] pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D] disabled:opacity-70"
                 >
                   {(availableLocationOptions || []).map(loc => (
                     <option key={loc.id} value={loc.id}>
@@ -1978,7 +1978,7 @@ export function ExecutiveReportView() {
                   type="date"
                   value={startDate}
                   onChange={e => setStartDate(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D]"
+                  className="w-full min-h-[42px] pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D]"
                 />
               </div>
             </div>
@@ -1994,7 +1994,7 @@ export function ExecutiveReportView() {
                   type="date"
                   value={endDate}
                   onChange={e => setEndDate(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D]"
+                  className="w-full min-h-[42px] pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D]"
                 />
               </div>
             </div>
@@ -2011,7 +2011,7 @@ export function ExecutiveReportView() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="កូដ T-001, S-001 ឬឈ្មោះ..."
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D]"
+                  className="w-full min-h-[42px] pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05402D]/20 focus:border-[#05402D]"
                 />
               </div>
             </div>
@@ -2022,53 +2022,55 @@ export function ExecutiveReportView() {
       {/* ================================================================= */}
       {/* OFFICIAL A4 LANDSCAPE PRINTABLE PAPER CONTAINER                   */}
       {/* ================================================================= */}
-      <div className="print-container print-report-sheet bg-white rounded-2xl border border-slate-300 shadow-lg p-6 sm:p-8 lg:p-10 max-w-[1440px] mx-auto text-slate-900">
+      <div className="print-container print-report-sheet bg-white rounded-2xl border border-slate-300 shadow-lg p-4 sm:p-8 lg:p-10 max-w-[1440px] mx-auto text-slate-900 overflow-x-hidden">
         
         {/* ----------------------------------------------------------------- */}
         {/* ១. ក្បាលទំព័រផ្លូវការ (OFFICIAL ROYAL GOVERNMENT HEADER)          */}
         {/* ----------------------------------------------------------------- */}
-        <div className="grid grid-cols-3 items-start gap-4 pb-3 border-b-2 border-[#05402D]">
-          {/* Left Side: Ministry & General Department */}
-          <div className="justify-self-start text-center space-y-0.5 w-[260px]">
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
-              ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ
-            </p>
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
-              អគ្គនាយកដ្ឋានពន្ធដារ
-            </p>
-            <p className="font-siemreap text-xs font-bold text-slate-800 text-center">
-              នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន
-            </p>
-            <p className="text-[11px] text-slate-600 font-medium text-center">
-              លេខ៖ ........................... អពដ/នបព
-            </p>
-          </div>
+        <div className="overflow-x-auto print:overflow-visible">
+          <div className="grid grid-cols-3 items-start gap-4 pb-3 border-b-2 border-[#05402D] min-w-[680px] print:min-w-0">
+            {/* Left Side: Ministry & General Department */}
+            <div className="justify-self-start text-center space-y-0.5 w-[260px]">
+              <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
+                ក្រសួងសេដ្ឋកិច្ច និងហិរញ្ញវត្ថុ
+              </p>
+              <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
+                អគ្គនាយកដ្ឋានពន្ធដារ
+              </p>
+              <p className="font-siemreap text-xs font-bold text-slate-800 text-center">
+                នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន
+              </p>
+              <p className="text-[11px] text-slate-600 font-medium text-center">
+                លេខ៖ ........................... អពដ/នបព
+              </p>
+            </div>
 
-          {/* Center Column: Official GDT Logo */}
-          <div className="flex flex-col items-center justify-center justify-self-center">
-            <img
-              src={gdtLogo || '/gdtlogo.png'}
-              alt="អគ្គនាយកដ្ឋានពន្ធដារ - General Department of Taxation"
-              className="w-20 h-20 sm:w-24 sm:h-24 object-contain select-none"
-              onError={e => {
-                const target = e.currentTarget;
-                if (!target.src.endsWith('/gdtlogo.png')) {
-                  target.src = '/gdtlogo.png';
-                }
-              }}
-            />
-          </div>
+            {/* Center Column: Official GDT Logo */}
+            <div className="flex flex-col items-center justify-center justify-self-center">
+              <img
+                src={gdtLogo || '/gdtlogo.png'}
+                alt="អគ្គនាយកដ្ឋានពន្ធដារ - General Department of Taxation"
+                className="w-20 h-20 sm:w-24 sm:h-24 object-contain select-none"
+                onError={e => {
+                  const target = e.currentTarget;
+                  if (!target.src.endsWith('/gdtlogo.png')) {
+                    target.src = '/gdtlogo.png';
+                  }
+                }}
+              />
+            </div>
 
-          {/* Right Side: Kingdom of Cambodia Motto */}
-          <div className="justify-self-end space-y-0.5 w-[280px] text-center leading-[25px]">
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
-              ព្រះរាជាណាចក្រកម្ពុជា
-            </p>
-            <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
-              ជាតិ សាសនា ព្រះមហាក្សត្រ
-            </p>
-            <div className="text-[#D4AF37] font-bold tracking-[0.25em] text-xs select-none text-center">
-              ✦ ✦ ✦
+            {/* Right Side: Kingdom of Cambodia Motto */}
+            <div className="justify-self-end space-y-0.5 w-[280px] text-center leading-[25px]">
+              <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
+                ព្រះរាជាណាចក្រកម្ពុជា
+              </p>
+              <p className="font-moul text-xs sm:text-sm text-[#05402D] leading-relaxed text-center">
+                ជាតិ សាសនា ព្រះមហាក្សត្រ
+              </p>
+              <div className="text-[#D4AF37] font-bold tracking-[0.25em] text-xs select-none text-center">
+                ✦ ✦ ✦
+              </div>
             </div>
           </div>
         </div>
@@ -2116,8 +2118,8 @@ export function ExecutiveReportView() {
                 </span>
               </div>
 
-              <div className="overflow-x-auto border border-slate-400 rounded-lg">
-                <table className="w-full text-left border-collapse">
+              <div className="overflow-x-auto w-full border border-slate-400 rounded-lg">
+                <table className="w-full min-w-[960px] print:min-w-0 text-left border-collapse">
                   <thead>
                     <tr className="bg-[#05402D] text-white text-[10px] sm:text-[11px] font-bold">
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-9">ល.រ</th>
@@ -2246,8 +2248,8 @@ export function ExecutiveReportView() {
                 </span>
               </div>
 
-              <div className="overflow-x-auto border border-slate-400 rounded-lg">
-                <table className="w-full text-left border-collapse">
+              <div className="overflow-x-auto w-full border border-slate-400 rounded-lg">
+                <table className="w-full min-w-[920px] print:min-w-0 text-left border-collapse">
                   <thead>
                     <tr className="bg-[#05402D] text-white text-[10px] sm:text-[11px] font-bold">
                       <th className="py-2.5 px-2 border border-slate-400 text-center w-9">ល.រ</th>
@@ -2488,67 +2490,69 @@ export function ExecutiveReportView() {
         {/* ៥. ផ្នែកចុះហត្ថលេខាផ្លូវការ (OFFICIAL 3-COLUMN SIGNATURE BLOCK)  */}
         {/* ----------------------------------------------------------------- */}
         <div className="pt-6 mt-5 border-t border-slate-300 break-inside-avoid">
-          <div className="grid grid-cols-3 gap-6 text-center text-xs">
-            {/* Left Signature: អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក) */}
-            <div className="space-y-10">
-              <div className="space-y-0.5">
-                <p className="text-[11px] text-slate-700 font-medium">
-                  ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
-                </p>
-                <p className="text-[11px] text-slate-700 font-medium">
-                  រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
-                </p>
-                <p className="font-moul text-xs text-[#05402D] pt-1">
-                  អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)
-                </p>
+          <div className="overflow-x-auto print:overflow-visible">
+            <div className="grid grid-cols-3 gap-6 text-center text-xs min-w-[680px] print:min-w-0">
+              {/* Left Signature: អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក) */}
+              <div className="space-y-10">
+                <div className="space-y-0.5">
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
+                  </p>
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
+                  </p>
+                  <p className="font-moul text-xs text-[#05402D] pt-1">
+                    អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
+                  <p className="font-bold text-slate-800 text-[11px]">
+                    មន្ត្រីគ្រប់គ្រងស្តុក
+                  </p>
+                </div>
               </div>
-              <div className="pt-2">
-                <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                <p className="font-bold text-slate-800 text-[11px]">
-                  មន្ត្រីគ្រប់គ្រងស្តុក
-                </p>
-              </div>
-            </div>
 
-            {/* Center Signature: បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ) */}
-            <div className="space-y-10">
-              <div className="space-y-0.5">
-                <p className="text-[11px] text-slate-700 font-medium">
-                  ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
-                </p>
-                <p className="text-[11px] text-slate-700 font-medium">
-                  រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
-                </p>
-                <p className="font-moul text-xs text-[#05402D] pt-1">
-                  បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ)
-                </p>
+              {/* Center Signature: បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ) */}
+              <div className="space-y-10">
+                <div className="space-y-0.5">
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
+                  </p>
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
+                  </p>
+                  <p className="font-moul text-xs text-[#05402D] pt-1">
+                    បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ)
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
+                  <p className="font-bold text-slate-800 text-[11px]">
+                    ប្រធានការិយាល័យទទួលបន្ទុក
+                  </p>
+                </div>
               </div>
-              <div className="pt-2">
-                <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                <p className="font-bold text-slate-800 text-[11px]">
-                  ប្រធានការិយាល័យទទួលបន្ទុក
-                </p>
-              </div>
-            </div>
 
-            {/* Right Signature: បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន) */}
-            <div className="space-y-10">
-              <div className="space-y-0.5">
-                <p className="text-[11px] text-slate-700 font-medium">
-                  ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
-                </p>
-                <p className="text-[11px] text-slate-700 font-medium">
-                  រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
-                </p>
-                <p className="font-moul text-xs text-[#05402D] pt-1">
-                  បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)
-                </p>
-              </div>
-              <div className="pt-2">
-                <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                <p className="font-bold text-slate-800 text-[11px]">
-                  ប្រធាននាយកដ្ឋាន
-                </p>
+              {/* Right Signature: បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន) */}
+              <div className="space-y-10">
+                <div className="space-y-0.5">
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
+                  </p>
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
+                  </p>
+                  <p className="font-moul text-xs text-[#05402D] pt-1">
+                    បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
+                  <p className="font-bold text-slate-800 text-[11px]">
+                    ប្រធាននាយកដ្ឋាន
+                  </p>
+                </div>
               </div>
             </div>
           </div>

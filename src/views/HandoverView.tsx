@@ -389,15 +389,15 @@ export function HandoverView() {
     <div className="flex-1 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col overflow-hidden max-w-5xl mx-auto w-full font-siemreap">
       
       {/* Header with Navigation Tabs */}
-      <div className="border-b border-slate-200/80 bg-slate-50/90 px-6 pt-5 pb-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
-          <div className="flex items-center space-x-3">
-            <div className="bg-[#03291E] p-2.5 rounded-xl border border-emerald-800 text-[#A3D8C2] shadow-xs">
+      <div className="border-b border-slate-200/80 bg-slate-50/90 px-4 sm:px-6 pt-4 sm:pt-5 pb-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-4">
+          <div className="flex items-start sm:items-center space-x-3">
+            <div className="bg-[#03291E] p-2.5 rounded-xl border border-emerald-800 text-[#A3D8C2] shadow-xs shrink-0">
               <ArrowRightLeft size={22} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-slate-900">{t.handoverStock}</h2>
+              <div className="flex items-center flex-wrap gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">{t.handoverStock}</h2>
                 <span className="text-[11px] bg-emerald-100 text-emerald-900 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-300">
                   Full Suite
                 </span>
@@ -408,7 +408,7 @@ export function HandoverView() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-start sm:self-auto">
             <div className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-2xs ${
               isCentralAdmin 
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
@@ -422,30 +422,30 @@ export function HandoverView() {
         </div>
 
         {/* Operational Mode Navigation Tabs */}
-        <div className="flex items-center space-x-2 border-t border-slate-200/60 pt-2 -mb-px overflow-x-auto">
+        <div className="flex items-center space-x-1.5 sm:space-x-2 border-t border-slate-200/60 pt-2 -mb-px overflow-x-auto">
           <button
             type="button"
             onClick={() => { setActiveTab('handover'); setSubmitError(null); setSubmitSuccess(false); }}
-            className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all flex items-center gap-2 border-b-2 ${
+            className={`px-3 sm:px-4 py-2.5 min-h-[42px] text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 sm:gap-2 border-b-2 whitespace-nowrap ${
               activeTab === 'handover'
                 ? 'border-[#03291E] text-[#03291E] bg-white font-extrabold shadow-2xs'
                 : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
             }`}
           >
-            <SendHorizontal size={15} className={activeTab === 'handover' ? 'text-[#03291E]' : 'text-slate-400'} />
+            <SendHorizontal size={15} className={`shrink-0 ${activeTab === 'handover' ? 'text-[#03291E]' : 'text-slate-400'}`} />
             <span>១. ប្រគល់/ផ្ទេរសម្ភារៈ (Direct Handover)</span>
           </button>
 
           <button
             type="button"
             onClick={() => { setActiveTab('requisition'); setSubmitError(null); setSubmitSuccess(false); }}
-            className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all flex items-center gap-2 border-b-2 ${
+            className={`px-3 sm:px-4 py-2.5 min-h-[42px] text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 sm:gap-2 border-b-2 whitespace-nowrap ${
               activeTab === 'requisition'
                 ? 'border-[#03291E] text-[#03291E] bg-white font-extrabold shadow-2xs'
                 : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
             }`}
           >
-            <ClipboardList size={15} className={activeTab === 'requisition' ? 'text-[#03291E]' : 'text-slate-400'} />
+            <ClipboardList size={15} className={`shrink-0 ${activeTab === 'requisition' ? 'text-[#03291E]' : 'text-slate-400'}`} />
             <span>២. ដាក់ពាក្យស្នើសុំសម្ភារៈ (Requisition)</span>
           </button>
         </div>
@@ -520,7 +520,7 @@ export function HandoverView() {
       {/* ========================================================================= */}
       {activeTab === 'handover' && (
         <form onSubmit={handleHandoverSubmit} className="flex-1 flex flex-col">
-          <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white overflow-y-auto">
+          <div className="flex-1 p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 bg-white overflow-y-auto">
             
             {/* Left Column: Locations & Items */}
             <div className="space-y-4">
@@ -535,7 +535,7 @@ export function HandoverView() {
               </div>
               
               {/* Location Selectors */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase flex items-center justify-between">
                     <span>{t.fromLocation} (ចេញពី)</span>
@@ -544,7 +544,7 @@ export function HandoverView() {
                   <select 
                     value={fromLocationId}
                     onChange={(e) => setFromLocationId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[44px] text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                     required
                   >
                     {hqLocations.map(loc => (
@@ -568,7 +568,7 @@ export function HandoverView() {
                   <select 
                     value={toBranchId}
                     onChange={(e) => setToBranchId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[44px] text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                     required
                   >
                     <option value="">-- ជ្រើសរើសសាខាពន្ធដារ --</option>
@@ -594,7 +594,7 @@ export function HandoverView() {
                 <select 
                   value={selectedItemId} 
                   onChange={(e) => setSelectedItemId(e.target.value)} 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                   required
                 >
                   <option value="">-- ជ្រើសរើសមុខសម្ភារ / សម្ភារៈបច្ចេកទេស --</option>
@@ -640,7 +640,7 @@ export function HandoverView() {
               )}
               
               {/* Quantity & Unit */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
                     {t.quantity} <span className="text-rose-500">*</span>
@@ -652,7 +652,7 @@ export function HandoverView() {
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
                     placeholder="0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                     required 
                   />
                   {/* Quick Quantity Buttons */}
@@ -683,7 +683,7 @@ export function HandoverView() {
                   <input 
                     type="text" 
                     disabled 
-                    className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-600" 
+                    className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-sm font-bold text-slate-600" 
                     value={selectedItem?.unit || 'គ្រឿង'} 
                   />
                 </div>
@@ -700,7 +700,7 @@ export function HandoverView() {
                   value={officerName}
                   onChange={(e) => setOfficerName(e.target.value)}
                   placeholder="ឈ្មោះមន្ត្រីប្រគល់-ទទួល"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                   required 
                 />
               </div>
@@ -823,8 +823,8 @@ export function HandoverView() {
           </div>
 
           {/* Footer Actions */}
-          <div className="bg-slate-50 border-t border-slate-200/80 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="text-xs text-slate-500 font-medium">
+          <div className="bg-slate-50 border-t border-slate-200/80 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-500 font-medium text-center sm:text-left">
               {uploadProgress ? (
                 <span className="text-emerald-800 font-bold flex items-center gap-2">
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 animate-ping"></span>
@@ -835,7 +835,7 @@ export function HandoverView() {
               )}
             </div>
 
-            <div className="flex space-x-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:space-x-3 w-full sm:w-auto">
               <button 
                 type="button"
                 onClick={() => {
@@ -845,7 +845,7 @@ export function HandoverView() {
                   setSelectedFile(null);
                   setSubmitError(null);
                 }}
-                className="px-5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold hover:bg-white transition-colors w-1/2 sm:w-auto text-slate-700"
+                className="px-5 py-2.5 min-h-[44px] border border-slate-300 rounded-xl text-xs font-bold hover:bg-white transition-colors w-full sm:w-auto text-slate-700"
               >
                 សម្អាត (Clear)
               </button>
@@ -853,7 +853,7 @@ export function HandoverView() {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="px-7 py-2.5 bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-1/2 sm:w-auto"
+                className="px-7 py-2.5 min-h-[44px] bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
               >
                 {loading ? (
                   <>
@@ -880,7 +880,7 @@ export function HandoverView() {
       {/* ========================================================================= */}
       {activeTab === 'requisition' && (
         <form onSubmit={handleRequisitionSubmit} className="flex-1 flex flex-col">
-          <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white overflow-y-auto">
+          <div className="flex-1 p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 bg-white overflow-y-auto">
             
             {/* Left: Requisition Details */}
             <div className="space-y-4">
@@ -894,7 +894,7 @@ export function HandoverView() {
                 <select 
                   value={reqBranchId}
                   onChange={(e) => setReqBranchId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                   required
                 >
                   <option value="">-- ជ្រើសរើសសាខា ឬការិយាល័យរបស់អ្នក --</option>
@@ -915,7 +915,7 @@ export function HandoverView() {
                 <select 
                   value={reqItemId} 
                   onChange={(e) => setReqItemId(e.target.value)} 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                   required
                 >
                   <option value="">-- ជ្រើសរើសសម្ភារៈបច្ចេកទេសដែលចង់ស្នើសុំ --</option>
@@ -943,7 +943,7 @@ export function HandoverView() {
               )}
 
               {/* Quantity & Urgency */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
                     ចំនួនដែលស្នើសុំ <span className="text-rose-500">*</span>
@@ -954,7 +954,7 @@ export function HandoverView() {
                     value={reqQuantity}
                     onChange={(e) => setReqQuantity(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
                     placeholder="0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                     required 
                   />
                 </div>
@@ -963,7 +963,7 @@ export function HandoverView() {
                   <select
                     value={reqPriority}
                     onChange={(e: any) => setReqPriority(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[44px] text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
                   >
                     <option value="NORMAL">ធម្មតា (Normal)</option>
                     <option value="MEDIUM">មធ្យម (Medium)</option>
@@ -973,7 +973,7 @@ export function HandoverView() {
               </div>
 
               {/* Officer Name & Contact */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
                     មន្ត្រីស្នើសុំ <span className="text-rose-500">*</span>
@@ -983,7 +983,7 @@ export function HandoverView() {
                     value={reqOfficerName}
                     onChange={(e) => setReqOfficerName(e.target.value)}
                     placeholder="ឈ្មោះមន្ត្រី"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                     required 
                   />
                 </div>
@@ -994,7 +994,7 @@ export function HandoverView() {
                     value={reqPhone}
                     onChange={(e) => setReqPhone(e.target.value)}
                     placeholder="012 xxx xxx"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[44px] text-xs font-semibold outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]" 
                   />
                 </div>
               </div>
@@ -1077,12 +1077,12 @@ export function HandoverView() {
           </div>
 
           {/* Footer Actions */}
-          <div className="bg-slate-50 border-t border-slate-200/80 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="text-xs text-slate-500 font-medium">
+          <div className="bg-slate-50 border-t border-slate-200/80 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-500 font-medium text-center sm:text-left">
               <span>📋 សំណើសុំសម្ភារៈនឹងត្រូវបញ្ជូនទៅកាន់រដ្ឋបាលកណ្តាល HQ ដើម្បីពិនិត្យ និងអនុម័ត</span>
             </div>
 
-            <div className="flex space-x-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:space-x-3 w-full sm:w-auto">
               <button 
                 type="button"
                 onClick={() => {
@@ -1091,7 +1091,7 @@ export function HandoverView() {
                   setReqReason('');
                   setSelectedFile(null);
                 }}
-                className="px-5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold hover:bg-white transition-colors w-1/2 sm:w-auto text-slate-700"
+                className="px-5 py-2.5 min-h-[44px] border border-slate-300 rounded-xl text-xs font-bold hover:bg-white transition-colors w-full sm:w-auto text-slate-700"
               >
                 សម្អាត (Clear)
               </button>
@@ -1099,7 +1099,7 @@ export function HandoverView() {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="px-7 py-2.5 bg-blue-800 hover:bg-blue-900 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-1/2 sm:w-auto"
+                className="px-7 py-2.5 min-h-[44px] bg-blue-800 hover:bg-blue-900 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
               >
                 {loading ? (
                   <>
