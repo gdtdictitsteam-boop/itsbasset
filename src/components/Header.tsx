@@ -54,7 +54,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             <button
               type="button"
               onClick={onOpenMobileMenu}
-              className="lg:hidden p-1.5 -ml-0.5 rounded-xl text-[#03291E] hover:bg-[#03291E]/15 active:scale-95 transition-all cursor-pointer shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
+              className="lg:hidden p-1.5 -ml-0.5 rounded-xl text-[#03291E] hover:bg-[#03291E]/15 active:scale-90 transition-transform duration-150 cursor-pointer shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
               title="បើកមីនុយ (Open Menu)"
               aria-label="Open Navigation Menu"
             >
