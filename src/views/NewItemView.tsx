@@ -143,16 +143,16 @@ export function NewItemView() {
     let finalImageUrl: string | undefined = undefined;
     let storageNotice: string | undefined = undefined;
 
-    // 1. Upload Image to Supabase Storage if file was provided
+    // 1. Upload Image to Storage if file was provided
     if (selectedImageFile) {
       if (isConfigured) {
-        setUploadingImageText('កំពុង Upload រូបភាពសម្ភារទៅកាន់ Supabase Storage (bucket: item_images)...');
+        setUploadingImageText('កំពុង Upload រូបភាពសម្ភារទៅកាន់ប្រព័ន្ធទិន្នន័យ...');
         const uploadRes = await uploadItemImageToStorage(selectedImageFile);
         if (uploadRes.publicUrl) {
           finalImageUrl = uploadRes.publicUrl;
         } else {
           console.warn('Storage image upload notice:', uploadRes.errorMessage);
-          storageNotice = uploadRes.errorMessage || 'មិនអាច Upload រូបភាពទៅ Supabase Storage បានឡើយ។';
+          storageNotice = uploadRes.errorMessage || 'មិនអាច Upload រូបភាពទៅកាន់ប្រព័ន្ធទិន្នន័យបានឡើយ។';
         }
       } else {
         // Local mode preview fallback
@@ -200,9 +200,9 @@ export function NewItemView() {
     setIsSubmitting(false);
 
     if (res.success && res.savedToSupabase) {
-      let successMsg = `រក្សាទុកក្នុង Supabase Database ជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`;
+      let successMsg = `រក្សាទុកក្នុងប្រព័ន្ធទិន្នន័យជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`;
       if (finalImageUrl) {
-        successMsg += ' | រូបភាពត្រូវបាន Upload ទៅកាន់ Storage bucket (item_images) និងរក្សាទុក URL រួចរាល់។';
+        successMsg += ' | រូបភាពត្រូវបាន Upload និងរក្សាទុកក្នុងប្រព័ន្ធទិន្នន័យរួចរាល់។';
       }
       setSubmitResult({
         success: true,
@@ -217,8 +217,8 @@ export function NewItemView() {
         savedToSupabase: false,
         message: `បានបញ្ចូលសម្ភារៈថ្មីជោគជ័យ! (កូដ: ${materialCode})`,
         details: isConfigured 
-          ? (res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ដោយសារបញ្ហាភ្ជាប់ Supabase។')
-          : 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ព្រោះ Supabase មិនទាន់ភ្ជាប់។',
+          ? (res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ដោយសារបញ្ហាភ្ជាប់ប្រព័ន្ធទិន្នន័យ។')
+          : 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ព្រោះប្រព័ន្ធទិន្នន័យមិនទាន់ភ្ជាប់។',
       });
       resetForm();
     }
@@ -226,32 +226,6 @@ export function NewItemView() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Supabase Database Connection Status Banner */}
-      <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
-        isConfigured 
-          ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-          : 'bg-amber-50 border-amber-200 text-amber-900'
-      }`}>
-        <div className="flex items-center gap-2.5">
-          <Database size={18} className={isConfigured ? 'text-emerald-600' : 'text-amber-600'} />
-          <div>
-            <div className="font-bold flex items-center gap-2">
-              <span>ស្ថាបត្យកម្មមូលទិន្នន័យ Supabase DB:</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                isConfigured ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'
-              }`}>
-                {isConfigured ? 'បានតភ្ជាប់ (Configured)' : 'មិនទាន់កំណត់ Credentials (.env)'}
-              </span>
-            </div>
-            <p className="opacity-80 mt-0.5">
-              {isConfigured 
-                ? 'ប្រព័ន្ធត្រូវបានតភ្ជាប់ជាមួយ Supabase API ដោយស្វ័យប្រវត្តិ។ រាល់ការបញ្ចូលនឹងទាញយក id ពី Supabase។' 
-                : 'សូមកំណត់ VITE_SUPABASE_URL និង VITE_SUPABASE_ANON_KEY ក្នុងឯកសារ .env ដើម្បីរក្សាទុកក្នុង Supabase Remote DB។'}
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Result Notification Banner */}
       {submitResult && (
         <div className={`border rounded-xl p-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300 ${
@@ -268,7 +242,7 @@ export function NewItemView() {
               </div>
               <div className="space-y-1">
                 <h3 className="font-bold text-sm">
-                  {submitResult.success ? 'រក្សាទុកជោគជ័យ' : 'បរាជ័យក្នុងការបញ្ចូល Supabase'}
+                  {submitResult.success ? 'រក្សាទុកជោគជ័យ' : 'បរាជ័យក្នុងការបញ្ចូលទិន្នន័យ'}
                 </h3>
                 <p className="text-xs font-medium">{submitResult.message}</p>
                 {submitResult.details && (
@@ -306,7 +280,7 @@ export function NewItemView() {
                 បញ្ចូលព័ត៌មានសម្ភារថ្មី (New Item Entry)
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                បំពេញព័ត៌មានសម្ភារដើម្បីបញ្ចូលទៅក្នុង Supabase Database និងប្រព័ន្ធគ្រប់គ្រងស្តុក
+                បំពេញព័ត៌មានសម្ភារដើម្បីបញ្ចូលទៅក្នុងប្រព័ន្ធទិន្នន័យ និងប្រព័ន្ធគ្រប់គ្រងស្តុក
               </p>
             </div>
           </div>
@@ -563,7 +537,7 @@ export function NewItemView() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  {uploadingImageText || 'កំពុងបញ្ចូលទៅក្នុង Supabase DB...'}
+                  {uploadingImageText || 'កំពុងបញ្ចូលទៅក្នុងប្រព័ន្ធទិន្នន័យ...'}
                 </>
               ) : (
                 'រក្សាទុកសម្ភារថ្មី'

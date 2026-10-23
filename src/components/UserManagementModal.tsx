@@ -590,8 +590,8 @@ export function UserManagementModal() {
             if (existingProfile?.id) {
               authUserId = existingProfile.id;
             } else {
-              alert('កំហុសក្នុងការបង្កើតគណនី Supabase Auth៖ ' + authErr.message);
-              setErrorMessage('កំហុសក្នុងការបង្កើតគណនី Supabase Auth៖ ' + authErr.message);
+              alert('កំហុសក្នុងការបង្កើតគណនីក្នុងប្រព័ន្ធទិន្នន័យ៖ ' + authErr.message);
+              setErrorMessage('កំហុសក្នុងការបង្កើតគណនីក្នុងប្រព័ន្ធទិន្នន័យ៖ ' + authErr.message);
               setSaving(false);
               return;
             }
@@ -601,8 +601,8 @@ export function UserManagementModal() {
         }
 
         if (!authUserId) {
-          alert('មិនអាចទាញយក User UUID ពី Supabase Auth បានឡើយ!');
-          setErrorMessage('មិនអាចទាញយក User UUID ពី Supabase Auth បានឡើយ!');
+          alert('មិនអាចទាញយកលេខសម្គាល់គណនីពីប្រព័ន្ធទិន្នន័យបានឡើយ!');
+          setErrorMessage('មិនអាចទាញយកលេខសម្គាល់គណនីពីប្រព័ន្ធទិន្នន័យបានឡើយ!');
           setSaving(false);
           return;
         }
@@ -968,7 +968,7 @@ export function UserManagementModal() {
                       <HelpCircle size={13} className="shrink-0 mt-0.5 text-[#1E6047]" />
                       <span>
                         {isCreatingNew
-                          ? 'ពាក្យសម្ងាត់នេះនឹងត្រូវដាក់កូដសម្ងាត់ (Encrypted) ក្នុង Supabase auth.users តាមរយៈ Admin RPC function (យ៉ាងតិច ៨ តួអក្សរ)។'
+                          ? 'ពាក្យសម្ងាត់នេះនឹងត្រូវដាក់កូដសម្ងាត់ (Encrypted) ក្នុងប្រព័ន្ធសុវត្ថិភាពដោយស្វ័យប្រវត្តិ (យ៉ាងតិច ៨ តួអក្សរ)។'
                           : 'បញ្ចូលពាក្យសម្ងាត់ថ្មី (យ៉ាងតិច ៨ តួអក្សរ) ដើម្បី Reset ពាក្យសម្ងាត់មន្ត្រីរូបនេះ ឬទុកទទេបើមិនចង់ផ្លាស់ប្តូរ។'}
                       </span>
                     </div>

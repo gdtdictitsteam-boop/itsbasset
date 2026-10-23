@@ -107,8 +107,8 @@ export async function testSupabaseConnection(): Promise<{
   if (!isSupabaseConfigured()) {
     return {
       connected: false,
-      message: 'Supabase credentials not configured',
-      error: 'សូមបញ្ចូល Project URL និង Anon Key',
+      message: 'មិនទាន់បានកំណត់ការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ',
+      error: 'សូមបញ្ចូល Project URL និង API Key',
     };
   }
 
@@ -124,14 +124,14 @@ export async function testSupabaseConnection(): Promise<{
       console.error('Supabase connection test failed:', itemsRes.error || locsRes.error);
       return {
         connected: false,
-        message: 'បរាជ័យក្នុងការតភ្ជាប់ទៅ Supabase',
+        message: 'បរាជ័យក្នុងការតភ្ជាប់ទៅប្រព័ន្ធទិន្នន័យ',
         error: itemsRes.error?.message || locsRes.error?.message,
       };
     }
 
     return {
       connected: true,
-      message: 'តភ្ជាប់ទៅកាន់ Supabase Database ជោគជ័យ!',
+      message: 'តភ្ជាប់ទៅកាន់ប្រព័ន្ធទិន្នន័យ (Database) ជោគជ័យ!',
       itemsCount: itemsRes.count ?? 0,
       locationsCount: locsRes.count ?? 0,
       inventoryCount: invRes.count ?? 0,
@@ -181,8 +181,8 @@ export async function uploadItemImageToStorage(file: File): Promise<{
   if (!isSupabaseConfigured()) {
     return {
       publicUrl: null,
-      error: new Error('Supabase not configured'),
-      errorMessage: 'មិនទាន់បានកំណត់ Supabase Credentials ក្នុង .env',
+      error: new Error('Database not configured'),
+      errorMessage: 'មិនទាន់បានកំណត់ការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ',
     };
   }
 
@@ -206,7 +206,7 @@ export async function uploadItemImageToStorage(file: File): Promise<{
       console.error('Supabase storage upload error:', uploadError);
       let msg = uploadError.message;
       if (uploadError.message?.includes('Bucket not found') || (uploadError as any).statusCode === '404' || (uploadError as any).statusCode === 404) {
-        msg = 'រកមិនឃើញ Storage Bucket "item_images" ក្នុង Supabase! សូមបង្កើត Bucket ឈ្មោះ "item_images" (Public) ក្នុង Supabase Dashboard -> Storage ឬដំណើរការ SQL Script។';
+        msg = 'រកមិនឃើញ Storage Bucket "item_images" ក្នុងប្រព័ន្ធទិន្នន័យឡើយ!';
       }
       return {
         publicUrl: null,
@@ -229,7 +229,7 @@ export async function uploadItemImageToStorage(file: File): Promise<{
     return {
       publicUrl: null,
       error: err,
-      errorMessage: err?.message || 'បរាជ័យក្នុងការ Upload រូបភាពទៅកាន់ Supabase Storage',
+      errorMessage: err?.message || 'បរាជ័យក្នុងការ Upload រូបភាពទៅកាន់ប្រព័ន្ធទិន្នន័យ',
     };
   }
 }
@@ -242,8 +242,8 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
     return {
       success: false,
       savedToSupabase: false,
-      error: 'មិនទាន់បានរៀបចំ VITE_SUPABASE_URL ឬ VITE_SUPABASE_ANON_KEY ក្នុងឯកសារ .env',
-      errorDetails: 'សូមបញ្ចូលព័ត៌មាន URL និង ANON KEY របស់ Supabase Project របស់អ្នកក្នុងឯកសារ .env',
+      error: 'មិនទាន់បានរៀបចំការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ',
+      errorDetails: 'សូមពិនិត្យការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ (Database Connection)',
     };
   }
 
@@ -293,17 +293,17 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
     if (itemError) {
       console.error('Supabase item insert error:', itemError);
       
-      let errMsg = itemError.message || 'បរាជ័យក្នុងការរក្សាទុកទៅក្នុង Supabase Table items';
+      let errMsg = itemError.message || 'បរាជ័យក្នុងការរក្សាទុកទៅក្នុងប្រព័ន្ធទិន្នន័យ (Table items)';
       let errDetails = `Error Code: ${itemError.code || 'UNKNOWN'} | Details: ${itemError.details || itemError.hint || ''}`;
 
       if (itemError.code === '23505') {
-        errMsg = `លេខកូដសម្ភារ "${code}" មានរួចហើយនៅក្នុង Supabase (Duplicate SKU code)!`;
+        errMsg = `លេខកូដសម្ភារ "${code}" មានរួចហើយនៅក្នុងប្រព័ន្ធទិន្នន័យ (Duplicate SKU code)!`;
         errDetails = 'សូមផ្លាស់ប្តូរលេខកូដសម្ភារ ឱ្យខុសពីលេខកូដដែលមានស្រាប់។';
       } else if (itemError.code === '42501' || itemError.message?.includes('row-level security')) {
-        errMsg = 'បរាជ័យដោយសារ Row Level Security (RLS) របស់ Supabase!';
-        errDetails = 'សូមចូលទៅកាន់ Supabase Dashboard -> SQL Editor ហើយដំណើរការ៖ ALTER TABLE public.items DISABLE ROW LEVEL SECURITY;';
+        errMsg = 'បរាជ័យដោយសារកម្រិតសុវត្ថិភាពទិន្នន័យ (Row Level Security)!';
+        errDetails = 'សូមពិនិត្យសិទ្ធិអនុញ្ញាតក្នុងប្រព័ន្ធទិន្នន័យ។';
       } else if (itemError.code === 'PGRST204' || itemError.message?.includes('Columns')) {
-        errMsg = 'រចនាសម្ព័ន្ធ Table "items" ក្នុង Supabase មិនត្រូវគ្នានឹងកូដ!';
+        errMsg = 'រចនាសម្ព័ន្ធ Table "items" ក្នុងប្រព័ន្ធទិន្នន័យមិនត្រូវគ្នានឹងកូដ!';
         errDetails = 'សូមប្រាកដថាតារាង items មាន column: code, name_kh, name_en, category, unit, min_stock, image_url';
       }
 
@@ -382,7 +382,7 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
     return {
       success: false,
       savedToSupabase: false,
-      error: err?.message || 'មានបញ្ហាតភ្ជាប់ទៅកាន់ Supabase',
+      error: err?.message || 'មានបញ្ហាតភ្ជាប់ទៅកាន់ប្រព័ន្ធទិន្នន័យ',
       errorDetails: err?.toString() || '',
     };
   }
@@ -1074,7 +1074,7 @@ export async function seedInitialInventoryToSupabase(): Promise<{
   if (!isSupabaseConfigured()) {
     return {
       success: false,
-      message: 'Supabase មិនទាន់ត្រូវបានកំណត់ (Configured) ក្នុងឯកសារ .env ឡើយ។',
+      message: 'ប្រព័ន្ធទិន្នន័យមិនទាន់ត្រូវបានកំណត់ (Configured) ឡើយ។',
     };
   }
 
@@ -1098,7 +1098,7 @@ export async function seedInitialInventoryToSupabase(): Promise<{
     if (!locs || locs.length === 0) {
       return {
         success: false,
-        message: 'មិនអាចទាញយក ឬបង្កើតទីតាំង (locations) ក្នុង Supabase បានឡើយ។ សូមពិនិត្យ Table locations។',
+        message: 'មិនអាចទាញយក ឬបង្កើតទីតាំង (locations) ក្នុងប្រព័ន្ធទិន្នន័យបានឡើយ។',
       };
     }
 
@@ -1263,13 +1263,13 @@ export async function seedInitialInventoryToSupabase(): Promise<{
 
     return {
       success: true,
-      message: `បានរៀបចំ និងបញ្ចូលទិន្នន័យស្តុកដំបូងទៅ Supabase ជោគជ័យចំនួន ${inventoryRows.length} មុខសម្ភារ!`,
+      message: `បានរៀបចំ និងបញ្ចូលទិន្នន័យស្តុកដំបូងទៅប្រព័ន្ធទិន្នន័យជោគជ័យចំនួន ${inventoryRows.length} មុខសម្ភារ!`,
     };
   } catch (err: any) {
     console.error('Exception seeding inventory to Supabase:', err);
     return {
       success: false,
-      message: err?.message || 'មានបញ្ហាក្នុងការតភ្ជាប់ទៅកាន់ Supabase',
+      message: err?.message || 'មានបញ្ហាក្នុងការតភ្ជាប់ទៅកាន់ប្រព័ន្ធទិន្នន័យ',
     };
   }
 }

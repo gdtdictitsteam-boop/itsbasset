@@ -45,7 +45,7 @@ function MainLayout() {
     if (isBranchUser) {
       switch (currentView) {
         case 'dashboard':
-          return <DashboardView />;
+          return <DashboardView onNavigate={(view) => setCurrentView(view)} />;
         case 'inventory':
           return <InventoryView />;
         case 'executiveReport':
@@ -57,14 +57,14 @@ function MainLayout() {
         case 'auditTrail':
           return <AuditTrailView />;
         default:
-          return <DashboardView />;
+          return <DashboardView onNavigate={(view) => setCurrentView(view)} />;
       }
     }
 
     // Full access for CentralAdmin (excluding removed SQL viewer)
     switch (currentView) {
       case 'dashboard':
-        return <DashboardView />;
+        return <DashboardView onNavigate={(view) => setCurrentView(view)} />;
       case 'inventory':
         return <InventoryView />;
       case 'executiveReport':
@@ -90,12 +90,12 @@ function MainLayout() {
       case 'auditTrail':
         return <AuditTrailView />;
       default:
-        return <DashboardView />;
+        return <DashboardView onNavigate={(view) => setCurrentView(view)} />;
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#EBF4F0] text-[#0B3C2D] overflow-hidden font-siemreap app-shell">
+    <div className="flex flex-col h-screen w-full max-w-[100vw] bg-[#EBF4F0] text-[#0B3C2D] overflow-hidden overflow-x-hidden font-siemreap app-shell">
       <div className="no-print">
         <Header onOpenMobileMenu={() => setIsMobileMenuOpen(true)} />
       </div>

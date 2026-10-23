@@ -451,7 +451,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         console.error('Supabase Stock In operation failed:', res.error);
         return { 
           success: false, 
-          message: `បរាជ័យក្នុងការបញ្ចូលស្តុកទៅ Supabase: ${res.error}` 
+          message: `បរាជ័យក្នុងការបញ្ចូលស្តុកទៅប្រព័ន្ធទិន្នន័យ: ${res.error}` 
         };
       }
 
@@ -460,13 +460,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       return { 
         success: true, 
         newQuantity: res.newQuantity,
-        message: `បានបញ្ចូលស្តុកចំនួន ${params.quantity} ទៅកាន់ Supabase Database ជោគជ័យ!` 
+        message: `បានបញ្ចូលស្តុកចំនួន ${params.quantity} ទៅកាន់ប្រព័ន្ធទិន្នន័យជោគជ័យ!` 
       };
     } catch (err: any) {
       console.error('Exception executing Stock In to Supabase:', err);
       return { 
         success: false, 
-        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ Supabase: ${err.message || err}` 
+        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ: ${err.message || err}` 
       };
     }
   };
@@ -531,7 +531,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         console.error('Supabase Stock Out operation failed:', res.error);
         return { 
           success: false, 
-          message: `បរាជ័យក្នុងការដកស្តុកពី Supabase: ${res.error}` 
+          message: `បរាជ័យក្នុងការដកស្តុកពីប្រព័ន្ធទិន្នន័យ: ${res.error}` 
         };
       }
 
@@ -540,13 +540,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       return { 
         success: true, 
         newQuantity: res.newQuantity,
-        message: `បានដកស្តុកចំនួន ${params.quantity} ពី Supabase Database ជោគជ័យ!` 
+        message: `បានដកស្តុកចំនួន ${params.quantity} ពីប្រព័ន្ធទិន្នន័យជោគជ័យ!` 
       };
     } catch (err: any) {
       console.error('Exception executing Stock Out to Supabase:', err);
       return { 
         success: false, 
-        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ Supabase: ${err.message || err}` 
+        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ: ${err.message || err}` 
       };
     }
   };
@@ -657,7 +657,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         console.error('Supabase Handover operation failed:', res.error);
         return { 
           success: false, 
-          message: `បរាជ័យក្នុងការផ្ទេរស្តុកក្នុង Supabase: ${res.error}` 
+          message: `បរាជ័យក្នុងការផ្ទេរស្តុកក្នុងប្រព័ន្ធទិន្នន័យ: ${res.error}` 
         };
       }
 
@@ -665,13 +665,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
       return {
         success: true,
-        message: `បានផ្ទេរ និងកត់ត្រាចូល Supabase Database (status: COMPLETED) ជោគជ័យ!`
+        message: `បានផ្ទេរ និងកត់ត្រាចូលប្រព័ន្ធទិន្នន័យ (status: COMPLETED) ជោគជ័យ!`
       };
     } catch (err: any) {
       console.error('Exception executing Handover to Supabase:', err);
       return { 
         success: false, 
-        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ Supabase: ${err.message || err}` 
+        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ: ${err.message || err}` 
       };
     }
   };
@@ -680,7 +680,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const acknowledgeHandover = async (transactionId: string, receivedBy?: string): Promise<{ success: boolean; message: string; newBranchQuantity?: number }> => {
     const configured = isSupabaseConfigured();
     if (!configured) {
-      return { success: false, message: 'Supabase មិនទាន់ត្រូវបានកំណត់ឡើយ' };
+      return { success: false, message: 'ប្រព័ន្ធទិន្នន័យមិនទាន់ត្រូវបានកំណត់ឡើយ' };
     }
 
     try {
@@ -789,7 +789,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         console.error('Supabase Adjustment operation failed:', res.error);
         return { 
           success: false, 
-          message: `បរាជ័យក្នុងការកែតម្រូវស្តុកក្នុង Supabase: ${res.error}` 
+          message: `បរាជ័យក្នុងការកែតម្រូវស្តុកក្នុងប្រព័ន្ធទិន្នន័យ: ${res.error}` 
         };
       }
 
@@ -800,13 +800,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         previousQuantity: res.previousQuantity,
         newQuantity: res.newQuantity,
         delta: res.delta,
-        message: `បានកែតម្រូវចំនួនស្តុកក្នុង Supabase Database ជោគជ័យ!`
+        message: `បានកែតម្រូវចំនួនស្តុកក្នុងប្រព័ន្ធទិន្នន័យជោគជ័យ!`
       };
     } catch (err: any) {
       console.error('Exception executing Adjustment to Supabase:', err);
       return { 
         success: false, 
-        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ Supabase: ${err.message || err}` 
+        message: `មានបញ្ហាបរាជ័យក្នុងការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ: ${err.message || err}` 
       };
     }
   };
@@ -823,7 +823,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     } else {
       return {
         success: false,
-        message: 'សូមភ្ជាប់ Supabase Database ជាមុនសិន។'
+        message: 'សូមភ្ជាប់ប្រព័ន្ធទិន្នន័យ (Database) ជាមុនសិន។'
       };
     }
   };

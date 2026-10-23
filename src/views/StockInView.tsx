@@ -407,7 +407,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
               <ul className="list-disc list-inside space-y-1 text-slate-500 text-[11px] leading-relaxed">
                 <li>ចំនួនដែលបញ្ចូលនឹងត្រូវបានបូកបន្ថែមភ្លាមៗទៅក្នុង <strong>"ស្តុកបច្ចុប្បន្ន (Inventory)"</strong> និង <strong>"ផ្ទាំងគ្រប់គ្រង (Dashboard)"</strong>។</li>
                 <li>ប្រព័ន្ធនឹងបង្កើតកំណត់ត្រាប្រតិបត្តិការ (Transaction Audit Trail) ប្រភេទ <strong>STOCK_IN</strong> ដោយស្វ័យប្រវត្តិ។</li>
-                <li>បើសិនជាប្រព័ន្ធភ្ជាប់ Supabase ទិន្នន័យនឹងត្រូវ Sync ទៅកាន់ Supabase Database ដោយផ្ទាល់។</li>
+                <li>ទិន្នន័យនឹងត្រូវរក្សាទុក និងធ្វើបច្ចុប្បន្នភាពក្នុងប្រព័ន្ធទិន្នន័យ (Database) ដោយផ្ទាល់។</li>
               </ul>
             </div>
           </div>

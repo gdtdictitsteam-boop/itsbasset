@@ -117,10 +117,10 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
             </div>
             <div className="min-w-0">
               <h3 className="text-sm sm:text-base font-bold flex items-center gap-2 truncate">
-                <span>ការតភ្ជាប់ Supabase Database (100% Real Database)</span>
+                <span>ការតភ្ជាប់ប្រព័ន្ធទិន្នន័យ (Database Connection)</span>
               </h3>
               <p className="text-xs text-emerald-200/80 line-clamp-2">
-                ពិនិត្យស្ថានភាព ឬបញ្ចូល Supabase Project URL & Anon Key ដើម្បីដំណើរការទិន្នន័យពិតប្រាកដ
+                ពិនិត្យស្ថានភាព ឬបញ្ចូលអាសយដ្ឋានតភ្ជាប់ប្រព័ន្ធទិន្នន័យដើម្បីដំណើរការទិន្នន័យពិតប្រាកដ
               </p>
             </div>
           </div>
@@ -151,13 +151,13 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
               <div>
                 <strong className="block text-sm font-bold">
                   {isConfigured && testResult?.connected
-                    ? '🟢 កំពុងដំណើរការជាមួយ Supabase Database ពិតប្រាកដ'
-                    : '🟡 មិនទាន់តភ្ជាប់ទៅកាន់ Supabase Database'}
+                    ? '🟢 កំពុងដំណើរការជាមួយប្រព័ន្ធទិន្នន័យ (Database) ពិតប្រាកដ'
+                    : '🟡 មិនទាន់តភ្ជាប់ទៅកាន់ប្រព័ន្ធទិន្នន័យ (Database)'}
                 </strong>
                 <p className="text-xs mt-0.5 opacity-90">
                   {isConfigured && testResult?.connected
-                    ? `ទិន្នន័យស្តុក សម្ភារៈ និងប្រតិបត្តិការទាំងអស់ កំពុងទាញ និងកត់ត្រាចូល Supabase ផ្ទាល់។`
-                    : `សូមបញ្ចូល Supabase Project URL និង Anon Key ខាងក្រោម រួចចុច "រក្សាទុក និងតភ្ជាប់"។`}
+                    ? `ទិន្នន័យស្តុក សម្ភារៈ និងប្រតិបត្តិការទាំងអស់ កំពុងទាញ និងកត់ត្រាចូលប្រព័ន្ធទិន្នន័យផ្ទាល់។`
+                    : `សូមបញ្ចូល Database URL និង API Key ខាងក្រោម រួចចុច "រក្សាទុក និងតភ្ជាប់"។`}
                 </p>
               </div>
             </div>
@@ -178,7 +178,7 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
               <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 flex items-center gap-1.5">
                 <Layers size={14} className="text-[#03291E]" />
-                <span>ចំនួនទិន្នន័យបច្ចុប្បន្នក្នុង Table Supabase:</span>
+                <span>ចំនួនទិន្នន័យបច្ចុប្បន្នក្នុងប្រព័ន្ធទិន្នន័យ (Database):</span>
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                 <div className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
@@ -203,7 +203,7 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
               {((testResult.itemsCount ?? 0) === 0 || (testResult.inventoryCount ?? 0) === 0) && (
                 <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
                   <span className="text-xs text-amber-800 font-semibold">
-                    ⚠️ Table items ឬ inventory ក្នុង Supabase របស់អ្នកមិនទាន់មានទិន្នន័យឡើយ!
+                    ⚠️ តារាងទិន្នន័យក្នុងប្រព័ន្ធមិនទាន់មានទិន្នន័យឡើយ!
                   </span>
                   <button
                     type="button"
@@ -238,14 +238,14 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
           <form onSubmit={handleSave} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                <span>Supabase Project URL (VITE_SUPABASE_URL)</span>
+                <span>អាសយដ្ឋានមូលទិន្នន័យ (Database Project URL)</span>
                 <span className="text-rose-500 font-bold ml-1">*</span>
               </label>
               <input
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://your-project.supabase.co"
+                placeholder="https://database.gdt.gov.kh"
                 className="w-full min-h-[42px] bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-medium outline-none focus:ring-2 focus:ring-[#03291E]/20 focus:border-[#03291E]"
                 required
               />
@@ -253,7 +253,7 @@ export function SupabaseConnectionModal({ isOpen, onClose }: SupabaseConnectionM
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
-                <span>Supabase Anon Public API Key (VITE_SUPABASE_ANON_KEY)</span>
+                <span>កូដសម្ងាត់តភ្ជាប់ប្រព័ន្ធទិន្នន័យ (Database API Key)</span>
                 <span className="text-rose-500 font-bold">*</span>
               </label>
               <textarea

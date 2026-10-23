@@ -47,7 +47,7 @@ export const translations = {
     newSku: 'បន្ថែមសម្ភារៈថ្មី (New)',
     stockOut: 'ដកប្រើប្រាស់ (Stock Out)',
     adjustment: 'កែតម្រូវស្តុក (Adjustment)',
-    sqlCode: 'កូដ SQL (Supabase DB)',
+    sqlCode: 'កូដ SQL (Database)',
     totalItems: 'សម្ភារៈសរុប',
     lowStock: 'ស្តុកជិតអស់',
     totalLocations: 'ទីតាំងសរុប',
