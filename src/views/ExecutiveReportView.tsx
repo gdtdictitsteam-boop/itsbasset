@@ -1084,76 +1084,73 @@ export function ExecutiveReportView() {
       };
     };
 
-    // Helper: Append & Style 3-Column Official Signature Block at Bottom of Worksheet
+    // Helper: Append & Style 2-Column Official Signature Block at Bottom of Worksheet
     const appendOfficialSignatureBlock = (ws: ExcelJS.Worksheet, startRow: number, totalCols: number) => {
       // Blank spacer row before signatures
-      ws.getRow(startRow).height = 14;
+      ws.getRow(startRow).height = 16;
       styleRowRange(ws, startRow, 1, totalCols, { fillArgb: 'FFFFFFFF' });
 
       const sigRow1 = startRow + 1;
-      let g1End: number;
-      let g2Start: number;
-      let g2End: number;
-      let g3Start: number;
+      let leftEnd: number;
+      let rightStart: number;
 
       if (totalCols === 11) {
-        g1End = 4;
-        g2Start = 5;
-        g2End = 8;
-        g3Start = 9;
+        leftEnd = 5;
+        rightStart = 7;
       } else if (totalCols === 10) {
-        g1End = 4;
-        g2Start = 5;
-        g2End = 7;
-        g3Start = 8;
+        leftEnd = 5;
+        rightStart = 6;
       } else {
-        g1End = Math.max(4, Math.floor(totalCols / 3));
-        g2Start = g1End + 1;
-        g2End = Math.max(g2Start + 2, Math.floor((totalCols * 2) / 3));
-        g3Start = g2End + 1;
+        leftEnd = Math.max(4, Math.floor(totalCols / 2));
+        rightStart = leftEnd + 1;
       }
 
-      const sigLines: [string, string, string][] = [
+      const sigLines: [string, string][] = [
         [
-          'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩',
-          'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩',
-          'ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩'
+          '',
+          'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ........ ឆ្នាំ ២០២..'
         ],
         [
-          'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦',
-          'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦',
-          'រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦'
+          'ថ្ងៃទី........ខែ........ឆ្នាំ ២០២.',
+          'ថ្ងៃទី........ខែ........ឆ្នាំ ២០២.'
         ],
         [
-          'អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)',
-          'បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ)',
-          'បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)'
+          'អ្នករៀបចំរបាយការណ៍',
+          'មន្ត្រីគ្រប់គ្រងស្តុក'
         ],
-        ['', '', ''],
         [
-          '...................................................',
+          '(មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)',
+          ''
+        ],
+        ['', ''],
+        [
           '...................................................',
           '...................................................'
-        ],
-        [
-          'មន្ត្រីគ្រប់គ្រងស្តុក',
-          'ប្រធានការិយាល័យទទួលបន្ទុក',
-          'ប្រធាននាយកដ្ឋាន'
         ]
       ];
 
-      const rowHeights = [19, 19, 22, 38, 18, 22];
+      const rowHeights = [20, 20, 22, 20, 38, 20];
 
-      sigLines.forEach(([leftTxt, midTxt, rightTxt], idx) => {
+      sigLines.forEach(([leftTxt, rightTxt], idx) => {
         const r = sigRow1 + idx;
         ws.getRow(r).height = rowHeights[idx];
-        ws.getCell(r, 1).value = leftTxt;
-        ws.getCell(r, g2Start).value = midTxt;
-        ws.getCell(r, g3Start).value = rightTxt;
 
-        ws.mergeCells(r, 1, r, g1End);
-        ws.mergeCells(r, g2Start, r, g2End);
-        ws.mergeCells(r, g3Start, r, totalCols);
+        // Ensure clean white background with no gridlines across the entire row
+        for (let c = 1; c <= totalCols; c++) {
+          const cell = ws.getCell(r, c);
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFFFFF' }
+          };
+          cell.border = {};
+        }
+
+        ws.getCell(r, 1).value = leftTxt;
+        ws.getCell(r, rightStart).value = rightTxt;
+
+        ws.mergeCells(r, 1, r, leftEnd);
+        ws.mergeCells(r, rightStart, r, totalCols);
 
         if (idx === 0 || idx === 1) {
           styleRowRange(ws, r, 1, totalCols, {
@@ -1169,19 +1166,19 @@ export function ExecutiveReportView() {
           });
         } else if (idx === 3) {
           styleRowRange(ws, r, 1, totalCols, {
-            fillArgb: 'FFFFFFFF'
+            font: { name: 'Khmer OS Siemreap', size: 9.5, bold: true, color: { argb: 'FF05402D' } },
+            fillArgb: 'FFFFFFFF',
+            alignment: { horizontal: 'center', vertical: 'middle' }
           });
         } else if (idx === 4) {
+          styleRowRange(ws, r, 1, totalCols, {
+            fillArgb: 'FFFFFFFF'
+          });
+        } else if (idx === 5) {
           styleRowRange(ws, r, 1, totalCols, {
             font: { name: 'Khmer OS Siemreap', size: 9.5, color: { argb: 'FF94A3B8' } },
             fillArgb: 'FFFFFFFF',
             alignment: { horizontal: 'center', vertical: 'bottom' }
-          });
-        } else if (idx === 5) {
-          styleRowRange(ws, r, 1, totalCols, {
-            font: { name: 'Khmer OS Siemreap', size: 10, bold: true, color: { argb: 'FF0F172A' } },
-            fillArgb: 'FFFFFFFF',
-            alignment: { horizontal: 'center', vertical: 'middle' }
           });
         }
       });
@@ -2525,71 +2522,41 @@ export function ExecutiveReportView() {
         )}
 
         {/* ----------------------------------------------------------------- */}
-        {/* ៥. ផ្នែកចុះហត្ថលេខាផ្លូវការ (OFFICIAL 3-COLUMN SIGNATURE BLOCK)  */}
+        {/* ៥. ផ្នែកចុះហត្ថលេខាផ្លូវការ (OFFICIAL 2-COLUMN SIGNATURE BLOCK)  */}
         {/* ----------------------------------------------------------------- */}
         <div className="pt-6 mt-5 border-t border-slate-300 break-inside-avoid">
           <div className="overflow-x-auto print:overflow-visible">
-            <div className="grid grid-cols-3 gap-6 text-center text-xs min-w-[680px] print:min-w-0">
-              {/* Left Signature: អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក) */}
-              <div className="space-y-10">
-                <div className="space-y-0.5">
-                  <p className="text-[11px] text-slate-700 font-medium">
-                    ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
+            <div className="grid grid-cols-2 gap-8 text-center text-xs min-w-[540px] print:min-w-0">
+              {/* Left Signature: អ្នករៀបចំរបាយការណ៍ / (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក) */}
+              <div className="flex flex-col justify-between space-y-12">
+                <div className="space-y-1 pt-5">
+                  <p className="font-moul text-xs text-[#05402D]">
+                    អ្នករៀបចំរបាយការណ៍
                   </p>
-                  <p className="text-[11px] text-slate-700 font-medium">
-                    រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
-                  </p>
-                  <p className="font-moul text-xs text-[#05402D] pt-1">
-                    អ្នករៀបចំរបាយការណ៍ (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)
+                  <p className="font-siemreap font-bold text-[11px] text-[#05402D]">
+                    (មន្ត្រីទទួលបន្ទុកកាន់ស្តុក)
                   </p>
                 </div>
                 <div className="pt-2">
-                  <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                  <p className="font-bold text-slate-800 text-[11px]">
+                  <div className="w-48 mx-auto border-b border-dotted border-slate-400 mb-1" />
+                </div>
+              </div>
+
+              {/* Right Signature: មន្ត្រីគ្រប់គ្រងស្តុក */}
+              <div className="flex flex-col justify-between space-y-12">
+                <div className="space-y-1">
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ........ ឆ្នាំ ២០២..
+                  </p>
+                  <p className="text-[11px] text-slate-700 font-medium">
+                    ថ្ងៃទី........ខែ........ឆ្នាំ ២០២.
+                  </p>
+                  <p className="font-moul text-xs text-[#05402D] pt-1">
                     មន្ត្រីគ្រប់គ្រងស្តុក
                   </p>
                 </div>
-              </div>
-
-              {/* Center Signature: បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ) */}
-              <div className="space-y-10">
-                <div className="space-y-0.5">
-                  <p className="text-[11px] text-slate-700 font-medium">
-                    ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
-                  </p>
-                  <p className="text-[11px] text-slate-700 font-medium">
-                    រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
-                  </p>
-                  <p className="font-moul text-xs text-[#05402D] pt-1">
-                    បានពិនិត្យ និងឯកភាព (ប្រធានការិយាល័យ)
-                  </p>
-                </div>
                 <div className="pt-2">
-                  <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                  <p className="font-bold text-slate-800 text-[11px]">
-                    ប្រធានការិយាល័យទទួលបន្ទុក
-                  </p>
-                </div>
-              </div>
-
-              {/* Right Signature: បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន) */}
-              <div className="space-y-10">
-                <div className="space-y-0.5">
-                  <p className="text-[11px] text-slate-700 font-medium">
-                    ថ្ងៃ.......................... ខែ............. ឆ្នាំម្សាញ់ សប្តស័ក ព.ស.២៥៦៩
-                  </p>
-                  <p className="text-[11px] text-slate-700 font-medium">
-                    រាជធានីភ្នំពេញ, ថ្ងៃទី........ ខែ............. ឆ្នាំ២០២៦
-                  </p>
-                  <p className="font-moul text-xs text-[#05402D] pt-1">
-                    បានឃើញ និងឯកភាព (ប្រធាននាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន)
-                  </p>
-                </div>
-                <div className="pt-2">
-                  <div className="w-44 mx-auto border-b border-dotted border-slate-400 mb-1" />
-                  <p className="font-bold text-slate-800 text-[11px]">
-                    ប្រធាននាយកដ្ឋាន
-                  </p>
+                  <div className="w-48 mx-auto border-b border-dotted border-slate-400 mb-1" />
                 </div>
               </div>
             </div>

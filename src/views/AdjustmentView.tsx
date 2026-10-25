@@ -27,7 +27,16 @@ import {
 
 export function AdjustmentView() {
   const { t, language } = useLanguage();
-  const { userRole, isCentralAdmin, isBranchUser, userDisplayName } = useAuth();
+  const { user, userProfile, userRole, isCentralAdmin, isBranchUser, userDisplayName } = useAuth();
+  const loggedInOfficerName =
+    userProfile?.full_name ||
+    userDisplayName ||
+    user?.user_metadata?.full_name ||
+    (user as any)?.full_name ||
+    (user as any)?.name ||
+    (user as any)?.username ||
+    user?.email ||
+    '';
   const { 
     inventory, 
     items, 
@@ -83,7 +92,13 @@ export function AdjustmentView() {
   // Reason & Details
   const [reason, setReason] = useState<string>('រាប់ស្តុកប្រចាំត្រីមាស (Quarterly physical audit)');
   const [remark, setRemark] = useState<string>('');
-  const [officerName, setOfficerName] = useState<string>(userDisplayName || 'Admin-GDT');
+  const [officerName, setOfficerName] = useState<string>(loggedInOfficerName);
+
+  useEffect(() => {
+    if (loggedInOfficerName) {
+      setOfficerName(loggedInOfficerName);
+    }
+  }, [loggedInOfficerName]);
 
   // Status & Notifications
   const [loading, setLoading] = useState<boolean>(false);
@@ -188,7 +203,7 @@ export function AdjustmentView() {
         locationId: effectiveLocationId,
         itemId: selectedItemId,
         actualQuantity: Number(actualQuantity),
-        officerName: officerName || userDisplayName || 'Admin-GDT',
+        officerName: officerName.trim() || loggedInOfficerName,
         reason: reason,
         remark: remark.trim()
       });
@@ -203,6 +218,7 @@ export function AdjustmentView() {
         // Reset input quantity
         setActualQuantity('');
         setRemark('');
+        setOfficerName(loggedInOfficerName);
         await refreshInventory();
       } else {
         setNotice({ type: 'error', message: res.message });
@@ -533,6 +549,7 @@ export function AdjustmentView() {
                 setSelectedItemId('');
                 setActualQuantity('');
                 setRemark('');
+                setOfficerName(loggedInOfficerName);
                 setNotice(null);
               }}
               className="px-5 py-2.5 min-h-[44px] border border-slate-300 rounded-xl text-xs font-bold hover:bg-white transition-colors w-full sm:w-auto text-slate-700"

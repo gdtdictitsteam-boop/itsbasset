@@ -7,7 +7,7 @@ import { MinusCircle, Check, X, AlertTriangle, Loader2 } from 'lucide-react';
 
 export function StockOutView() {
   const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { user, userProfile, userDisplayName } = useAuth();
   const { items, locations, inventory, recordStockOut } = useInventoryContext();
   const { selectedLocation: globalSelectedLoc } = useLocationContext();
   const [loading, setLoading] = useState(false);
@@ -15,6 +15,25 @@ export function StockOutView() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedLocId, setSelectedLocId] = useState('');
+
+  const loggedInOfficerName =
+    userProfile?.full_name ||
+    userDisplayName ||
+    user?.user_metadata?.full_name ||
+    (user as any)?.full_name ||
+    (user as any)?.name ||
+    (user as any)?.username ||
+    user?.email ||
+    '';
+
+  const [officerName, setOfficerName] = useState<string>(loggedInOfficerName);
+
+  // Sync officerName with logged-in user profile
+  useEffect(() => {
+    if (loggedInOfficerName) {
+      setOfficerName(loggedInOfficerName);
+    }
+  }, [loggedInOfficerName]);
 
   // Sync with global location context
   useEffect(() => {
@@ -66,7 +85,7 @@ export function StockOutView() {
     const form = e.target as HTMLFormElement;
     const locationId = selectedLocId || (form.elements.namedItem('locationId') as HTMLSelectElement)?.value;
     const quantity = parseInt((form.elements.namedItem('quantity') as HTMLInputElement)?.value || '0', 10);
-    const officerName = (form.elements.namedItem('officerName') as HTMLInputElement)?.value;
+    const resolvedOfficerName = officerName.trim() || (form.elements.namedItem('officerName') as HTMLInputElement)?.value?.trim() || loggedInOfficerName;
     const purpose = (form.elements.namedItem('purpose') as HTMLTextAreaElement)?.value;
 
     if (!selectedItemId) {
@@ -98,7 +117,7 @@ export function StockOutView() {
         locationId,
         itemId: selectedItemId,
         quantity,
-        officerName: officerName || user?.fullName || 'Admin-GDT',
+        officerName: resolvedOfficerName,
         purpose: purpose || 'ដកចេញពីស្តុក'
       });
     } finally {
@@ -110,6 +129,7 @@ export function StockOutView() {
       setNotice({ type: 'success', message: res.message });
       form.reset();
       setSelectedItemId('');
+      setOfficerName(loggedInOfficerName);
     } else {
       setNotice({ type: 'error', message: res.message });
     }
@@ -217,7 +237,14 @@ export function StockOutView() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.officerName} <span className="text-rose-500">*</span></label>
-              <input name="officerName" type="text" defaultValue={user?.fullName || 'Admin-GDT'} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 min-h-[44px] text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]" required />
+              <input
+                name="officerName"
+                type="text"
+                value={officerName}
+                onChange={(e) => setOfficerName(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 min-h-[44px] text-sm outline-none focus:ring-2 focus:ring-[#900033]/20 focus:border-[#900033]"
+                required
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{t.purpose} <span className="text-rose-500">*</span></label>
@@ -237,6 +264,7 @@ export function StockOutView() {
                 const form = document.getElementById('stock-out-form') as HTMLFormElement;
                 if (form) form.reset();
                 setSelectedItemId('');
+                setOfficerName(loggedInOfficerName);
                 setNotice(null);
               }}
               className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] border border-slate-300 rounded-lg text-sm font-bold hover:bg-white transition-colors"

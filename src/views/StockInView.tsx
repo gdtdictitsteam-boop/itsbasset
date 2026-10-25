@@ -15,7 +15,7 @@ interface StockInViewProps {
 
 export function StockInView({ onNavigate }: StockInViewProps) {
   const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { user, userProfile, userDisplayName } = useAuth();
   const { items, locations, inventory, recordStockIn } = useInventoryContext();
   const { setSelectedLocationId, selectedLocation: globalSelectedLoc } = useLocationContext();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,18 +32,28 @@ export function StockInView({ onNavigate }: StockInViewProps) {
     locationName?: string;
   } | null>(null);
 
+  const loggedInOfficerName =
+    userProfile?.full_name ||
+    userDisplayName ||
+    user?.user_metadata?.full_name ||
+    (user as any)?.full_name ||
+    (user as any)?.name ||
+    (user as any)?.username ||
+    user?.email ||
+    '';
+
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedLocId, setSelectedLocId] = useState('');
   const [inputQuantity, setInputQuantity] = useState<number>(1);
-  const [officerName, setOfficerName] = useState(user?.fullName || 'Admin-GDT');
+  const [officerName, setOfficerName] = useState(loggedInOfficerName);
   const [purpose, setPurpose] = useState('');
 
   // Keep officerName in sync if user changes
   useEffect(() => {
-    if (user?.fullName) {
-      setOfficerName(user.fullName);
+    if (loggedInOfficerName) {
+      setOfficerName(loggedInOfficerName);
     }
-  }, [user?.fullName]);
+  }, [loggedInOfficerName]);
 
   // Auto-dismiss success alert after 15 seconds
   useEffect(() => {
@@ -135,7 +145,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
         locationId: selectedLocId,
         itemId: selectedItemId,
         quantity: Number(inputQuantity),
-        officerName: officerName.trim() || user?.fullName || 'Admin-GDT',
+        officerName: officerName.trim() || loggedInOfficerName,
         purpose: purpose.trim() || 'បញ្ចូលស្តុកថ្មី'
       });
     } finally {
@@ -160,6 +170,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
       setSelectedItemId(''); // Reset selected item to default/empty
       setInputQuantity(1); // Reset quantity to default 1
       setPurpose(''); // Clear reference / purpose to empty string
+      setOfficerName(loggedInOfficerName);
     } else {
       setNotice({ type: 'error', message: res.message });
     }
@@ -431,6 +442,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
                 setSelectedItemId('');
                 setInputQuantity(1);
                 setPurpose('');
+                setOfficerName(loggedInOfficerName);
                 setIsSubmittedSuccess(false);
                 setNotice(null);
               }}
