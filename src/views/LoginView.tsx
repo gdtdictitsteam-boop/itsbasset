@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext } from '../contexts/LocationContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
-import { ShieldCheck, Lock, Mail, Eye, EyeOff, KeyRound, CheckCircle2, Database, Info, RefreshCw, UserCheck, Building2 } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, Eye, EyeOff, KeyRound, CheckCircle2, RefreshCw } from 'lucide-react';
 
 // Sanitize string input to prevent XSS / Injection Attack patterns
 function sanitizeInput(str: string): string {
@@ -27,7 +27,7 @@ export function LoginView({
   onLoginSuccess?: (user: any) => void;
   setUser?: (user: any) => void;
 } = {}) {
-  const { signInDemo, isConfigured, onLoginSuccess: ctxOnLoginSuccess, setUser: ctxSetUser } = useAuth();
+  const { onLoginSuccess: ctxOnLoginSuccess, setUser: ctxSetUser } = useAuth();
   const locationCtx = useLocationContext();
   const { t, language } = useLanguage();
 
@@ -75,7 +75,7 @@ export function LoginView({
     setLoading(true);
 
     try {
-      // ១. Query ស្វែងរកមន្ត្រីពី public.user_profiles តាម Email
+      // ១. Query ស្វែងរកមន្ត្រី និង Role ដោយស្វ័យប្រវត្តិពី public.user_profiles តាម Email
       const { data: user, error: fetchErr } = await supabase
         .from('user_profiles')
         .select('*')
@@ -103,11 +103,13 @@ export function LoginView({
         return; // បញ្ឈប់ភ្លាម ហាមអនុញ្ញាតឱ្យចូល
       }
 
-      // ៣. បើត្រឹមត្រូវ អនុញ្ញាតឱ្យចូល Dashboard
+      // ៣. បើត្រឹមត្រូវ កំណត់សិទ្ធិ (Role) និងទីតាំងដោយស្វ័យប្រវត្តិពី user_profiles ហើយអនុញ្ញាតឱ្យចូលប្រព័ន្ធ
       const roleStr = user.role || user.user_metadata?.role || '';
       const isUserBranch = roleStr === 'BranchUser';
       if (!isUserBranch && locationCtx?.resetLocationFilter) {
         locationCtx.resetLocationFilter();
+      } else if (isUserBranch && user.location_id && locationCtx?.setSelectedLocation) {
+        locationCtx.setSelectedLocation(String(user.location_id));
       }
 
       if (typeof onLoginSuccess === 'function') {
@@ -122,17 +124,6 @@ export function LoginView({
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickDemoLogin = (emailVal: string, roleVal: string) => {
-    setError('');
-    if (roleVal === 'CentralAdmin' && locationCtx?.resetLocationFilter) {
-      locationCtx.resetLocationFilter();
-    }
-    setSuccessMessage(`ចូលប្រើប្រាស់ជាប្រភេទ ${roleVal} ជោគជ័យ!`);
-    setTimeout(() => {
-      signInDemo(emailVal, roleVal);
-    }, 400);
   };
 
   return (
@@ -161,7 +152,7 @@ export function LoginView({
         </div>
 
         {/* Form Content Body */}
-        <div className="p-6 sm:p-8 space-y-6">
+        <div className="p-6 sm:p-8 space-y-5">
           
           {/* Error Message Alert */}
           {error && (
@@ -231,67 +222,28 @@ export function LoginView({
             </div>
 
             {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading || lockoutTimer > 0}
-              className="w-full py-3 bg-[#03291E] hover:bg-[#1E6047] text-white font-bold text-sm rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-            >
-              {loading ? (
-                <>
-                  <RefreshCw size={18} className="animate-spin" />
-                  <span>កំពុងពិនិត្យសុវត្ថិភាព...</span>
-                </>
-              ) : lockoutTimer > 0 ? (
-                <span>ប្រព័ន្ធចាក់សោ ({lockoutTimer}s)</span>
-              ) : (
-                <>
-                  <KeyRound size={18} />
-                  <span>ចូលប្រព័ន្ធ (Sign In)</span>
-                </>
-              )}
-            </button>
+            <div className="pt-1">
+              <button
+                type="submit"
+                disabled={loading || lockoutTimer > 0}
+                className="w-full py-3 bg-[#03291E] hover:bg-[#1E6047] text-white font-bold text-sm rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" />
+                    <span>កំពុងពិនិត្យសុវត្ថិភាព...</span>
+                  </>
+                ) : lockoutTimer > 0 ? (
+                  <span>ប្រព័ន្ធចាក់សោ ({lockoutTimer}s)</span>
+                ) : (
+                  <>
+                    <KeyRound size={18} />
+                    <span>ចូលប្រព័ន្ធ (Sign In)</span>
+                  </>
+                )}
+              </button>
+            </div>
           </form>
-
-          {/* Quick Demo Login Option for Testing RBAC Roles */}
-          <div className="pt-4 border-t border-slate-100">
-            <div className="text-center mb-2.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider bg-white px-2">
-                ជ្រើសរើស Role សាកល្បង (Test RBAC Access)
-              </span>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('admin.its@tax.gov.kh', 'CentralAdmin')}
-                className="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-left text-xs font-bold text-emerald-900 transition-colors flex items-center justify-between group"
-              >
-                <div>
-                  <div className="font-extrabold text-[#03291E] flex items-center gap-1">
-                    <UserCheck size={12} className="text-emerald-700" />
-                    <span>CentralAdmin</span>
-                  </div>
-                  <div className="text-[10px] text-emerald-700 font-mono">គ្រប់គ្រងស្តុកកណ្តាលទាំងអស់</div>
-                </div>
-                <Info size={14} className="text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('branch.user@tax.gov.kh', 'BranchUser')}
-                className="p-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl text-left text-xs font-bold text-amber-950 transition-colors flex items-center justify-between group"
-              >
-                <div>
-                  <div className="font-extrabold text-amber-900 flex items-center gap-1">
-                    <Building2 size={12} className="text-amber-700" />
-                    <span>BranchUser</span>
-                  </div>
-                  <div className="text-[10px] text-amber-800 font-mono">កម្រិតមើលឃើញតែស្តុកសាខា</div>
-                </div>
-                <Info size={14} className="text-amber-600 group-hover:scale-110 transition-transform shrink-0" />
-              </button>
-            </div>
-          </div>
 
         </div>
 
