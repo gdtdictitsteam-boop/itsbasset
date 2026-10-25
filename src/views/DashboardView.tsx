@@ -5,8 +5,7 @@ import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryCon
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Package, AlertCircle, MapPin, AlertTriangle, Wrench, Package as PackageIcon, Building2,
-  Boxes, TrendingUp, RefreshCw, ShieldCheck, CheckCircle2,
-  PlusCircle, ArrowLeftRight, MinusCircle, ClipboardList, Sliders
+  Boxes, TrendingUp, RefreshCw, ShieldCheck, CheckCircle2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ItemAvatar } from '../components/ItemAvatar';
@@ -261,99 +260,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
           </div>
         )}
       </div>
-
-      {/* Mobile Quick Action Grid (Visible ONLY on Mobile/Tablet: lg:hidden) */}
-      {onNavigate && (
-        <div className="grid grid-cols-4 gap-2 lg:hidden">
-          {isCentralAdmin ? (
-            <>
-              <button
-                type="button"
-                onClick={() => onNavigate('stockIn')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-white hover:bg-emerald-50/70 active:scale-95 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#03291E] flex items-center justify-center">
-                  <PlusCircle size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-slate-800 leading-tight text-center">បញ្ចូលស្តុក</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('handover')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-white hover:bg-teal-50/70 active:scale-95 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-900 flex items-center justify-center">
-                  <ArrowLeftRight size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-slate-800 leading-tight text-center">ប្រគល់សាខា</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('stockOut')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-white hover:bg-amber-50/70 active:scale-95 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-900 flex items-center justify-center">
-                  <MinusCircle size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-slate-800 leading-tight text-center">ដកប្រើប្រាស់</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('executiveReport')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-[#03291E] hover:bg-[#1E6047] active:scale-95 p-2.5 rounded-xl border border-[#03291E] shadow-2xs transition-all cursor-pointer text-white"
-              >
-                <div className="w-8 h-8 rounded-lg bg-[#A3D8C2]/20 text-[#A3D8C2] flex items-center justify-center">
-                  <ClipboardList size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-[#A3D8C2] leading-tight text-center">របាយការណ៍</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => onNavigate('inventory')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-white hover:bg-emerald-50/70 active:scale-95 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#03291E] flex items-center justify-center">
-                  <Package size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-slate-800 leading-tight text-center">ស្តុកបច្ចុប្បន្ន</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('stockOut')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-white hover:bg-amber-50/70 active:scale-95 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-900 flex items-center justify-center">
-                  <MinusCircle size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-slate-800 leading-tight text-center">ដកប្រើប្រាស់</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('adjustment')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-white hover:bg-blue-50/70 active:scale-95 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-900 flex items-center justify-center">
-                  <Sliders size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-slate-800 leading-tight text-center">កែតម្រូវស្តុក</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('executiveReport')}
-                className="flex flex-col items-center justify-center gap-1.5 bg-[#03291E] hover:bg-[#1E6047] active:scale-95 p-2.5 rounded-xl border border-[#03291E] shadow-2xs transition-all cursor-pointer text-white"
-              >
-                <div className="w-8 h-8 rounded-lg bg-[#A3D8C2]/20 text-[#A3D8C2] flex items-center justify-center">
-                  <ClipboardList size={17} />
-                </div>
-                <span className="text-[11px] font-bold text-[#A3D8C2] leading-tight text-center">របាយការណ៍</span>
-              </button>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Main Table Container */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">

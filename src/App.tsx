@@ -11,6 +11,7 @@ import { InventoryProvider } from './contexts/InventoryContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { UserManagementModal } from './components/UserManagementModal';
 import { DashboardView } from './views/DashboardView';
 import { InventoryView } from './views/InventoryView';
@@ -110,7 +111,7 @@ function MainLayout() {
           />
         </div>
         
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 ml-0 lg:-ml-5 mr-0 mt-0 lg:-mt-[11px] bg-[#F4F7F6] print-main-container">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 pb-24 lg:pb-6 ml-0 lg:-ml-5 mr-0 mt-0 lg:-mt-[11px] bg-[#F4F7F6] print-main-container">
           {renderView()}
         </main>
       </div>
@@ -120,7 +121,10 @@ function MainLayout() {
         <UserManagementModal />
       </div>
 
-      <footer className="no-print bg-[#D2EADF] border-t border-[#B8DEC8] py-2 sm:py-2.5 px-3 sm:px-6 flex flex-col sm:flex-row justify-between items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-[#124D3A] shrink-0 text-center sm:text-left">
+      {/* Fixed Mobile Bottom Navigation Bar (< lg) */}
+      <MobileBottomNav currentView={currentView} onNavigate={setCurrentView} />
+
+      <footer className="no-print hidden lg:flex bg-[#D2EADF] border-t border-[#B8DEC8] py-2 sm:py-2.5 px-3 sm:px-6 flex-col sm:flex-row justify-between items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-[#124D3A] shrink-0 text-center sm:text-left">
         <div className="flex items-center space-x-2 sm:space-x-4">
           <span>Version 2.4.0-stable</span>
           <span className="text-[#8BCAAD]">|</span>
