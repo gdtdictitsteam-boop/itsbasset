@@ -169,6 +169,133 @@ export interface InsertItemResult {
   savedToSupabase: boolean;
 }
 
+export const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+/**
+ * Validate uploaded file against allowed extensions (.pdf, .jpg, .jpeg, .png, .webp)
+ * and maximum file size of 5MB (5 * 1024 * 1024 bytes).
+ */
+export function validateUploadFile(
+  file: File,
+  options?: { allowPdf?: boolean }
+): { valid: boolean; errorKh?: string } {
+  const allowPdf = options?.allowPdf !== false;
+  const allowedExtensions = allowPdf
+    ? ['.pdf', '.jpg', '.jpeg', '.png', '.webp']
+    : ['.jpg', '.jpeg', '.png', '.webp'];
+  const allowedMimeTypes = allowPdf
+    ? ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    : ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
+  const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '');
+  const mime = (file.type || '').toLowerCase();
+
+  if (!allowedExtensions.includes(ext) || (mime && !allowedMimeTypes.includes(mime))) {
+    const allowedText = allowPdf ? 'PDF, JPG, JPEG, PNG ឬ WEBP' : 'JPG, JPEG, PNG ឬ WEBP';
+    return {
+      valid: false,
+      errorKh: `ប្រភេទឯកសារមិនត្រឹមត្រូវ! អនុញ្ញាតតែប្រភេទ ${allowedText} ប៉ុណ្ណោះ។`,
+    };
+  }
+
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    return {
+      valid: false,
+      errorKh: `ទំហំឯកសារធំពេក (${fileSizeMB} MB)! អនុញ្ញាតទំហំអតិបរមាត្រឹមតែ 5MB ប៉ុណ្ណោះ។`,
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * 100% Read-Only Full System Data Backup (CentralAdmin only)
+ * Exports items, inventory across all branches/HQ, locations, and audit trail transactions
+ * into a downloadable JSON file: GDT_Inventory_Backup_YYYY-MM-DD.json
+ */
+export async function downloadFullSystemBackupJson(fallbackData?: {
+  items?: any[];
+  inventory?: any[];
+  locations?: any[];
+  transactions?: any[];
+}): Promise<{ success: boolean; fileName: string; counts: { items: number; inventory: number; locations: number; transactions: number } }> {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const fileName = `GDT_Inventory_Backup_${todayStr}.json`;
+
+  let itemsData: any[] = fallbackData?.items || [];
+  let inventoryData: any[] = fallbackData?.inventory || [];
+  let locationsData: any[] = fallbackData?.locations || [];
+  let transactionsData: any[] = fallbackData?.transactions || [];
+
+  if (isSupabaseConfigured()) {
+    try {
+      const [itemsRes, invRes, locRes, txRes] = await Promise.all([
+        supabase.from('items').select('*').order('code', { ascending: true }),
+        supabase.from('inventory').select('*'),
+        supabase.from('locations').select('*'),
+        supabase.from('transactions').select('*').order('date', { ascending: false }),
+      ]);
+
+      if (!itemsRes.error && Array.isArray(itemsRes.data) && itemsRes.data.length > 0) {
+        itemsData = itemsRes.data;
+      }
+      if (!invRes.error && Array.isArray(invRes.data) && invRes.data.length > 0) {
+        inventoryData = invRes.data;
+      }
+      if (!locRes.error && Array.isArray(locRes.data) && locRes.data.length > 0) {
+        locationsData = locRes.data;
+      }
+      if (!txRes.error && Array.isArray(txRes.data) && txRes.data.length > 0) {
+        transactionsData = txRes.data;
+      }
+    } catch {
+      // Gracefully fall back to in-memory context data if network query fails
+    }
+  }
+
+  const backupPayload = {
+    metadata: {
+      system: 'GDT Inventory Management System',
+      organization: 'អគ្គនាយកដ្ឋានពន្ធដារ - នាយកដ្ឋានបច្ចេកវិទ្យាព័ត៌មាន',
+      backup_date: new Date().toISOString(),
+      backup_mode: 'READ_ONLY_FULL_SNAPSHOT',
+      record_counts: {
+        items: itemsData.length,
+        inventory: inventoryData.length,
+        locations: locationsData.length,
+        transactions: transactionsData.length,
+      },
+    },
+    locations: locationsData,
+    items: itemsData,
+    inventory: inventoryData,
+    transactions: transactionsData,
+  };
+
+  const jsonString = JSON.stringify(backupPayload, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', fileName);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  return {
+    success: true,
+    fileName,
+    counts: {
+      items: itemsData.length,
+      inventory: inventoryData.length,
+      locations: locationsData.length,
+      transactions: transactionsData.length,
+    },
+  };
+}
+
 /**
  * Upload an item image file to the Supabase Storage bucket 'item_images'
  * and retrieve the permanent public URL.
@@ -178,6 +305,15 @@ export async function uploadItemImageToStorage(file: File): Promise<{
   error: any;
   errorMessage?: string;
 }> {
+  const fileCheck = validateUploadFile(file, { allowPdf: true });
+  if (!fileCheck.valid) {
+    return {
+      publicUrl: null,
+      error: new Error(fileCheck.errorKh || 'Invalid file'),
+      errorMessage: fileCheck.errorKh,
+    };
+  }
+
   if (!isSupabaseConfigured()) {
     return {
       publicUrl: null,

@@ -3,7 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, downloadFullSystemBackupJson } from '../lib/supabase';
 import { Item, InventoryItem, Location } from '../types';
 import ExcelJS from 'exceljs';
 import gdtLogo from '../gdtlogo.png';
@@ -19,7 +19,9 @@ import {
   Table2,
   LayoutList,
   Wrench,
-  PackageCheck
+  PackageCheck,
+  Database,
+  Loader2
 } from 'lucide-react';
 
 // Part 1: ប្រភេទទី១៖ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់ - Tools & Technical Equipment) — 11 Columns
@@ -178,6 +180,7 @@ export function ExecutiveReportView() {
   const [dbInventory, setDbInventory] = useState<any[]>([]);
   const [dbTransactions, setDbTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isBackingUp, setIsBackingUp] = useState<boolean>(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
   // Sync with global header location if changed
@@ -1892,6 +1895,41 @@ export function ExecutiveReportView() {
               <RefreshCw className={`w-4 h-4 shrink-0 ${loading ? 'animate-spin text-[#05402D]' : ''}`} />
               <span>ធ្វើបច្ចុប្បន្នភាព</span>
             </button>
+
+            {isCentralAdmin && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (isBackingUp) return;
+                  setIsBackingUp(true);
+                  try {
+                    await downloadFullSystemBackupJson({
+                      items: unifiedItems,
+                      inventory: unifiedInventory,
+                      locations: unifiedLocations,
+                      transactions: unifiedTransactions,
+                    });
+                  } finally {
+                    setIsBackingUp(false);
+                  }
+                }}
+                disabled={isBackingUp}
+                className="flex-1 sm:flex-none justify-center inline-flex items-center gap-2 px-3.5 py-2.5 min-h-[42px] rounded-xl text-xs font-bold text-slate-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                title="ទាញយកទិន្នន័យបម្រុងទុកទាំងអស់នៃប្រព័ន្ធ (Read-Only JSON Snapshot)"
+              >
+                {isBackingUp ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-800 shrink-0" />
+                    <span>កំពុងរក្សាទុក...</span>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>💾 បម្រុងទុកទិន្នន័យប្រព័ន្ធ (Backup JSON/Excel)</span>
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               type="button"

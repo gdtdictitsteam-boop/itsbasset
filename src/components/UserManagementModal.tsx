@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
-import { supabase, isSupabaseConfigured, getSupabaseConfig } from '../lib/supabase';
+import { useInventoryContext } from '../contexts/InventoryContext';
+import { supabase, isSupabaseConfigured, getSupabaseConfig, downloadFullSystemBackupJson } from '../lib/supabase';
 import { UserProfile } from '../types';
 import { 
   Settings, 
@@ -289,6 +290,7 @@ $$;
 export function UserManagementModal() {
   const auth = useAuth();
   const locationCtx = useLocationContext();
+  const inventoryCtx = useInventoryContext();
 
   const isSettingsOpen = Boolean(auth?.isSettingsOpen);
   const setIsSettingsOpen = auth?.setIsSettingsOpen;
@@ -332,6 +334,8 @@ export function UserManagementModal() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const submitLockRef = useRef(false);
 
   // Form fields for editing/creating
   const [formFullName, setFormFullName] = useState('');
@@ -448,9 +452,10 @@ export function UserManagementModal() {
   // Direct Save Handler updating `public.user_profiles` in Supabase Database
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLockRef.current || isSaving) return;
 
     if (!isCentralAdmin) {
-      alert('សិទ្ធិត្រូវបានបដិសេធ៖ មានតែគណនី CentralAdmin ប៉ុណ្ណោះដែលអាចកែប្រែព័ត៌មានមន្ត្រីបាន!');
+      setErrorMessage('សិទ្ធិត្រូវបានបដិសេធ៖ មានតែគណនី CentralAdmin ប៉ុណ្ណោះដែលអាចកែប្រែព័ត៌មានមន្ត្រីបាន!');
       return;
     }
 
@@ -463,6 +468,7 @@ export function UserManagementModal() {
       return;
     }
 
+    submitLockRef.current = true;
     const setSaving = setIsSaving;
     const newPassword = formPassword;
     const setNewPassword = setFormPassword;
@@ -661,12 +667,35 @@ export function UserManagementModal() {
       alert('មានបញ្ហាក្នុងការរក្សាទុក៖ ' + (err.message || err));
       setErrorMessage(err?.message || 'មានបញ្ហាក្នុងការរក្សាទុក');
     } finally {
+      submitLockRef.current = false;
       setSaving(false);
       setTimeout(() => setSuccessMessage(null), 5000);
     }
   };
 
   const handleSaveForm = handleSaveUser;
+
+  const handleBackupSystemData = async () => {
+    if (!isCentralAdmin || isBackingUp) return;
+    setIsBackingUp(true);
+    setErrorMessage(null);
+    try {
+      const res = await downloadFullSystemBackupJson({
+        items: inventoryCtx?.items || [],
+        inventory: inventoryCtx?.inventory || [],
+        locations: safeBranches,
+        transactions: inventoryCtx?.transactions || [],
+      });
+      setSuccessMessage(
+        `បានទាញយកឯកសារបម្រុងទុក "${res.fileName}" ជោគជ័យ! (សម្ភារៈ: ${res.counts.items}, ស្តុក: ${res.counts.inventory}, ប្រតិបត្តិការ: ${res.counts.transactions})`
+      );
+      setTimeout(() => setSuccessMessage(null), 6000);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'មានបញ្ហាក្នុងការបម្រុងទុកទិន្នន័យប្រព័ន្ធ');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(SUPABASE_AUTH_USERS_SQL);
@@ -735,9 +764,30 @@ export function UserManagementModal() {
           </div>
         </div>
 
-        {/* Info Banner for RBAC Role Counts */}
-        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-end gap-3 text-xs text-[#1E6047] shrink-0">
-          <div className="flex items-center gap-2">
+        {/* Info Banner for RBAC Role Counts & One-Click System Backup */}
+        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-[#1E6047] shrink-0">
+          {isCentralAdmin && (
+            <button
+              type="button"
+              onClick={handleBackupSystemData}
+              disabled={isBackingUp}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#03291E] hover:bg-[#1E6047] text-[#A3D8C2] hover:text-white border border-emerald-800 shadow-2xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              title="ទាញយកទិន្នន័យបម្រុងទុកទាំងអស់នៃប្រព័ន្ធ (Read-Only JSON Snapshot)"
+            >
+              {isBackingUp ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>កំពុងរក្សាទុក...</span>
+                </>
+              ) : (
+                <>
+                  <Database size={13} />
+                  <span>💾 បម្រុងទុកទិន្នន័យប្រព័ន្ធ (Backup JSON/Excel)</span>
+                </>
+              )}
+            </button>
+          )}
+          <div className="flex items-center gap-2 ml-auto">
             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
               <ShieldCheck size={12} className="mr-1" /> CentralAdmin: {centralAdminCount}
             </span>
@@ -987,10 +1037,19 @@ export function UserManagementModal() {
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="w-full sm:w-auto min-h-[42px] flex items-center justify-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="w-full sm:w-auto min-h-[42px] flex items-center justify-center space-x-1.5 bg-[#03291E] hover:bg-[#1E6047] text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    <Save size={15} />
-                    <span>{isSaving ? 'កំពុងរក្សាទុក...' : 'រក្សាទុកទិន្នន័យ (Save)'}</span>
+                    {isSaving ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin" />
+                        <span>កំពុងរក្សាទុក...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save size={15} />
+                        <span>រក្សាទុកទិន្នន័យ (Save)</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

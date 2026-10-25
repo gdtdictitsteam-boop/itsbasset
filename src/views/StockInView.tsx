@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { useLocationContext, formatLocationOption, getActiveWarehouseLocation } from '../contexts/LocationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   PlusSquare, Check, X, AlertTriangle, ArrowRight, Package, 
-  Building2, TrendingUp, ExternalLink, CheckCircle2, RefreshCw, History
+  Building2, TrendingUp, ExternalLink, CheckCircle2, RefreshCw, History, Loader2
 } from 'lucide-react';
 import { ItemAvatar } from '../components/ItemAvatar';
 
@@ -19,6 +19,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
   const { items, locations, inventory, recordStockIn } = useInventoryContext();
   const { setSelectedLocationId, selectedLocation: globalSelectedLoc } = useLocationContext();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
   const [notice, setNotice] = useState<{ 
     type: 'success' | 'error'; 
@@ -105,7 +106,7 @@ export function StockInView({ onNavigate }: StockInViewProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || isSubmittedSuccess) return;
+    if (submitLockRef.current || isSubmitting || isSubmittedSuccess) return;
 
     if (!selectedItemId) {
       setNotice({ type: 'error', message: 'សូមជ្រើសរើសសម្ភារៈដែលត្រូវបញ្ចូលស្តុក!' });
@@ -115,11 +116,12 @@ export function StockInView({ onNavigate }: StockInViewProps) {
       setNotice({ type: 'error', message: 'សូមជ្រើសរើសទីតាំងដែលត្រូវបញ្ចូលស្តុក!' });
       return;
     }
-    if (inputQuantity <= 0) {
+    if (!inputQuantity || Number(inputQuantity) <= 0) {
       setNotice({ type: 'error', message: 'ចំនួនបញ្ចូលត្រូវតែធំជាង ០!' });
       return;
     }
 
+    submitLockRef.current = true;
     setIsSubmitting(true);
     setNotice(null);
 
@@ -127,15 +129,19 @@ export function StockInView({ onNavigate }: StockInViewProps) {
     const savedLocation = selectedLocation;
     const savedQty = inputQuantity;
 
-    const res = await recordStockIn({
-      locationId: selectedLocId,
-      itemId: selectedItemId,
-      quantity: inputQuantity,
-      officerName: officerName.trim() || user?.fullName || 'Admin-GDT',
-      purpose: purpose.trim() || 'បញ្ចូលស្តុកថ្មី'
-    });
-
-    setIsSubmitting(false);
+    let res: { success: boolean; message: string; newQuantity?: number };
+    try {
+      res = await recordStockIn({
+        locationId: selectedLocId,
+        itemId: selectedItemId,
+        quantity: Number(inputQuantity),
+        officerName: officerName.trim() || user?.fullName || 'Admin-GDT',
+        purpose: purpose.trim() || 'បញ្ចូលស្តុកថ្មី'
+      });
+    } finally {
+      submitLockRef.current = false;
+      setIsSubmitting(false);
+    }
 
     if (res.success) {
       setIsSubmittedSuccess(true);
@@ -439,8 +445,8 @@ export function StockInView({ onNavigate }: StockInViewProps) {
             >
               {isSubmitting ? (
                 <>
-                  <RefreshCw size={16} className="animate-spin" />
-                  <span>កំពុងបញ្ចូលស្តុក...</span>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>កំពុងរក្សាទុក...</span>
                 </>
               ) : (
                 <>

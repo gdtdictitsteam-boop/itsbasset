@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { useLocationContext, formatLocationOption, getActiveWarehouseLocation } from '../contexts/LocationContext';
 import { useAuth } from '../contexts/AuthContext';
-import { MinusCircle, Check, X, AlertTriangle } from 'lucide-react';
+import { MinusCircle, Check, X, AlertTriangle, Loader2 } from 'lucide-react';
 
 export function StockOutView() {
   const { t, language } = useLanguage();
@@ -11,6 +11,7 @@ export function StockOutView() {
   const { items, locations, inventory, recordStockOut } = useInventoryContext();
   const { selectedLocation: globalSelectedLoc } = useLocationContext();
   const [loading, setLoading] = useState(false);
+  const submitLockRef = useRef(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedLocId, setSelectedLocId] = useState('');
@@ -59,6 +60,7 @@ export function StockOutView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLockRef.current || loading) return;
     setNotice(null);
 
     const form = e.target as HTMLFormElement;
@@ -75,11 +77,11 @@ export function StockOutView() {
       setNotice({ type: 'error', message: 'សូមជ្រើសរើសទីតាំង!' });
       return;
     }
-    if (quantity <= 0) {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
       setNotice({ type: 'error', message: 'ចំនួនដកចេញត្រូវតែធំជាង ០!' });
       return;
     }
-    if (quantity > availableStock) {
+    if (availableStock <= 0 || quantity > availableStock) {
       setNotice({ 
         type: 'error', 
         message: `ស្តុកនៅទីតាំងនេះមិនគ្រប់គ្រាន់ទេ! (មានក្នុងស្តុក: ${availableStock} ${selectedItem?.unit || 'គ្រឿង'}, ស្នើសុំដក: ${quantity} ${selectedItem?.unit || 'គ្រឿង'})` 
@@ -87,17 +89,22 @@ export function StockOutView() {
       return;
     }
 
+    submitLockRef.current = true;
     setLoading(true);
 
-    const res = await recordStockOut({
-      locationId,
-      itemId: selectedItemId,
-      quantity,
-      officerName: officerName || user?.fullName || 'Admin-GDT',
-      purpose: purpose || 'ដកចេញពីស្តុក'
-    });
-
-    setLoading(false);
+    let res: { success: boolean; message: string };
+    try {
+      res = await recordStockOut({
+        locationId,
+        itemId: selectedItemId,
+        quantity,
+        officerName: officerName || user?.fullName || 'Admin-GDT',
+        purpose: purpose || 'ដកចេញពីស្តុក'
+      });
+    } finally {
+      submitLockRef.current = false;
+      setLoading(false);
+    }
 
     if (res.success) {
       setNotice({ type: 'success', message: res.message });
@@ -239,15 +246,12 @@ export function StockOutView() {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full sm:w-auto px-8 py-2.5 min-h-[44px] bg-[#900033] text-white rounded-lg text-sm font-bold shadow-md hover:bg-[#700028] transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-8 py-2.5 min-h-[44px] bg-[#900033] text-white rounded-lg text-sm font-bold shadow-md hover:bg-[#700028] transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <>
-                  <svg className="animate-spin -ml-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  កំពុងដំណើរការ...
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>កំពុងរក្សាទុក...</span>
                 </>
               ) : t.confirmDeduct}
             </button>

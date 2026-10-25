@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
@@ -21,7 +21,8 @@ import {
   CheckCircle2,
   FileText,
   User,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
 
 export function AdjustmentView() {
@@ -86,6 +87,7 @@ export function AdjustmentView() {
 
   // Status & Notifications
   const [loading, setLoading] = useState<boolean>(false);
+  const submitLockRef = useRef(false);
   const [notice, setNotice] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -161,6 +163,7 @@ export function AdjustmentView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLockRef.current || loading) return;
     const effectiveLocationId = isBranchUser && assignedBranchLocation ? assignedBranchLocation.id : selectedLocId;
 
     if (!selectedItemId) {
@@ -172,10 +175,11 @@ export function AdjustmentView() {
       return;
     }
     if (actualQuantity === '' || Number(actualQuantity) < 0) {
-      setNotice({ type: 'error', message: 'សូមបញ្ចូលចំនួនស្តុកជាក់ស្តែងឱ្យបានត្រឹមត្រូវ (&ge; 0)!' });
+      setNotice({ type: 'error', message: 'សូមបញ្ចូលចំនួនស្តុកជាក់ស្តែងឱ្យបានត្រឹមត្រូវ (≥ 0)!' });
       return;
     }
 
+    submitLockRef.current = true;
     setLoading(true);
     setNotice(null);
 
@@ -207,6 +211,7 @@ export function AdjustmentView() {
       console.error('Error submitting adjustment:', err);
       setNotice({ type: 'error', message: err?.message || 'មានបញ្ហាបរាជ័យក្នុងការកែតម្រូវស្តុក!' });
     } finally {
+      submitLockRef.current = false;
       setLoading(false);
     }
   };
@@ -538,15 +543,12 @@ export function AdjustmentView() {
             <button
               type="submit"
               disabled={loading}
-              className="px-7 py-2.5 min-h-[44px] bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
+              className="px-7 py-2.5 min-h-[44px] bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer"
             >
               {loading ? (
                 <>
-                  <svg className="animate-spin -ml-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>កំពុងកែតម្រូវ...</span>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>កំពុងរក្សាទុក...</span>
                 </>
               ) : (
                 <>

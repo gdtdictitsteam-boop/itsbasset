@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useInventoryContext, isHqLocationOrRow } from '../contexts/InventoryContext';
 import { formatLocationOption } from '../contexts/LocationContext';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, validateUploadFile } from '../lib/supabase';
 import { 
   ArrowRightLeft, 
   Check, 
@@ -28,7 +28,8 @@ import {
   Info,
   Calendar,
   User,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 
 export function HandoverView() {
@@ -47,6 +48,7 @@ export function HandoverView() {
 
   // Loading & Notification States
   const [loading, setLoading] = useState(false);
+  const submitLockRef = useRef(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -157,7 +159,7 @@ export function HandoverView() {
     return getAvailableStock(reqItemId, defaultHqLocation.id);
   }, [reqItemId, defaultHqLocation, inventory, items, locations]);
 
-  // File Upload Security Check
+  // File Upload Security Check (.pdf, .jpg, .jpeg, .png, .webp & max 5MB)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFileValidationError(null);
     const file = e.target.files?.[0];
@@ -167,24 +169,9 @@ export function HandoverView() {
       return;
     }
 
-    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
-    const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-
-    const isMimeValid = allowedMimeTypes.includes(file.type.toLowerCase());
-    const isExtValid = allowedExtensions.includes(fileExtension);
-
-    if (!isMimeValid || !isExtValid) {
-      setFileValidationError('ប្រភេទឯកសារមិនត្រឹមត្រូវ! អនុញ្ញាតតែប្រភេទ PDF, JPG, ឬ PNG ប៉ុណ្ណោះ (Invalid format)');
-      setSelectedFile(null);
-      e.target.value = '';
-      return;
-    }
-
-    const MAX_SIZE_BYTES = 5 * 1024 * 1024;
-    if (file.size > MAX_SIZE_BYTES) {
-      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      setFileValidationError(`ទំហំឯកសារធំពេក (${fileSizeMB} MB)! ទំហំអតិបរមាអនុញ្ញាតត្រឹមតែ 5MB ប៉ុណ្ណោះ (Max size 5MB)`);
+    const validation = validateUploadFile(file, { allowPdf: true });
+    if (!validation.valid) {
+      setFileValidationError(validation.errorKh || 'ប្រភេទ ឬទំហំឯកសារមិនត្រឹមត្រូវ!');
       setSelectedFile(null);
       e.target.value = '';
       return;
@@ -232,13 +219,15 @@ export function HandoverView() {
   // Handle Handover Dispatch Submission (From HQ to Branch)
   const handleHandoverSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLockRef.current || loading) return;
+
     setSubmitSuccess(false);
     setSubmitError(null);
     setUploadedDocUrl(null);
 
     // Validation
     if (!fromLocationId || !toBranchId || !selectedItemId || !quantity || Number(quantity) <= 0) {
-      setSubmitError('សូមបំពេញព័ត៌មានចាំបាច់ទាំងអស់ឱ្យបានត្រឹមត្រូវ!');
+      setSubmitError('សូមបំពេញព័ត៌មានចាំបាច់ទាំងអស់ឱ្យបានត្រឹមត្រូវ (ចំនួនត្រូវតែធំជាង ០)!');
       return;
     }
 
@@ -249,11 +238,12 @@ export function HandoverView() {
 
     // Stock check against live calculated available stock
     const currentStock = getAvailableStock(selectedItemId, fromLocationId);
-    if (Number(quantity) > currentStock) {
+    if (currentStock <= 0 || Number(quantity) > currentStock) {
       setSubmitError(`បរាជ័យ! ចំនួនស្នើសុំ (${quantity}) ច្រើនជាងចំនួនស្តុកដែលមាន (${currentStock})`);
       return;
     }
 
+    submitLockRef.current = true;
     setLoading(true);
 
     try {
@@ -313,6 +303,7 @@ export function HandoverView() {
       console.error('Handover submit error:', err);
       setSubmitError(err.message || 'មានបញ្ហាបរាជ័យក្នុងការអនុវត្តប្រតិបត្តិការផ្ទេរស្តុក!');
     } finally {
+      submitLockRef.current = false;
       setLoading(false);
       setUploadProgress(null);
     }
@@ -321,15 +312,18 @@ export function HandoverView() {
   // Handle Material Requisition Submission (From Branch to HQ)
   const handleRequisitionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLockRef.current || loading) return;
+
     setSubmitSuccess(false);
     setSubmitError(null);
     setUploadedDocUrl(null);
 
     if (!reqBranchId || !reqItemId || !reqQuantity || Number(reqQuantity) <= 0) {
-      setSubmitError('សូមបំពេញសាខាស្នើសុំ សម្ភារៈ និងចំនួនស្នើសុំឱ្យបានត្រឹមត្រូវ!');
+      setSubmitError('សូមបំពេញសាខាស្នើសុំ សម្ភារៈ និងចំនួនស្នើសុំឱ្យបានត្រឹមត្រូវ (ចំនួនត្រូវតែធំជាង ០)!');
       return;
     }
 
+    submitLockRef.current = true;
     setLoading(true);
 
     try {
@@ -343,7 +337,6 @@ export function HandoverView() {
       setUploadProgress('កំពុងបញ្ជូនពាក្យស្នើសុំសម្ភារៈទៅកាន់ស្តុកកណ្តាល HQ...');
 
       const hqLoc = defaultHqLocation;
-      const branchLoc = locations.find(l => l.id === reqBranchId);
       const reqItemObj = items.find(i => String(i.id) === String(reqItemId) || String(i.code)?.toUpperCase() === String(reqItemId)?.toUpperCase());
 
       const fullPurpose = `[ពាក្យស្នើសុំសម្ភារៈ] អាទិភាព: ${reqPriority === 'URGENT' ? 'បន្ទាន់ខ្លាំង 🚨' : (reqPriority === 'MEDIUM' ? 'មធ្យម ⚠️' : 'ធម្មតា')} | ទូរស័ព្ទ: ${reqPhone || 'N/A'} | មូលហេតុ: ${reqReason || 'ស្នើសុំសម្ភារៈសម្រាប់ការងារបច្ចេកទេស'}`;
@@ -380,6 +373,7 @@ export function HandoverView() {
       console.error('Requisition submit error:', err);
       setSubmitError(err.message || 'មានបញ្ហាបរាជ័យក្នុងការដាក់ពាក្យស្នើសុំសម្ភារៈ!');
     } finally {
+      submitLockRef.current = false;
       setLoading(false);
       setUploadProgress(null);
     }
@@ -750,14 +744,14 @@ export function HandoverView() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase flex items-center justify-between">
                   <span>ឯកសារយោងផ្លូវការ (Supporting Document)</span>
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">PDF, JPG, PNG (&le; 5MB)</span>
+                  <span className="text-[10px] font-mono text-slate-400 font-bold">PDF, JPG, PNG, WEBP (&le; 5MB)</span>
                 </label>
 
                 {!selectedFile ? (
                   <div className="border-2 border-dashed border-slate-200 hover:border-emerald-600 bg-slate-50 hover:bg-emerald-50/20 transition-all rounded-2xl p-4 text-center cursor-pointer group relative">
                     <input
                       type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       onChange={handleFileChange}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
@@ -770,7 +764,7 @@ export function HandoverView() {
                           ចុចជ្រើសរើសឯកសារ ឬ ទម្លាក់ឯកសារនៅទីនេះ
                         </span>
                         <span className="text-[11px] text-slate-400 block mt-0.5">
-                          លិខិតផ្ទេរស្តុក ឬប័ណ្ណស្នើសុំផ្លូវការ (PDF, JPG, PNG ត្រឹមតែ 5MB)
+                          លិខិតផ្ទេរស្តុក ឬប័ណ្ណស្នើសុំផ្លូវការ (PDF, JPG, PNG, WEBP ត្រឹមតែ 5MB)
                         </span>
                       </div>
                     </div>
@@ -853,15 +847,12 @@ export function HandoverView() {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="px-7 py-2.5 min-h-[44px] bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
+                className="px-7 py-2.5 min-h-[44px] bg-[#03291E] hover:bg-[#1E6047] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <svg className="animate-spin -ml-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>កំពុងផ្ទេរស្តុក...</span>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>កំពុងរក្សាទុក...</span>
                   </>
                 ) : (
                   <span className="flex items-center gap-1.5">
@@ -1022,14 +1013,14 @@ export function HandoverView() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase flex items-center justify-between">
                   <span>ភ្ជាប់លិខិតស្នើសុំផ្លូវការ (Requisition Form)</span>
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">PDF, JPG, PNG (&le; 5MB)</span>
+                  <span className="text-[10px] font-mono text-slate-400 font-bold">PDF, JPG, PNG, WEBP (&le; 5MB)</span>
                 </label>
 
                 {!selectedFile ? (
                   <div className="border-2 border-dashed border-slate-200 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/20 transition-all rounded-2xl p-4 text-center cursor-pointer group relative">
                     <input
                       type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       onChange={handleFileChange}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
@@ -1042,7 +1033,7 @@ export function HandoverView() {
                           ចុចជ្រើសរើសលិខិតស្នើសុំ ឬទម្លាក់ឯកសារនៅទីនេះ
                         </span>
                         <span className="text-[11px] text-slate-400 block mt-0.5">
-                          លិខិតស្នើសុំដែលមានការចុះហត្ថលេខាពីប្រធានសាខា (PDF, JPG, PNG)
+                          លិខិតស្នើសុំដែលមានការចុះហត្ថលេខាពីប្រធានសាខា (PDF, JPG, PNG, WEBP ត្រឹមតែ 5MB)
                         </span>
                       </div>
                     </div>
@@ -1099,15 +1090,12 @@ export function HandoverView() {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="px-7 py-2.5 min-h-[44px] bg-blue-800 hover:bg-blue-900 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
+                className="px-7 py-2.5 min-h-[44px] bg-blue-800 hover:bg-blue-900 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <svg className="animate-spin -ml-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>កំពុងបញ្ជូនសំណើ...</span>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>កំពុងរក្សាទុក...</span>
                   </>
                 ) : (
                   <>

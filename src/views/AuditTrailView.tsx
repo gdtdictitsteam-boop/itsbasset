@@ -40,6 +40,10 @@ export function AuditTrailView() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
+  // Client-Side Pagination States
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number | 'ALL'>(25);
+
   // Fetch Transactions with RLS compliance
   const fetchTransactions = async () => {
     setLoading(true);
@@ -150,6 +154,27 @@ export function AuditTrailView() {
       return matchesQuery && matchesType && matchesLocation && matchesDate;
     });
   }, [transactions, searchQuery, selectedType, selectedLocation, startDate, endDate, locations]);
+
+  // Reset pagination to page 1 whenever filters or page size change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedType, selectedLocation, startDate, endDate, itemsPerPage]);
+
+  // Calculate Paginated Slice for On-Screen Table (Export & Print still use full filteredTransactions)
+  const totalFilteredCount = filteredTransactions.length;
+  const totalPages = useMemo(() => {
+    if (itemsPerPage === 'ALL' || totalFilteredCount === 0) return 1;
+    return Math.max(1, Math.ceil(totalFilteredCount / itemsPerPage));
+  }, [totalFilteredCount, itemsPerPage]);
+
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = itemsPerPage === 'ALL' ? 0 : (safeCurrentPage - 1) * itemsPerPage;
+  const endIndex = itemsPerPage === 'ALL' ? totalFilteredCount : Math.min(startIndex + itemsPerPage, totalFilteredCount);
+
+  const paginatedTransactions = useMemo(() => {
+    if (itemsPerPage === 'ALL') return filteredTransactions;
+    return filteredTransactions.slice(startIndex, endIndex);
+  }, [filteredTransactions, itemsPerPage, startIndex, endIndex]);
 
   // Export to Excel (CSV with UTF-8 BOM for Khmer support)
   const exportToExcel = () => {
@@ -394,7 +419,7 @@ export function AuditTrailView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-800">
-                  {filteredTransactions.map((tx, idx) => {
+                  {paginatedTransactions.map((tx, idx) => {
                     const isHandover = tx.type === 'HANDOVER';
                     const isStockIn = tx.type === 'STOCK_IN';
                     const isStockOut = tx.type === 'STOCK_OUT';
@@ -402,10 +427,11 @@ export function AuditTrailView() {
                     const docUrl = extractDocUrl(tx);
                     const fromLoc = resolveLocationName(tx.from_location, tx.from_location_id);
                     const toLoc = resolveLocationName(tx.to_location, tx.to_location_id);
+                    const rowNumber = startIndex + idx + 1;
 
                     return (
-                      <tr key={tx.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-4 font-mono text-slate-400 text-[11px]">{idx + 1}</td>
+                      <tr key={tx.id || rowNumber} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4 font-mono text-slate-400 text-[11px]">{rowNumber}</td>
                         <td className="py-3.5 px-4 font-mono text-[11px] whitespace-nowrap text-slate-600">
                           {new Date(tx.date || tx.created_at).toLocaleString('km-KH')}
                         </td>
@@ -479,6 +505,59 @@ export function AuditTrailView() {
                   })}
                 </tbody>
               </table>
+
+              {/* Smart Client-Side Pagination Footer */}
+              <div className="bg-slate-50/90 border-t border-slate-200/80 px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-slate-600 font-semibold">
+                  <span>
+                    បង្ហាញពី <strong className="text-slate-900 font-mono">{totalFilteredCount > 0 ? startIndex + 1 : 0}</strong> ដល់{' '}
+                    <strong className="text-slate-900 font-mono">{endIndex}</strong> នៃ{' '}
+                    <strong className="text-emerald-800 font-mono">{totalFilteredCount}</strong> ប្រតិបត្តិការ
+                  </span>
+                  <span className="text-slate-300 hidden sm:inline">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500">បង្ហាញក្នុង ១ ទំព័រ៖</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setItemsPerPage(val === 'ALL' ? 'ALL' : Number(val));
+                      }}
+                      className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 cursor-pointer"
+                    >
+                      <option value={25}>25 ជួរដេក</option>
+                      <option value={50}>50 ជួរដេក</option>
+                      <option value={100}>100 ជួរដេក</option>
+                      <option value="ALL">ទាំងអស់ ({totalFilteredCount})</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={safeCurrentPage <= 1 || itemsPerPage === 'ALL'}
+                    className="px-3 py-1.5 min-h-[36px] rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold transition-colors disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    « ទំព័រមុន
+                  </button>
+
+                  <span className="px-3 py-1.5 min-h-[36px] inline-flex items-center rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
+                    ទំព័រទី <strong className="mx-1 font-mono">{safeCurrentPage}</strong> នៃ{' '}
+                    <strong className="ml-1 font-mono">{totalPages}</strong>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={safeCurrentPage >= totalPages || itemsPerPage === 'ALL'}
+                    className="px-3 py-1.5 min-h-[36px] rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold transition-colors disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    ទំព័របន្ទាប់ »
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

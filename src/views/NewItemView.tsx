@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, AlertTriangle, Database, Info } from 'lucide-react';
+import { Image as ImageIcon, PlusCircle, ChevronDown, Check, X, RefreshCw, AlertTriangle, Database, Info, Loader2 } from 'lucide-react';
 
-import { insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured } from '../lib/supabase';
+import { insertItemToSupabase, uploadItemImageToStorage, isSupabaseConfigured, validateUploadFile } from '../lib/supabase';
 import { useInventoryContext } from '../contexts/InventoryContext';
 import { formatLocationOption } from '../contexts/LocationContext';
 
@@ -9,12 +9,14 @@ export function NewItemView() {
   const { refreshInventory, addNewItemToContext, locations } = useInventoryContext();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   const [uploadingImageText, setUploadingImageText] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [category, setCategory] = useState('tools');
   const [materialCode, setMaterialCode] = useState(() => `TOL-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [submitResult, setSubmitResult] = useState<{
     success: boolean;
     savedToSupabase: boolean;
@@ -69,8 +71,17 @@ export function NewItemView() {
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileUploadError(null);
     const file = e.target.files?.[0];
     if (file) {
+      const validation = validateUploadFile(file, { allowPdf: true });
+      if (!validation.valid) {
+        setFileUploadError(validation.errorKh || 'ប្រភេទ ឬទំហំឯកសារមិនត្រឹមត្រូវ!');
+        setSelectedImageFile(null);
+        setImagePreview(null);
+        e.target.value = '';
+        return;
+      }
       setSelectedImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -85,6 +96,7 @@ export function NewItemView() {
     e.preventDefault();
     setSelectedImageFile(null);
     setImagePreview(null);
+    setFileUploadError(null);
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -100,9 +112,17 @@ export function NewItemView() {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
+    setFileUploadError(null);
     
     const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
+    if (file) {
+      const validation = validateUploadFile(file, { allowPdf: true });
+      if (!validation.valid) {
+        setFileUploadError(validation.errorKh || 'ប្រភេទ ឬទំហំឯកសារមិនត្រឹមត្រូវ!');
+        setSelectedImageFile(null);
+        setImagePreview(null);
+        return;
+      }
       setSelectedImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -115,6 +135,7 @@ export function NewItemView() {
   const resetForm = () => {
     setSelectedImageFile(null);
     setImagePreview(null);
+    setFileUploadError(null);
     setUploadingImageText(null);
     setCategory('tools');
     generateRandomCode('tools');
@@ -125,102 +146,116 @@ export function NewItemView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLockRef.current || isSubmitting) return;
+
+    if (selectedImageFile) {
+      const check = validateUploadFile(selectedImageFile, { allowPdf: true });
+      if (!check.valid) {
+        setFileUploadError(check.errorKh || 'ប្រភេទ ឬទំហំឯកសារមិនត្រឹមត្រូវ!');
+        return;
+      }
+    }
+
+    submitLockRef.current = true;
     setIsSubmitting(true);
     setSubmitResult(null);
     setUploadingImageText(null);
 
-    const form = e.target as HTMLFormElement;
-    const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value.trim();
-    const brand = (form.elements.namedItem('brand') as HTMLInputElement).value.trim();
-    const minStock = parseInt((form.elements.namedItem('minStock') as HTMLInputElement).value || '0', 10);
-    const initialStock = parseInt((form.elements.namedItem('initialStock') as HTMLInputElement)?.value || '0', 10);
-    const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement)?.value || '1';
-    const description = (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || '';
-
-    const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
-    const selectedUnit = unitSearch.trim() || 'គ្រឿង';
-
-    let finalImageUrl: string | undefined = undefined;
-    let storageNotice: string | undefined = undefined;
-
-    // 1. Upload Image to Storage if file was provided
-    if (selectedImageFile) {
-      if (isConfigured) {
-        setUploadingImageText('កំពុង Upload រូបភាពសម្ភារទៅកាន់ប្រព័ន្ធទិន្នន័យ...');
-        const uploadRes = await uploadItemImageToStorage(selectedImageFile);
-        if (uploadRes.publicUrl) {
-          finalImageUrl = uploadRes.publicUrl;
-        } else {
-          console.warn('Storage image upload notice:', uploadRes.errorMessage);
-          storageNotice = uploadRes.errorMessage || 'មិនអាច Upload រូបភាពទៅកាន់ប្រព័ន្ធទិន្នន័យបានឡើយ។';
-        }
-      } else {
-        // Local mode preview fallback
-        finalImageUrl = imagePreview || undefined;
-      }
-    }
-
-    setUploadingImageText(null);
-
-    // 2. Send data to Supabase (with image_url)
-    const res = await insertItemToSupabase({
-      code: materialCode,
-      name_kh: materialName,
-      name_en: brand || materialName,
-      category: categoryName,
-      unit: selectedUnit,
-      min_stock: minStock,
-      initial_stock: initialStock,
-      location_id: locationId,
-      remark: description || 'បញ្ចូលសម្ភារថ្មី',
-      recorded_by: 'Admin-GDT',
-      image_url: finalImageUrl,
-    });
-
-    // 3. Add to context and local storage immediately
-    const newItemId = res.item?.id || Math.random().toString(36).substring(7);
-
-    addNewItemToContext({
-      id: newItemId,
-      code: materialCode,
-      name_kh: materialName,
-      name_en: brand || materialName,
-      category: categoryName,
-      unit: selectedUnit,
-      min_stock: minStock,
-      image_url: finalImageUrl || imagePreview || undefined,
-    }, initialStock, locationId);
-
     try {
-      await refreshInventory();
-    } catch (e) {
-      console.warn('Could not refresh inventory context:', e);
-    }
+      const form = e.target as HTMLFormElement;
+      const materialName = (form.elements.namedItem('materialName') as HTMLInputElement).value.trim();
+      const brand = (form.elements.namedItem('brand') as HTMLInputElement).value.trim();
+      const minStock = parseInt((form.elements.namedItem('minStock') as HTMLInputElement).value || '0', 10);
+      const initialStock = parseInt((form.elements.namedItem('initialStock') as HTMLInputElement)?.value || '0', 10);
+      const locationId = (form.elements.namedItem('locationId') as HTMLSelectElement)?.value || '1';
+      const description = (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || '';
 
-    setIsSubmitting(false);
+      const categoryName = category === 'tools' ? 'Tools' : 'Suppliers';
+      const selectedUnit = unitSearch.trim() || 'គ្រឿង';
 
-    if (res.success && res.savedToSupabase) {
-      let successMsg = `រក្សាទុកក្នុងប្រព័ន្ធទិន្នន័យជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`;
-      if (finalImageUrl) {
-        successMsg += ' | រូបភាពត្រូវបាន Upload និងរក្សាទុកក្នុងប្រព័ន្ធទិន្នន័យរួចរាល់។';
+      let finalImageUrl: string | undefined = undefined;
+      let storageNotice: string | undefined = undefined;
+
+      // 1. Upload Image to Storage if file was provided
+      if (selectedImageFile) {
+        if (isConfigured) {
+          setUploadingImageText('កំពុងរក្សាទុក...');
+          const uploadRes = await uploadItemImageToStorage(selectedImageFile);
+          if (uploadRes.publicUrl) {
+            finalImageUrl = uploadRes.publicUrl;
+          } else {
+            console.warn('Storage image upload notice:', uploadRes.errorMessage);
+            storageNotice = uploadRes.errorMessage || 'មិនអាច Upload រូបភាពទៅកាន់ប្រព័ន្ធទិន្នន័យបានឡើយ។';
+          }
+        } else {
+          // Local mode preview fallback
+          finalImageUrl = imagePreview || undefined;
+        }
       }
-      setSubmitResult({
-        success: true,
-        savedToSupabase: true,
-        message: successMsg,
-        details: storageNotice,
+
+      setUploadingImageText(null);
+
+      // 2. Send data to Supabase (with image_url)
+      const res = await insertItemToSupabase({
+        code: materialCode,
+        name_kh: materialName,
+        name_en: brand || materialName,
+        category: categoryName,
+        unit: selectedUnit,
+        min_stock: minStock,
+        initial_stock: initialStock,
+        location_id: locationId,
+        remark: description || 'បញ្ចូលសម្ភារថ្មី',
+        recorded_by: 'Admin-GDT',
+        image_url: finalImageUrl,
       });
-      resetForm();
-    } else {
-      setSubmitResult({
-        success: true,
-        savedToSupabase: false,
-        message: `បានបញ្ចូលសម្ភារៈថ្មីជោគជ័យ! (កូដ: ${materialCode})`,
-        details: isConfigured 
-          ? (res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ដោយសារបញ្ហាភ្ជាប់ប្រព័ន្ធទិន្នន័យ។')
-          : 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ព្រោះប្រព័ន្ធទិន្នន័យមិនទាន់ភ្ជាប់។',
-      });
-      resetForm();
+
+      // 3. Add to context and local storage immediately
+      const newItemId = res.item?.id || Math.random().toString(36).substring(7);
+
+      addNewItemToContext({
+        id: newItemId,
+        code: materialCode,
+        name_kh: materialName,
+        name_en: brand || materialName,
+        category: categoryName,
+        unit: selectedUnit,
+        min_stock: minStock,
+        image_url: finalImageUrl || imagePreview || undefined,
+      }, initialStock, locationId);
+
+      try {
+        await refreshInventory();
+      } catch (e) {
+        console.warn('Could not refresh inventory context:', e);
+      }
+
+      if (res.success && res.savedToSupabase) {
+        let successMsg = `រក្សាទុកក្នុងប្រព័ន្ធទិន្នន័យជោគជ័យ! (Item ID: ${res.item?.id || newItemId})`;
+        if (finalImageUrl) {
+          successMsg += ' | រូបភាពត្រូវបាន Upload និងរក្សាទុកក្នុងប្រព័ន្ធទិន្នន័យរួចរាល់។';
+        }
+        setSubmitResult({
+          success: true,
+          savedToSupabase: true,
+          message: successMsg,
+          details: storageNotice,
+        });
+        resetForm();
+      } else {
+        setSubmitResult({
+          success: true,
+          savedToSupabase: false,
+          message: `បានបញ្ចូលសម្ភារៈថ្មីជោគជ័យ! (កូដ: ${materialCode})`,
+          details: isConfigured 
+            ? (res.errorDetails || storageNotice || 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ដោយសារបញ្ហាភ្ជាប់ប្រព័ន្ធទិន្នន័យ។')
+            : 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុងប្រព័ន្ធ Local Storage ព្រោះប្រព័ន្ធទិន្នន័យមិនទាន់ភ្ជាប់។',
+        });
+        resetForm();
+      }
+    } finally {
+      submitLockRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -318,14 +353,20 @@ export function NewItemView() {
                   <div className="flex flex-wrap text-sm text-gray-600 justify-center">
                     <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-teal-600 hover:text-teal-700 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-600">
                       <span>ជ្រើសរើសរូបភាព</span>
-                      <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*" onChange={handleImageChange} />
+                      <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" onChange={handleImageChange} />
                     </label>
                     <p className="pl-1">ឬអូសទម្លាក់ទីនេះ</p>
                   </div>
-                  <p className="text-xs text-gray-500">PNG, JPG, GIF ទំហំមិនលើសពី 5MB</p>
+                  <p className="text-xs text-gray-500">PNG, JPG, WEBP, PDF ទំហំមិនលើសពី 5MB</p>
                 </div>
               )}
             </div>
+            {fileUploadError && (
+              <div className="mt-2 bg-rose-50 border border-rose-200 text-rose-800 p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle size={15} className="text-rose-600 shrink-0" />
+                <span>{fileUploadError}</span>
+              </div>
+            )}
           </div>
 
           {/* 2-Column Grid */}
@@ -529,15 +570,12 @@ export function NewItemView() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded-lg bg-teal-700 text-white font-semibold hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded-lg bg-teal-700 text-white font-semibold hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
             >
               {isSubmitting ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  {uploadingImageText || 'កំពុងបញ្ចូលទៅក្នុងប្រព័ន្ធទិន្នន័យ...'}
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>{uploadingImageText || 'កំពុងរក្សាទុក...'}</span>
                 </>
               ) : (
                 'រក្សាទុកសម្ភារថ្មី'
