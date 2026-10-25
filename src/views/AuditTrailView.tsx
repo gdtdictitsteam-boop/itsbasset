@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext, formatLocationOption } from '../contexts/LocationContext';
@@ -25,20 +25,71 @@ import {
 
 export function AuditTrailView() {
   const { language } = useLanguage();
-  const { isCentralAdmin, isBranchUser } = useAuth();
-  const { selectedLocationId, locations } = useLocationContext();
+  const { user, isCentralAdmin, isBranchUser, userLocationId, userProfile } = useAuth();
+  const { selectedLocationId, locations, assignedBranchLocation } = useLocationContext();
 
   // State
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
 
+  // Resolve BranchUser's default assigned branch ID
+  const branchUserDefaultLocId = useMemo(() => {
+    if (!isBranchUser) return 'ALL';
+    if (assignedBranchLocation?.id && assignedBranchLocation.id !== 'ALL') {
+      return assignedBranchLocation.id;
+    }
+    const rawLoc = String(
+      userLocationId ||
+      userProfile?.location_id ||
+      (userProfile as any)?.branch_name ||
+      (userProfile as any)?.branch ||
+      ''
+    ).trim();
+    if (rawLoc) {
+      const matched = locations.find(
+        l =>
+          l.id !== 'ALL' &&
+          l.code !== 'ALL' &&
+          (String(l.id) === rawLoc ||
+            String(l.code)?.toUpperCase() === rawLoc.toUpperCase() ||
+            (l.name_kh && l.name_kh.includes(rawLoc)))
+      );
+      if (matched) return matched.id;
+    }
+    if (selectedLocationId && selectedLocationId !== 'ALL') {
+      return selectedLocationId;
+    }
+    return 'ALL';
+  }, [isBranchUser, assignedBranchLocation, userLocationId, userProfile, locations, selectedLocationId]);
+
   // Filter States
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('ALL');
-  const [selectedLocation, setSelectedLocation] = useState<string>('ALL');
+  const [selectedLocation, setSelectedLocation] = useState<string>(() =>
+    isBranchUser && branchUserDefaultLocId !== 'ALL' ? branchUserDefaultLocId : 'ALL'
+  );
+  const hasUserManuallyChangedLocRef = useRef<boolean>(false);
+  const lastUserKeyRef = useRef<string>(`${user?.id || ''}-${user?.email || ''}-${isBranchUser ? 'branch' : 'admin'}`);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+
+  // Auto-populate default branch location on initial open for BranchUser (while allowing manual dropdown changes)
+  useEffect(() => {
+    const currentUserKey = `${user?.id || ''}-${user?.email || ''}-${isBranchUser ? 'branch' : 'admin'}`;
+    if (lastUserKeyRef.current !== currentUserKey) {
+      lastUserKeyRef.current = currentUserKey;
+      hasUserManuallyChangedLocRef.current = false;
+    }
+
+    if (!hasUserManuallyChangedLocRef.current) {
+      if (isBranchUser && branchUserDefaultLocId !== 'ALL') {
+        setSelectedLocation(branchUserDefaultLocId);
+      } else if (isCentralAdmin) {
+        setSelectedLocation('ALL');
+      }
+    }
+  }, [user?.id, user?.email, isBranchUser, isCentralAdmin, branchUserDefaultLocId]);
 
   // Client-Side Pagination States
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -113,6 +164,16 @@ export function AuditTrailView() {
 
   // Filtering Logic
   const filteredTransactions = useMemo(() => {
+    const selectedLocObj =
+      selectedLocation !== 'ALL'
+        ? locations.find(
+            l =>
+              l.id !== 'ALL' &&
+              l.code !== 'ALL' &&
+              (String(l.id) === String(selectedLocation) || String(l.code) === String(selectedLocation))
+          )
+        : null;
+
     return transactions.filter(tx => {
       // 1. Text Search (Item Name, Code, Remark, Officer, Locations)
       const query = searchQuery.toLowerCase();
@@ -129,12 +190,24 @@ export function AuditTrailView() {
       // 2. Transaction Type
       const matchesType = selectedType === 'ALL' || tx.type === selectedType;
 
-      // 3. Location Filter
-      const matchesLocation = selectedLocation === 'ALL' || 
+      // 3. Location Filter (driven directly by the selectedLocation dropdown)
+      const matchesLocation =
+        selectedLocation === 'ALL' ||
         tx.from_location_id === selectedLocation ||
         tx.to_location_id === selectedLocation ||
-        fromLoc.includes(selectedLocation) ||
-        toLoc.includes(selectedLocation);
+        (selectedLocObj &&
+          (String(tx.from_location_id) === String(selectedLocObj.id) ||
+            String(tx.to_location_id) === String(selectedLocObj.id) ||
+            (selectedLocObj.code &&
+              (String(tx.from_location_id || '').toUpperCase() === String(selectedLocObj.code).toUpperCase() ||
+                String(tx.to_location_id || '').toUpperCase() === String(selectedLocObj.code).toUpperCase() ||
+                String(tx.from_location || '').toUpperCase().includes(String(selectedLocObj.code).toUpperCase()) ||
+                String(tx.to_location || '').toUpperCase().includes(String(selectedLocObj.code).toUpperCase()))) ||
+            (selectedLocObj.name_kh &&
+              (fromLoc.includes(selectedLocObj.name_kh.toLowerCase()) ||
+                toLoc.includes(selectedLocObj.name_kh.toLowerCase()))))) ||
+        fromLoc.includes(selectedLocation.toLowerCase()) ||
+        toLoc.includes(selectedLocation.toLowerCase());
 
       // 4. Date Range Filter
       let matchesDate = true;
@@ -351,11 +424,15 @@ export function AuditTrailView() {
               <label className="text-slate-500 font-semibold">ទីតាំងសាខា</label>
               <select
                 value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
+                onChange={(e) => {
+                  hasUserManuallyChangedLocRef.current = true;
+                  setSelectedLocation(e.target.value);
+                }}
+                disabled={false}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[42px] text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 cursor-pointer truncate"
               >
                 <option value="ALL">[ALL] ទីតាំងស្តុករួម (គ្រប់ទីតាំង)</option>
-                {locations.filter(l => l.code !== 'ALL').map(loc => (
+                {locations.filter(l => l.code !== 'ALL' && l.id !== 'ALL').map(loc => (
                   <option key={loc.id} value={loc.id}>
                     {formatLocationOption(loc, language)}
                   </option>
