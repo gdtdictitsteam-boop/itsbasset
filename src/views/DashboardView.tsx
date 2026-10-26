@@ -135,136 +135,10 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
 
   return (
     <div className="space-y-3.5 sm:space-y-5 -mt-[5px]">
-      {/* Stat Cards: 2x2 Compact Grid on Mobile, 4 Columns on Desktop */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        {/* Card 1: Total Stock Units */}
-        <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-1">
-            <p className="text-[11px] sm:text-xs font-medium sm:font-bold text-gray-600 sm:text-slate-500 uppercase tracking-wider line-clamp-1">
-              {isBranchView ? 'បរិមាណស្តុកប្រចាំសាខា' : 'បរិមាណស្តុកសរុប (Total Units)'}
-            </p>
-            <div className="p-1 sm:p-1.5 rounded-lg bg-teal-50 text-teal-800 shrink-0">
-              <Boxes size={15} />
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mt-1 sm:mt-2">
-            <h3 className="text-xl sm:text-3xl font-bold sm:font-black text-slate-900 leading-tight">{totalStockUnits.toLocaleString()}</h3>
-            <span className="text-[10px] sm:text-xs text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full font-bold self-start sm:self-auto whitespace-nowrap">
-              {totalItemCount} មុខសម្ភារៈ
-            </span>
-          </div>
-        </div>
-
-        {/* Card 2: If Branch View -> Show In-Stock Items; If Central -> Show HQ Stock */}
-        {isBranchView ? (
-          <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-            <div className="flex items-center justify-between gap-1">
-              <p className="text-[11px] sm:text-xs font-medium sm:font-bold text-gray-600 sm:text-slate-500 uppercase tracking-wider line-clamp-1">មុខសម្ភារៈមានស្តុក (In-Stock)</p>
-              <div className="p-1 sm:p-1.5 rounded-lg bg-emerald-50 text-emerald-800 shrink-0">
-                <CheckCircle2 size={15} />
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mt-1 sm:mt-2">
-              <h3 className="text-xl sm:text-3xl font-bold sm:font-black text-emerald-800 leading-tight">{inStockCount}</h3>
-              <span className="text-[10px] sm:text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold self-start sm:self-auto whitespace-nowrap">
-                ស្តុកគ្រប់គ្រាន់
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-            <div className="flex items-center justify-between gap-1">
-              <p className="text-[11px] sm:text-xs font-medium sm:font-bold text-gray-600 sm:text-slate-500 uppercase tracking-wider line-clamp-1">ស្តុកកណ្តាល HQ (HQ-ITSB)</p>
-              <div className="p-1 sm:p-1.5 rounded-lg bg-emerald-50 text-emerald-800 shrink-0">
-                <Building2 size={15} />
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mt-1 sm:mt-2">
-              <h3 className="text-xl sm:text-3xl font-bold sm:font-black text-emerald-800 leading-tight">{totalHqUnits.toLocaleString()}</h3>
-              <span className="text-[10px] sm:text-xs text-slate-600 font-bold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full self-start sm:self-auto whitespace-nowrap">
-                {totalStockUnits > 0 ? `${Math.round((totalHqUnits / totalStockUnits) * 100)}% នៃស្តុក` : '0%'}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Card 3: If Branch View -> Low stock count; If Central -> Branch stock total */}
-        {isBranchView ? (
-          <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-            <div className="flex items-center justify-between gap-1">
-              <p className="text-[11px] sm:text-xs font-medium sm:font-bold text-gray-600 sm:text-slate-500 uppercase tracking-wider line-clamp-1">ជិតអស់ស្តុក (Low Stock)</p>
-              <div className="p-1 sm:p-1.5 rounded-lg bg-amber-50 text-amber-700 shrink-0">
-                <AlertTriangle size={15} />
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mt-1 sm:mt-2">
-              <h3 className="text-xl sm:text-3xl font-bold sm:font-black text-amber-600 leading-tight">{lowStockCount}</h3>
-              <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-bold self-start sm:self-auto whitespace-nowrap ${
-                lowStockCount > 0 ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-600'
-              }`}>
-                {lowStockCount > 0 ? 'ត្រូវការស្នើសុំបំពេញ' : 'គ្រប់គ្រាន់'}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-            <div className="flex items-center justify-between gap-1">
-              <p className="text-[11px] sm:text-xs font-medium sm:font-bold text-gray-600 sm:text-slate-500 uppercase tracking-wider line-clamp-1">ស្តុកតាមសាខា (Branches)</p>
-              <div className="p-1 sm:p-1.5 rounded-lg bg-blue-50 text-blue-800 shrink-0">
-                <MapPin size={15} />
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mt-1 sm:mt-2">
-              <h3 className="text-xl sm:text-3xl font-bold sm:font-black text-blue-900 leading-tight">{totalBranchUnits.toLocaleString()}</h3>
-              <span className="text-[10px] sm:text-xs text-slate-600 font-bold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full self-start sm:self-auto whitespace-nowrap">
-                {totalStockUnits > 0 ? `${Math.round((totalBranchUnits / totalStockUnits) * 100)}% នៃស្តុក` : '0%'}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Card 4: If Branch View -> Branch Assignment info; If Central -> Low Stock alert */}
-        {isBranchView ? (
-          <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-            <div className="flex items-center justify-between gap-1">
-              <p className="text-[11px] sm:text-xs font-medium sm:font-bold text-gray-600 sm:text-slate-500 uppercase tracking-wider line-clamp-1">សាខាប្រតិបត្តិការ (BRANCH)</p>
-              <div className="p-1 sm:p-1.5 rounded-lg bg-teal-50 text-teal-800 shrink-0">
-                <MapPin size={15} />
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mt-1 sm:mt-2">
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate max-w-full" title={selectedLocation.name_kh}>
-                {selectedLocation.code || selectedLocation.name_kh}
-              </h3>
-              <span className="text-[10px] sm:text-xs text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full font-bold self-start sm:self-auto truncate max-w-full">
-                {selectedLocation.name_kh}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-            <div className="flex items-center justify-between gap-1">
-              <p className="text-[11px] sm:text-xs font-medium sm:font-bold text-gray-600 sm:text-slate-500 uppercase tracking-wider line-clamp-1">ជិតអស់ស្តុក (Alerts)</p>
-              <div className="p-1 sm:p-1.5 rounded-lg bg-amber-50 text-amber-700 shrink-0">
-                <AlertTriangle size={15} />
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mt-1 sm:mt-2">
-              <h3 className="text-xl sm:text-3xl font-bold sm:font-black text-amber-600 leading-tight">{lowStockCount}</h3>
-              <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-bold self-start sm:self-auto whitespace-nowrap ${
-                outOfStockCount > 0 ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-slate-100 text-slate-600'
-              }`}>
-                {outOfStockCount > 0 ? `អស់ស្តុក: ${outOfStockCount}` : 'គ្រប់គ្រាន់'}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Main Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
         {/* Section Header */}
-        <div className="bg-slate-50/90 text-slate-900 border-b border-slate-200/80 px-3.5 sm:px-5 py-3 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3">
+        <div className="bg-slate-50/90 text-slate-900 border-b border-slate-200/80 px-3.5 sm:px-5 py-3 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 shrink-0">
           <div className="flex items-start sm:items-center space-x-2.5 min-w-0">
             <div className="p-1.5 bg-emerald-100/80 text-emerald-800 rounded-lg shrink-0">
               <MapPin size={18} />
@@ -326,35 +200,35 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
           </div>
         </div>
 
-        {/* Aggregated Inventory Table */}
-        <div className="overflow-x-auto w-full">
+        {/* Aggregated Inventory Table with Sticky Header */}
+        <div className="max-h-[calc(100vh-220px)] overflow-y-auto overflow-x-auto relative rounded-b-2xl w-full">
           <table className="w-full min-w-[760px] text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
-                <th className="px-4 py-3 font-bold text-center w-12">ល.រ</th>
-                <th className="px-4 py-3 font-bold">សម្ភារ:</th>
-                <th className="px-4 py-3 font-bold text-center">ប្រភេទ</th>
-                <th className="px-4 py-3 font-bold text-center">ឯកតា</th>
+            <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+              <tr className="bg-slate-50/95 text-slate-700 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold">
+                <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center w-12">ល.រ</th>
+                <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold">សម្ភារ:</th>
+                <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center">ប្រភេទ</th>
+                <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center">ឯកតា</th>
                 {/* Central HQ Stock column */}
-                <th className="px-4 py-3 font-bold text-center">
+                <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center">
                   {isBranchView ? 'ស្តុកកណ្តាល HQ (អាចស្នើសុំ)' : 'ស្តុក HQ'}
                 </th>
 
                 {/* Branch Stock column for CentralAdmin */}
                 {!isBranchView && (
-                  <th className="px-4 py-3 font-bold text-center">ស្តុកសាខា</th>
+                  <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center">ស្តុកសាខា</th>
                 )}
 
                 {/* Main Branch Stock Column for Branch View / Total for Central */}
-                <th className="px-4 py-3 font-bold text-center">
+                <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center">
                   {isBranchView ? 'ស្តុកនៅសាខានេះ' : 'ស្តុកសរុប'}
                 </th>
 
                 {/* For CentralAdmin only: show other branches with stock */}
                 {!isBranchView && (
-                  <th className="px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
+                  <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
                 )}
-                <th className="px-4 py-3 font-bold text-center">ស្ថានភាព</th>
+                <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center">ស្ថានភាព</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
