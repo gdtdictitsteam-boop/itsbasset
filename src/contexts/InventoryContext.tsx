@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { mockItems, mockLocations, mockInventory, mockTransactions, standardItemQuantities } from '../mockData';
+import { mockLocations } from '../mockData';
 import { Item, InventoryItem, Location } from '../types';
 import { 
   supabase, 
@@ -12,9 +12,36 @@ import {
   supabaseHandleHandover,
   supabaseAcknowledgeHandover,
   supabaseRecordAdjustment,
-  insertItemToSupabase
 } from '../lib/supabase';
 import { useLocationContext } from './LocationContext';
+
+// Purge any legacy localStorage cache for items, inventory, or transactions
+// (Preserving only Auth session and Supabase connection keys)
+function purgeLegacyInventoryLocalStorage() {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  const legacyKeys = [
+    'gdt_items',
+    'gdt_inventory',
+    'gdt_transactions',
+    'gdt_stock_cache',
+    'items',
+    'inventory',
+    'transactions',
+    'mock_items',
+    'mock_inventory',
+    'mock_transactions',
+    'INITIAL_ITEMS',
+    'INITIAL_INVENTORY',
+    'INITIAL_TRANSACTIONS',
+  ];
+  legacyKeys.forEach(k => {
+    try {
+      window.localStorage.removeItem(k);
+    } catch {
+      // ignore storage errors
+    }
+  });
+}
 
 export interface StockInParams {
   locationId: string;
@@ -110,106 +137,6 @@ export const isHqLocationOrRow = (rowOrLoc: any, locationsList?: Location[]): bo
   return false;
 };
 
-// Helper to construct guaranteed baseline inventory matching items and locations
-export function buildBaselineInventory(itemsList: Item[], locsList: Location[]): InventoryItem[] {
-  const hqLoc = locsList.find(l => isHqLocationOrRow(l, locsList)) || locsList[0];
-  const result: InventoryItem[] = [];
-
-  if (hqLoc) {
-    itemsList.forEach(item => {
-      const stdQty = standardItemQuantities[item.code] ?? 20;
-      result.push({
-        location_id: hqLoc.id,
-        item_id: item.id,
-        quantity: stdQty,
-        last_updated: new Date().toISOString(),
-        item_code: item.code,
-        item_name_kh: item.name_kh,
-        item_name_en: item.name_en,
-        category: item.category,
-        unit: item.unit,
-        min_stock: item.min_stock,
-        location_name_kh: hqLoc.name_kh || 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-        location_name_en: hqLoc.name_en || 'HQ-ITSB Technical Inventory',
-        location_code: hqLoc.code || 'HQ-ITSB',
-        type: 'HQ',
-        image_url: item.image_url
-      });
-    });
-  }
-
-  // Sample branch stock for active branches (7MK, CKM, DPE, TKO, KPC, Tech-HQ)
-  const branchMap: Record<string, Array<{ itemCode: string; qty: number }>> = {
-    '7MK': [
-      { itemCode: 'T-001', qty: 2 },
-      { itemCode: 'T-006', qty: 2 },
-      { itemCode: 'T-019', qty: 5 },
-      { itemCode: 'S-004', qty: 10 },
-      { itemCode: 'S-005', qty: 5 },
-    ],
-    'CKM': [
-      { itemCode: 'T-001', qty: 1 },
-      { itemCode: 'T-004', qty: 1 },
-      { itemCode: 'T-010', qty: 2 },
-      { itemCode: 'S-004', qty: 8 },
-    ],
-    'DPE': [
-      { itemCode: 'T-001', qty: 1 },
-      { itemCode: 'T-002', qty: 1 },
-      { itemCode: 'T-012', qty: 1 },
-      { itemCode: 'S-001', qty: 2 },
-    ],
-    'TKO': [
-      { itemCode: 'T-001', qty: 1 },
-      { itemCode: 'T-007', qty: 2 },
-      { itemCode: 'T-020', qty: 50 },
-      { itemCode: 'S-005', qty: 10 },
-    ],
-    'KPC': [
-      { itemCode: 'T-001', qty: 1 },
-      { itemCode: 'T-003', qty: 1 },
-      { itemCode: 'T-013', qty: 2 },
-      { itemCode: 'S-002', qty: 5 },
-    ],
-    'Tech-HQ': [
-      { itemCode: 'T-001', qty: 1 },
-      { itemCode: 'T-004', qty: 1 },
-      { itemCode: 'T-012', qty: 1 },
-      { itemCode: 'S-004', qty: 20 },
-    ]
-  };
-
-  Object.entries(branchMap).forEach(([bCode, bItems]) => {
-    const bLoc = locsList.find(l => l.code === bCode || l.name_kh?.includes(bCode));
-    if (bLoc) {
-      bItems.forEach(bi => {
-        const itemObj = itemsList.find(it => it.code === bi.itemCode);
-        if (itemObj) {
-          result.push({
-            location_id: bLoc.id,
-            item_id: itemObj.id,
-            quantity: bi.qty,
-            last_updated: new Date().toISOString(),
-            item_code: itemObj.code,
-            item_name_kh: itemObj.name_kh,
-            item_name_en: itemObj.name_en,
-            category: itemObj.category,
-            unit: itemObj.unit,
-            min_stock: itemObj.min_stock,
-            location_name_kh: bLoc.name_kh,
-            location_name_en: bLoc.name_en,
-            location_code: bLoc.code,
-            type: 'BRANCH',
-            image_url: itemObj.image_url
-          });
-        }
-      });
-    }
-  });
-
-  return result;
-}
-
 export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const { setLocationsList } = useLocationContext();
 
@@ -223,22 +150,22 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const refreshInventory = useCallback(async () => {
     setIsLoading(true);
     setDbError(null);
+    purgeLegacyInventoryLocalStorage();
 
     const configured = isSupabaseConfigured();
 
     if (!configured) {
-      console.warn('Supabase credentials not configured or placeholder detected. Operating in high-fidelity local mode.');
-      setItems([...mockItems]);
+      setItems([]);
       setLocations([...mockLocations]);
       setLocationsList([...mockLocations]);
-      setInventory([...mockInventory]);
-      setTransactions([...mockTransactions]);
+      setInventory([]);
+      setTransactions([]);
       setIsLoading(false);
       return;
     }
 
     try {
-      // 1. SELECT items from Supabase Table items
+      // 1. SELECT items from Supabase Table items (Strictly from Supabase, NO mock fallback)
       const { data: dbItems, error: itemsErr } = await supabase
         .from('items')
         .select('*')
@@ -249,7 +176,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         setDbError(`Error fetching items: ${itemsErr.message}`);
       }
 
-      // 2. SELECT locations from Supabase Table locations
+      // 2. SELECT locations from Supabase Table locations (Allowed exception: 35 locations)
       const { data: dbLocs, error: locsErr } = await supabase
         .from('locations')
         .select('*')
@@ -261,26 +188,23 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         setDbError(`Error fetching locations: ${locsErr.message}`);
       }
 
-      let currentDbItems = (dbItems && dbItems.length > 0) ? dbItems : mockItems;
+      const currentDbItems = (!itemsErr && Array.isArray(dbItems)) ? dbItems : [];
       let currentDbLocs = (dbLocs && dbLocs.length > 0) ? dbLocs : mockLocations;
 
-      // Auto-seed if database is brand new and completely empty
-      if (
-        (!itemsErr && (!dbItems || dbItems.length === 0)) || 
-        (!locsErr && (!dbLocs || dbLocs.length === 0))
-      ) {
-        console.info('Supabase database tables are empty. Auto-seeding initial master items and locations into Supabase...');
+      // Only seed the 35 locations if locations table is empty (NEVER auto-seed items, inventory, or transactions)
+      if (!locsErr && (!dbLocs || dbLocs.length === 0)) {
         await seedInitialInventoryToSupabase();
-        
-        const [reItems, reLocs] = await Promise.all([
-          supabase.from('items').select('*').order('code', { ascending: true }),
-          supabase.from('locations').select('*').order('code', { ascending: true })
-        ]);
-        if (reItems.data && reItems.data.length > 0) currentDbItems = reItems.data;
-        if (reLocs.data && reLocs.data.length > 0) currentDbLocs = reLocs.data;
+        const reLocs = await supabase
+          .from('locations')
+          .select('*')
+          .order('type', { ascending: false })
+          .order('name_kh', { ascending: true });
+        if (reLocs.data && reLocs.data.length > 0) {
+          currentDbLocs = reLocs.data;
+        }
       }
 
-      // Format Items
+      // Format Items (empty array [] if Supabase items table is empty)
       const formattedItems: Item[] = currentDbItems.map((i: any) => ({
         id: i.id,
         code: i.code,
@@ -299,27 +223,22 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       setLocationsList(formattedLocs);
 
       // 3. SELECT full inventory joined with items and locations from Supabase Table inventory
+      // Strictly use Supabase data (empty array [] if no items/inventory)
       const liveInventory = await fetchFullInventoryFromSupabase();
-      if (liveInventory && liveInventory.length > 0) {
-        setInventory(liveInventory);
-      } else {
-        // Fallback: build baseline inventory so Central HQ stock and branch stock are NEVER lost or 0
-        const baseline = buildBaselineInventory(formattedItems, formattedLocs);
-        setInventory(baseline);
-      }
+      setInventory(Array.isArray(liveInventory) ? liveInventory : []);
 
-      // 4. SELECT transactions from Supabase Table transactions
+      // 4. SELECT transactions from Supabase Table transactions (empty array [] if no transactions)
       const liveTx = await fetchTransactionsFromSupabase(500);
-      setTransactions(liveTx && liveTx.length > 0 ? liveTx : mockTransactions);
+      setTransactions(Array.isArray(liveTx) ? liveTx : []);
 
     } catch (err: any) {
       console.error('Unhandled exception in refreshInventory from Supabase:', err);
       setDbError(err?.message || 'Error connecting to Supabase database');
-      setItems([...mockItems]);
+      setItems([]);
       setLocations([...mockLocations]);
       setLocationsList([...mockLocations]);
-      setInventory([...mockInventory]);
-      setTransactions([...mockTransactions]);
+      setInventory([]);
+      setTransactions([]);
     } finally {
       setIsLoading(false);
     }
@@ -340,37 +259,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshInventory]);
 
-  // Add new SKU: Directly insert into Supabase Table items and inventory
-  const addNewItemToContext = async (newItem: Item, initialStock: number = 0, targetLocationId: string = '1') => {
-    const configured = isSupabaseConfigured();
-    if (!configured) {
-      console.warn('Supabase not configured, local SKU entry');
-      return;
-    }
-
-    try {
-      const res = await insertItemToSupabase({
-        code: newItem.code,
-        name_kh: newItem.name_kh,
-        name_en: newItem.name_en,
-        category: newItem.category,
-        unit: newItem.unit,
-        min_stock: newItem.min_stock,
-        initial_stock: initialStock,
-        location_id: targetLocationId,
-        image_url: newItem.image_url,
-      });
-
-      if (!res.success) {
-        console.error('Supabase Insert Item Error:', res.error);
-        throw new Error(res.error);
-      }
-
-      await refreshInventory();
-    } catch (err) {
-      console.error('Exception adding new item to Supabase:', err);
-      throw err;
-    }
+  // Refresh context after adding new SKU (insertItemToSupabase is already invoked by NewItemView)
+  const addNewItemToContext = async (_newItem: Item, _initialStock: number = 0, _targetLocationId: string = '1') => {
+    await refreshInventory();
   };
 
   // Record Stock In: Directly insert into Supabase transactions and upsert inventory

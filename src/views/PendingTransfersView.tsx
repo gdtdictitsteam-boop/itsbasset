@@ -3,7 +3,6 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocationContext } from '../contexts/LocationContext';
 import { useInventoryContext } from '../contexts/InventoryContext';
-import { mockLocations, mockItems, mockInventory, mockTransactions } from '../mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
   Clock, 
@@ -36,7 +35,7 @@ export function PendingTransfersView() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Fetch pending transfers
+  // Fetch pending transfers strictly from Supabase
   const fetchPendingTransfers = async () => {
     setLoading(true);
     setActionSuccess(null);
@@ -55,61 +54,13 @@ export function PendingTransfersView() {
         setPendingTransfers(data || []);
       } catch (err: any) {
         console.error('Error fetching pending transactions:', err);
-        // Fallback to mock
-        loadMockPendingTransfers();
+        setPendingTransfers([]);
       } finally {
         setLoading(false);
       }
     } else {
-      loadMockPendingTransfers();
+      setPendingTransfers([]);
       setLoading(false);
-    }
-  };
-
-  const loadMockPendingTransfers = () => {
-    // Ensure mock data has pending transfers
-    const pending = mockTransactions.filter(tx => tx.type === 'HANDOVER' && (tx.status === 'PENDING' || !tx.status));
-    if (pending.length === 0) {
-      // Add default mock pending transfers if none exist
-      const samplePending = [
-        {
-          id: 'tx-pending-101',
-          date: new Date().toISOString(),
-          type: 'HANDOVER',
-          from_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-          from_location_id: 'loc-hq-1',
-          to_location: 'សាខាពន្ធដារខណ្ឌ៧មករា (7MK)',
-          to_location_id: 'loc-branch-1',
-          item_code: 'T-001',
-          item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
-          item_id: 'item-1',
-          quantity: 5,
-          unit: 'គ្រឿង',
-          recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
-          status: 'PENDING',
-          remark: 'ផ្ទេរសម្ភារៈជំនួយការងារបច្ចេកទេសប្រចាំខែ | ឯកសារយោង: https://supabase.gdt.gov.kh/storage/v1/object/public/handover_docs/demo_handover_7mk.pdf'
-        },
-        {
-          id: 'tx-pending-102',
-          date: new Date(Date.now() - 3600000 * 5).toISOString(),
-          type: 'HANDOVER',
-          from_location: 'ស្តុកសម្ភារបច្ចេកទេស HQ-ITSB',
-          from_location_id: 'loc-hq-1',
-          to_location: 'សាខាពន្ធដារខណ្ឌដង្កោ',
-          to_location_id: 'loc-branch-2',
-          item_code: 'C-003',
-          item_name_kh: 'ខ្សែកាបបណ្តាញ Network Cable CAT6 Patch Cord (3m)',
-          item_id: 'item-3',
-          quantity: 20,
-          unit: 'ខ្សែ',
-          recorded_by: 'CentralAdmin (មន្ត្រីកណ្តាល)',
-          status: 'PENDING',
-          remark: 'ផ្ទេរខ្សែកាបបណ្តាញសម្រាប់ដំឡើងម៉ាស៊ីនបោះពុម្ព | ឯកសារយោង: https://supabase.gdt.gov.kh/storage/v1/object/public/handover_docs/demo_handover_dangkor.pdf'
-        }
-      ];
-      setPendingTransfers(samplePending);
-    } else {
-      setPendingTransfers(pending);
     }
   };
 

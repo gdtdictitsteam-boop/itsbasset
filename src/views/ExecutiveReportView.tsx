@@ -204,7 +204,7 @@ export function ExecutiveReportView() {
           supabase.from('audit_trail').select('*').order('created_at', { ascending: false }).limit(2000)
         ]);
 
-        if (!itemsRes.error && Array.isArray(itemsRes.data) && itemsRes.data.length > 0) {
+        if (!itemsRes.error && Array.isArray(itemsRes.data)) {
           setDbItems(
             itemsRes.data.map((r: any) => ({
               id: String(r.id),
@@ -218,7 +218,7 @@ export function ExecutiveReportView() {
           );
         }
 
-        if (!invRes.error && Array.isArray(invRes.data) && invRes.data.length > 0) {
+        if (!invRes.error && Array.isArray(invRes.data)) {
           setDbInventory(invRes.data);
         }
 
@@ -229,9 +229,7 @@ export function ExecutiveReportView() {
         if (!auditRes.error && Array.isArray(auditRes.data)) {
           combinedTx.push(...auditRes.data);
         }
-        if (combinedTx.length > 0) {
-          setDbTransactions(combinedTx);
-        }
+        setDbTransactions(combinedTx);
       }
       setLastRefreshed(new Date());
     } catch (err) {

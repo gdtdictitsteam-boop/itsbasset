@@ -237,16 +237,16 @@ export async function downloadFullSystemBackupJson(fallbackData?: {
         supabase.from('transactions').select('*').order('date', { ascending: false }),
       ]);
 
-      if (!itemsRes.error && Array.isArray(itemsRes.data) && itemsRes.data.length > 0) {
+      if (!itemsRes.error && Array.isArray(itemsRes.data)) {
         itemsData = itemsRes.data;
       }
-      if (!invRes.error && Array.isArray(invRes.data) && invRes.data.length > 0) {
+      if (!invRes.error && Array.isArray(invRes.data)) {
         inventoryData = invRes.data;
       }
       if (!locRes.error && Array.isArray(locRes.data) && locRes.data.length > 0) {
         locationsData = locRes.data;
       }
-      if (!txRes.error && Array.isArray(txRes.data) && txRes.data.length > 0) {
+      if (!txRes.error && Array.isArray(txRes.data)) {
         transactionsData = txRes.data;
       }
     } catch {
@@ -498,11 +498,15 @@ export async function insertItemToSupabase(params: InsertNewItemParams): Promise
         await supabase.from('transactions').insert([
           {
             type: 'STOCK_IN',
-            to_location: targetLocationId,
+            to_location_id: targetLocationId,
             item_id: createdItemId,
+            item_code: code,
+            item_name_kh: name_kh,
             quantity: initial_stock,
+            unit,
             remark: params.remark || 'បញ្ចូលសម្ភារថ្មីដំបូង',
             recorded_by: params.recorded_by || 'Admin-GDT',
+            status: 'RECEIVED',
           },
         ]);
       }
@@ -584,23 +588,11 @@ export async function fetchFullInventoryFromSupabase() {
     }
 
     const items = itemsRes.data || [];
-    let inventory = invRes.data || [];
+    const inventory = invRes.data || [];
     const locations = locsRes.data || [];
 
-    if (items.length === 0 || locations.length === 0) {
-      return null;
-    }
-
-    // If Supabase inventory is completely empty or error occurred on inventory table, auto-seed standard initial inventory once
-    if (inventory.length === 0 || invRes.error) {
-      console.info('Supabase inventory table is empty or had query notice. Attempting to seed standard initial stock...');
-      const seedRes = await seedInitialInventoryToSupabase();
-      if (seedRes.success) {
-        const recheckInv = await supabase.from('inventory').select('*');
-        if (recheckInv.data && recheckInv.data.length > 0) {
-          inventory = recheckInv.data;
-        }
-      }
+    if (items.length === 0) {
+      return [];
     }
 
     const defaultHqLoc = locations.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locations[0];
@@ -1201,7 +1193,8 @@ export async function supabaseRecordAdjustment(params: {
 }
 
 /**
- * Seed or sync standard clean initial inventory to Supabase
+ * Sync 35 official locations only if locations table is empty.
+ * Auto-seeding of sample items, inventory, and transactions is strictly disabled.
  */
 export async function seedInitialInventoryToSupabase(): Promise<{
   success: boolean;
@@ -1215,10 +1208,9 @@ export async function seedInitialInventoryToSupabase(): Promise<{
   }
 
   try {
-    const { mockItems, mockLocations, standardItemQuantities } = await import('../mockData');
+    const { mockLocations } = await import('../mockData');
 
-    // 1. Fetch locations (auto-populate from mockLocations if empty)
-    let { data: locs, error: locErr } = await supabase.from('locations').select('*');
+    const { data: locs } = await supabase.from('locations').select('*');
     if (!locs || locs.length === 0) {
       const locsToInsert = mockLocations.map(l => ({
         code: l.code,
@@ -1227,182 +1219,14 @@ export async function seedInitialInventoryToSupabase(): Promise<{
         type: l.type,
       }));
       await supabase.from('locations').upsert(locsToInsert, { onConflict: 'code' });
-      const refreshed = await supabase.from('locations').select('*');
-      locs = refreshed.data || [];
-    }
-
-    if (!locs || locs.length === 0) {
-      return {
-        success: false,
-        message: 'មិនអាចទាញយក ឬបង្កើតទីតាំង (locations) ក្នុងប្រព័ន្ធទិន្នន័យបានឡើយ។',
-      };
-    }
-
-    const hqLoc = locs.find(l => l.code === 'HQ-ITSB' || l.type === 'HQ' || l.code?.includes('HQ')) || locs[0];
-
-    // 2. Upsert items
-    const itemsToUpsert = mockItems.map(item => ({
-      code: item.code,
-      name_kh: item.name_kh,
-      name_en: item.name_en,
-      category: item.category,
-      unit: item.unit,
-      min_stock: item.min_stock,
-    }));
-
-    const { data: upsertedItems, error: itemErr } = await supabase
-      .from('items')
-      .upsert(itemsToUpsert, { onConflict: 'code' })
-      .select('id, code');
-
-    if (itemErr) {
-      console.error('Error seeding items to Supabase:', itemErr);
-      return {
-        success: false,
-        message: `បរាជ័យក្នុងការបញ្ចូលទិន្នន័យ Items: ${itemErr.message}`,
-      };
-    }
-
-    // 3. Upsert inventory records for HQ and sample branches
-    const allDbItems = upsertedItems && upsertedItems.length > 0
-      ? upsertedItems
-      : (await supabase.from('items').select('id, code')).data || [];
-
-    const itemByCode = new Map<string, string>();
-    allDbItems.forEach(it => itemByCode.set(it.code, it.id));
-
-    const locByCode = new Map<string, string>();
-    locs.forEach(l => locByCode.set(l.code, l.id));
-
-    const inventoryRows: any[] = [];
-    allDbItems.forEach(it => {
-      const standardQty = standardItemQuantities[it.code] ?? 20;
-      inventoryRows.push({
-        location_id: hqLoc.id,
-        item_id: it.id,
-        quantity: standardQty,
-        last_updated: new Date().toISOString(),
-      });
-    });
-
-    // Seed branch stocks so active branch officers immediately have stock visible
-    const branchSeeds: Array<{ locCode: string; itemCode: string; qty: number }> = [
-      // 7 Makara (7MK)
-      { locCode: '7MK', itemCode: 'T-001', qty: 2 },
-      { locCode: '7MK', itemCode: 'T-006', qty: 2 },
-      { locCode: '7MK', itemCode: 'T-019', qty: 5 },
-      { locCode: '7MK', itemCode: 'S-004', qty: 10 },
-      { locCode: '7MK', itemCode: 'S-005', qty: 5 },
-      // Chamkarmon (CKM)
-      { locCode: 'CKM', itemCode: 'T-001', qty: 1 },
-      { locCode: 'CKM', itemCode: 'T-004', qty: 1 },
-      { locCode: 'CKM', itemCode: 'T-010', qty: 2 },
-      { locCode: 'CKM', itemCode: 'S-004', qty: 8 },
-      // Daun Penh (DPE)
-      { locCode: 'DPE', itemCode: 'T-001', qty: 1 },
-      { locCode: 'DPE', itemCode: 'T-002', qty: 1 },
-      { locCode: 'DPE', itemCode: 'T-012', qty: 1 },
-      { locCode: 'DPE', itemCode: 'S-001', qty: 2 },
-      // Toul Kork (TKO)
-      { locCode: 'TKO', itemCode: 'T-001', qty: 1 },
-      { locCode: 'TKO', itemCode: 'T-007', qty: 2 },
-      { locCode: 'TKO', itemCode: 'T-020', qty: 50 },
-      { locCode: 'TKO', itemCode: 'S-005', qty: 10 },
-      // Kampong Cham (KPC)
-      { locCode: 'KPC', itemCode: 'T-001', qty: 1 },
-      { locCode: 'KPC', itemCode: 'T-003', qty: 1 },
-      { locCode: 'KPC', itemCode: 'T-013', qty: 2 },
-      { locCode: 'KPC', itemCode: 'S-002', qty: 5 },
-      // Tech-HQ
-      { locCode: 'Tech-HQ', itemCode: 'T-001', qty: 1 },
-      { locCode: 'Tech-HQ', itemCode: 'T-004', qty: 1 },
-      { locCode: 'Tech-HQ', itemCode: 'T-012', qty: 1 },
-      { locCode: 'Tech-HQ', itemCode: 'S-004', qty: 20 },
-    ];
-
-    branchSeeds.forEach(bs => {
-      const bLocId = locByCode.get(bs.locCode);
-      const bItemId = itemByCode.get(bs.itemCode);
-      if (bLocId && bItemId) {
-        inventoryRows.push({
-          location_id: bLocId,
-          item_id: bItemId,
-          quantity: bs.qty,
-          last_updated: new Date().toISOString(),
-        });
-      }
-    });
-
-    let invErr: any = null;
-    const { error: batchErr } = await supabase
-      .from('inventory')
-      .upsert(inventoryRows, { onConflict: 'location_id,item_id' });
-
-    if (batchErr) {
-      console.warn('Batch upsert inventory notice, retrying row-by-row:', batchErr);
-      // Fallback row by row with update-or-insert
-      for (const row of inventoryRows) {
-        const { data: existing } = await supabase
-          .from('inventory')
-          .select('id')
-          .eq('location_id', row.location_id)
-          .eq('item_id', row.item_id)
-          .maybeSingle();
-
-        if (existing) {
-          await supabase
-            .from('inventory')
-            .update({ quantity: row.quantity, last_updated: row.last_updated })
-            .eq('id', existing.id);
-        } else {
-          await supabase.from('inventory').insert([row]);
-        }
-      }
-    }
-
-    // 4. Seed initial transaction records into transactions table if empty
-    try {
-      const { count: txCount } = await supabase.from('transactions').select('id', { count: 'exact', head: true });
-      if (!txCount || txCount === 0) {
-        const initialTxRows = [
-          {
-            type: 'STOCK_IN',
-            to_location_id: hqLoc.id,
-            item_id: itemByCode.get('T-001') || allDbItems[0]?.id,
-            item_code: 'T-001',
-            item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
-            quantity: 15,
-            unit: 'គ្រឿង',
-            recorded_by: 'Admin-GDT',
-            remark: 'បញ្ចូលស្តុកកណ្តាលដំបូង HQ-ITSB',
-            status: 'RECEIVED'
-          },
-          {
-            type: 'HANDOVER',
-            from_location_id: hqLoc.id,
-            to_location_id: locByCode.get('7MK') || locs[1]?.id,
-            item_id: itemByCode.get('T-001') || allDbItems[0]?.id,
-            item_code: 'T-001',
-            item_name_kh: 'ម៉ូទ័រចាប់វិសប្រើថ្មសាក BOSCH Cordless Percy Screwed (GSB 120-LI)',
-            quantity: 2,
-            unit: 'គ្រឿង',
-            recorded_by: 'Admin-GDT',
-            remark: 'ផ្ទេរសម្ភារៈបច្ចេកទេសជូនសាខា ៧មករា (7MK)',
-            status: 'COMPLETED'
-          }
-        ];
-        await supabase.from('transactions').insert(initialTxRows);
-      }
-    } catch (txErr) {
-      console.warn('Initial transactions seed notice:', txErr);
     }
 
     return {
       success: true,
-      message: `បានរៀបចំ និងបញ្ចូលទិន្នន័យស្តុកដំបូងទៅប្រព័ន្ធទិន្នន័យជោគជ័យចំនួន ${inventoryRows.length} មុខសម្ភារ!`,
+      message: 'បានផ្ទៀងផ្ទាត់បញ្ជីទីតាំងសាខាទាំង ៣៥ ជោគជ័យ (ការបញ្ចូលទិន្នន័យស្តុកគំរូស្វ័យប្រវត្តិត្រូវបានបិទ)។',
     };
   } catch (err: any) {
-    console.error('Exception seeding inventory to Supabase:', err);
+    console.error('Exception syncing locations to Supabase:', err);
     return {
       success: false,
       message: err?.message || 'មានបញ្ហាក្នុងការតភ្ជាប់ទៅកាន់ប្រព័ន្ធទិន្នន័យ',
