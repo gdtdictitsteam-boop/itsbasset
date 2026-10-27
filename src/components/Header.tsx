@@ -91,11 +91,11 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             </div>
             <div className="flex flex-col text-left pr-1">
               <div className="flex items-center gap-1">
-                <span className={`text-[9px] font-bold uppercase leading-none px-1.5 py-0.5 rounded ${
-                  isCentralAdmin ? 'bg-emerald-900/20 text-emerald-950 font-black' : 'bg-amber-900/20 text-amber-950 font-black'
-                }`}>
-                  {userRole}
-                </span>
+                {isCentralAdmin && userRole !== 'BranchUser' && (
+                  <span className="text-[9px] font-black uppercase leading-none px-1.5 py-0.5 rounded bg-emerald-900/20 text-emerald-950">
+                    {userRole}
+                  </span>
+                )}
                 {isBranchUser && (
                   <span className="text-[9px] font-bold text-[#03291E]/80 truncate max-w-[100px]">
                     ({locationCode})
@@ -135,7 +135,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         </div>
       </div>
 
-      {/* Mobile Sub-Header Bar (< md): Officer Name, Role & Assigned/Selected Branch */}
+      {/* Mobile Sub-Header Bar (< md): Officer Name & Assigned/Selected Branch */}
       <div className="md:hidden bg-[#03291E]/10 border-t border-[#03291E]/15 px-3 py-1.5 flex items-center justify-between gap-2 text-[11px] text-[#03291E]">
         <div className="flex items-center gap-1.5 min-w-0 truncate">
           <span className="w-5 h-5 rounded-full bg-[#03291E] text-[#A3D8C2] flex items-center justify-center shrink-0">
@@ -157,13 +157,11 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
               : `[${locationCode}] ${selectedLocation?.name_kh || ''}`}
           </span>
         </div>
-        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded shrink-0 ${
-          isCentralAdmin
-            ? 'bg-[#03291E] text-[#A3D8C2]'
-            : 'bg-amber-900/20 text-amber-950 border border-amber-800/30'
-        }`}>
-          {userRole}
-        </span>
+        {isCentralAdmin && userRole !== 'BranchUser' && (
+          <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded shrink-0 bg-[#03291E] text-[#A3D8C2]">
+            {userRole}
+          </span>
+        )}
       </div>
     </header>
 

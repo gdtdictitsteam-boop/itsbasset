@@ -261,8 +261,10 @@ export function AdjustmentView() {
               : 'bg-blue-50 border-blue-200 text-blue-800'
           }`}>
             {isCentralAdmin ? <ShieldCheck size={15} /> : <Building2 size={15} />}
-            <span>{userDisplayName || userRole}</span>
-            <span className="text-[10px] text-slate-400 font-normal">({userRole})</span>
+            <span>{userDisplayName}</span>
+            {isCentralAdmin && (
+              <span className="text-[10px] text-slate-400 font-normal">({userRole})</span>
+            )}
           </div>
         </div>
       </div>
