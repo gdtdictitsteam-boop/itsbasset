@@ -15,7 +15,6 @@ import {
   Calendar,
   Search,
   ClipboardList,
-  CheckCircle2,
   Table2,
   LayoutList,
   Wrench,
@@ -1879,25 +1878,16 @@ export function ExecutiveReportView() {
       {/* ================================================================= */}
       <div className="no-print print:hidden bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-100 pb-4">
-          <div className="flex items-start gap-3 sm:gap-3.5">
+          <div className="flex items-center gap-3 sm:gap-3.5">
             <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-[#05402D] text-[#D4AF37] flex items-center justify-center shadow-sm shrink-0 border border-[#D4AF37]/40">
               <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base sm:text-xl font-bold text-slate-900">
-                  {language === 'kh'
-                    ? 'របាយការណ៍សង្ខេបស្តុក (Executive Consolidated Report)'
-                    : 'Executive Consolidated Stock Report (A4 Landscape)'}
-                </h2>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-[#05402D] border border-emerald-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Read-Only • Two-Part Official Format
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                បែងចែកជា ២ ផ្នែកដាច់ពីគ្នា៖ ផ្នែកទី១ សម្ភារឧបករណ៍បច្ចេកទេស (ប្រើប្រាស់មិនអស់) និងផ្នែកទី២ សម្ភារបរិក្ខារ និងសម្ភារប្រើប្រាស់ (ប្រើប្រាស់អស់ទៅ)
-              </p>
+              <h2 className="text-base sm:text-xl font-bold text-slate-900">
+                {language === 'kh'
+                  ? 'របាយការណ៍សង្ខេបស្តុក (Executive Consolidated Report)'
+                  : 'Executive Consolidated Stock Report (A4 Landscape)'}
+              </h2>
             </div>
           </div>
 
