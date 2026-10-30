@@ -741,13 +741,6 @@ export function UserManagementModal() {
                 <h3 className="text-sm sm:text-lg font-bold text-white tracking-wide truncate">
                   ការកំណត់ និងគ្រប់គ្រងមន្ត្រី (User Management & RBAC)
                 </h3>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                  isCentralAdmin 
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
-                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                }`}>
-                  {isCentralAdmin ? 'CentralAdmin (សិទ្ធិពេញលេញ)' : 'BranchUser (មន្ត្រីសាខា)'}
-                </span>
               </div>
             </div>
           </div>
@@ -764,29 +757,8 @@ export function UserManagementModal() {
           </div>
         </div>
 
-        {/* Info Banner for RBAC Role Counts & One-Click System Backup */}
-        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-[#1E6047] shrink-0">
-          {isCentralAdmin && (
-            <button
-              type="button"
-              onClick={handleBackupSystemData}
-              disabled={isBackingUp}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#03291E] hover:bg-[#1E6047] text-[#A3D8C2] hover:text-white border border-emerald-800 shadow-2xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              title="ទាញយកទិន្នន័យបម្រុងទុកទាំងអស់នៃប្រព័ន្ធ (Read-Only JSON Snapshot)"
-            >
-              {isBackingUp ? (
-                <>
-                  <Loader2 size={13} className="animate-spin" />
-                  <span>កំពុងរក្សាទុក...</span>
-                </>
-              ) : (
-                <>
-                  <Database size={13} />
-                  <span>💾 បម្រុងទុកទិន្នន័យប្រព័ន្ធ (Backup JSON/Excel)</span>
-                </>
-              )}
-            </button>
-          )}
+        {/* Info Banner for RBAC Role Counts */}
+        <div className="bg-[#EBF7F2] border-b border-[#C8E8DA] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-end gap-3 text-xs text-[#1E6047] shrink-0">
           <div className="flex items-center gap-2 ml-auto">
             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
               <ShieldCheck size={12} className="mr-1" /> CentralAdmin: {centralAdminCount}
@@ -971,17 +943,8 @@ export function UserManagementModal() {
                         {isCreatingNew && <span className="text-rose-500">*</span>}
                       </label>
 
-                      {/* Quick action buttons for Password */}
+                      {/* Quick action button for Password */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => setFormPassword('GDT@2026')}
-                          className="text-[11px] text-[#1E6047] font-bold hover:bg-[#A3D8C2]/60 bg-[#A3D8C2]/35 px-2.5 py-1 rounded-lg cursor-pointer transition-colors border border-[#1E6047]/20 flex items-center gap-1"
-                          title="កំណត់ពាក្យសម្ងាត់ Default"
-                        >
-                          <Lock size={11} />
-                          <span>Default: GDT@2026</span>
-                        </button>
                         <button
                           type="button"
                           onClick={generateRandomPassword}
@@ -1001,7 +964,7 @@ export function UserManagementModal() {
                         required={isCreatingNew}
                         value={formPassword}
                         onChange={(e) => setFormPassword(e.target.value)}
-                        placeholder={isCreatingNew ? 'ឧ. GDT@2026' : 'ទុកទទេ ប្រសិនបើមិនចង់ផ្លាស់ប្តូរពាក្យសម្ងាត់'}
+                        placeholder={isCreatingNew ? 'បញ្ចូលពាក្យសម្ងាត់ (យ៉ាងតិច ៨ តួអក្សរ)' : 'ទុកទទេ ប្រសិនបើមិនចង់ផ្លាស់ប្តូរពាក្យសម្ងាត់'}
                         className="w-full min-h-[42px] text-xs font-mono font-semibold pl-3 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1E6047]/30 focus:border-[#1E6047] outline-none"
                       />
                       <button
