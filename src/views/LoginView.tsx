@@ -20,6 +20,31 @@ function isValidEmail(email: string): boolean {
   return emailRegex.test(email);
 }
 
+const SAVED_CREDENTIALS_KEY = 'gdt_saved_credentials';
+
+function encodeCredentials(email: string, password: string): string {
+  const payload = JSON.stringify({ email, password });
+  return window.btoa(encodeURIComponent(payload));
+}
+
+function decodeCredentials(encoded: string): { email: string; password: string } | null {
+  try {
+    let jsonStr = '';
+    try {
+      jsonStr = decodeURIComponent(window.atob(encoded));
+    } catch {
+      jsonStr = window.atob(encoded);
+    }
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && typeof parsed.email === 'string' && typeof parsed.password === 'string') {
+      return { email: parsed.email, password: parsed.password };
+    }
+  } catch {
+    // Ignore invalid format
+  }
+  return null;
+}
+
 export function LoginView({
   onLoginSuccess: propOnLoginSuccess,
   setUser: propSetUser,
@@ -34,9 +59,47 @@ export function LoginView({
   const onLoginSuccess = propOnLoginSuccess || ctxOnLoginSuccess;
   const setUser = propSetUser || ctxSetUser;
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(SAVED_CREDENTIALS_KEY);
+      if (saved) {
+        const decoded = decodeCredentials(saved);
+        if (decoded?.email) return decoded.email;
+      }
+    }
+    return '';
+  });
+
+  const [password, setPassword] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(SAVED_CREDENTIALS_KEY);
+      if (saved) {
+        const decoded = decodeCredentials(saved);
+        if (decoded?.password) return decoded.password;
+      }
+    }
+    return '';
+  });
+
+  const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Auto-populate saved credentials on mount (e.g., after Logout)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SAVED_CREDENTIALS_KEY);
+      if (saved) {
+        const decoded = decodeCredentials(saved);
+        if (decoded) {
+          setEmail(decoded.email);
+          setPassword(decoded.password);
+          setRememberMe(true);
+        }
+      }
+    } catch {
+      // Ignore storage access errors
+    }
+  }, []);
 
   // States for UX and Security
   const [loading, setLoading] = useState(false);
@@ -72,6 +135,14 @@ export function LoginView({
       return;
     }
 
+    if (!rememberMe) {
+      try {
+        localStorage.removeItem(SAVED_CREDENTIALS_KEY);
+      } catch {
+        // Ignore storage access errors
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -103,13 +174,24 @@ export function LoginView({
         return; // បញ្ឈប់ភ្លាម ហាមអនុញ្ញាតឱ្យចូល
       }
 
+      // រក្សាទុក ឬលុបការចងចាំអ៊ីមែល និងពាក្យសម្ងាត់តាមប្រអប់ធីក Remember Password
+      try {
+        if (rememberMe) {
+          localStorage.setItem(SAVED_CREDENTIALS_KEY, encodeCredentials(cleanEmail, cleanPassword));
+        } else {
+          localStorage.removeItem(SAVED_CREDENTIALS_KEY);
+        }
+      } catch {
+        // Ignore storage access errors
+      }
+
       // ៣. បើត្រឹមត្រូវ កំណត់សិទ្ធិ (Role) និងទីតាំងដោយស្វ័យប្រវត្តិពី user_profiles ហើយអនុញ្ញាតឱ្យចូលប្រព័ន្ធ
       const roleStr = user.role || user.user_metadata?.role || '';
       const isUserBranch = roleStr === 'BranchUser';
       if (!isUserBranch && locationCtx?.resetLocationFilter) {
         locationCtx.resetLocationFilter();
-      } else if (isUserBranch && user.location_id && locationCtx?.setSelectedLocation) {
-        locationCtx.setSelectedLocation(String(user.location_id));
+      } else if (isUserBranch && user.location_id && (locationCtx as any)?.setSelectedLocation) {
+        (locationCtx as any).setSelectedLocation(String(user.location_id));
       }
 
       if (typeof onLoginSuccess === 'function') {
@@ -174,7 +256,7 @@ export function LoginView({
             
             {/* Email Field */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">
+              <label htmlFor="login-email" className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">
                 អាសយដ្ឋាន អ៊ីមែល (Email Address) <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
@@ -182,20 +264,22 @@ export function LoginView({
                   <Mail size={18} />
                 </div>
                 <input
+                  id="login-email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin.its@tax.gov.kh"
                   disabled={lockoutTimer > 0 || loading}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all placeholder:text-slate-400 disabled:opacity-50"
-                  autoComplete="email"
+                  autoComplete="username"
                 />
               </div>
             </div>
 
             {/* Password Field */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">
+              <label htmlFor="login-password" className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">
                 ពាក្យសម្ងាត់ (Password) <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
@@ -203,6 +287,8 @@ export function LoginView({
                   <Lock size={18} />
                 </div>
                 <input
+                  id="login-password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -221,12 +307,33 @@ export function LoginView({
               </div>
             </div>
 
+            {/* Remember Password Checkbox */}
+            <div className="flex items-center pt-0.5">
+              <label
+                htmlFor="remember-password"
+                className="inline-flex items-center gap-2.5 cursor-pointer select-none group"
+              >
+                <input
+                  id="remember-password"
+                  name="rememberMe"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  disabled={lockoutTimer > 0 || loading}
+                  className="w-4 h-4 accent-emerald-800 text-emerald-900 border-slate-300 rounded focus:ring-2 focus:ring-emerald-700 cursor-pointer transition-all"
+                />
+                <span className="text-xs font-semibold text-slate-700 group-hover:text-[#03291E] transition-colors">
+                  ចងចាំអ៊ីមែល និងពាក្យសម្ងាត់ (Remember Password)
+                </span>
+              </label>
+            </div>
+
             {/* Submit Button */}
             <div className="pt-1">
               <button
                 type="submit"
                 disabled={loading || lockoutTimer > 0}
-                className="w-full py-3 bg-[#03291E] hover:bg-[#1E6047] text-white font-bold text-sm rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-[#03291E] hover:bg-[#1E6047] text-white font-bold text-sm rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
                 {loading ? (
                   <>
