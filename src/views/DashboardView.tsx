@@ -20,6 +20,14 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
   const { selectedLocationId, selectedLocation } = useLocationContext();
   const { inventory, items, locations, isLoading, refreshInventory } = useInventoryContext();
   const [activeTab, setActiveTab] = useState<'ALL' | 'Tools' | 'Suppliers'>('ALL');
+  const [expandedBranchRows, setExpandedBranchRows] = useState<Record<string, boolean>>({});
+
+  const toggleExpandBranches = (rowKey: string) => {
+    setExpandedBranchRows(prev => ({
+      ...prev,
+      [rowKey]: !prev[rowKey]
+    }));
+  };
 
   // Helper to check if inventory row belongs to HQ
   const isHqRow = (inv: any) => isHqLocationOrRow(inv, locations);
@@ -226,7 +234,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
 
                 {/* For CentralAdmin only: show other branches with stock */}
                 {!isBranchView && (
-                  <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold">សាខាដែលមានស្តុក</th>
+                  <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold min-w-[240px] sm:min-w-[300px] max-w-[360px]">សាខាដែលមានស្តុក</th>
                 )}
                 <th className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[0_1px_2px_rgba(0,0,0,0.08)] px-4 py-3 font-bold text-center">ស្ថានភាព</th>
               </tr>
@@ -295,24 +303,53 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
                   </td>
 
                   {/* Branches with Stock Badges (CentralAdmin ONLY) */}
-                  {!isBranchView && (
-                    <td className="px-4 py-2.5 max-w-[200px]">
-                      <div className="flex flex-wrap gap-1.5">
-                        {item.branchesWithStock.length > 0 ? (
-                          item.branchesWithStock.map((branch, i) => (
-                            <div key={i} className="inline-flex items-center rounded-md border border-teal-200 bg-teal-50/60 overflow-hidden shadow-2xs">
-                              <span className="text-[10px] font-bold text-teal-900 px-1.5 py-0.5">{branch.code}</span>
-                              <span className="bg-teal-700 text-white font-bold text-[9px] px-1 py-0.5 min-w-[16px] text-center">
-                                {branch.quantity}
-                              </span>
-                            </div>
-                          ))
+                  {!isBranchView && (() => {
+                    const rowKey = `${item.code}-${idx}`;
+                    const isExpanded = !!expandedBranchRows[rowKey];
+                    const totalBranches = item.branchesWithStock.length;
+                    const visibleBranches = isExpanded ? item.branchesWithStock : item.branchesWithStock.slice(0, 6);
+                    const remainingCount = totalBranches - 6;
+
+                    return (
+                      <td className="px-4 py-2.5 min-w-[240px] sm:min-w-[300px] max-w-[360px]">
+                        {totalBranches > 0 ? (
+                          <div className={isExpanded ? "grid grid-cols-3 sm:grid-cols-4 gap-1.5 items-center" : "flex flex-wrap items-center gap-1.5"}>
+                            {visibleBranches.map((branch, i) => (
+                              <div
+                                key={i}
+                                className="inline-flex items-center justify-between whitespace-nowrap shrink-0 rounded-md border border-teal-200 bg-teal-50/60 overflow-hidden shadow-2xs"
+                              >
+                                <span className="text-[10px] font-bold text-teal-900 px-1.5 py-0.5">{branch.code}</span>
+                                <span className="bg-teal-700 text-white font-bold text-[9px] px-1 py-0.5 min-w-[16px] text-center">
+                                  {branch.quantity}
+                                </span>
+                              </div>
+                            ))}
+                            {totalBranches > 6 && !isExpanded && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandBranches(rowKey)}
+                                className="inline-flex items-center whitespace-nowrap shrink-0 bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 rounded-md px-2 py-0.5 text-xs font-medium cursor-pointer transition-all"
+                              >
+                                +{remainingCount} សាខាទៀត
+                              </button>
+                            )}
+                            {totalBranches > 6 && isExpanded && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandBranches(rowKey)}
+                                className="inline-flex items-center justify-center whitespace-nowrap shrink-0 bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 rounded-md px-2 py-0.5 text-xs font-medium cursor-pointer transition-all"
+                              >
+                                បង្រួមវិញ
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-slate-400 text-xs italic">គ្មានសាខាមានស្តុក</span>
                         )}
-                      </div>
-                    </td>
-                  )}
+                      </td>
+                    );
+                  })()}
 
                   {/* Status */}
                   <td className="px-4 py-2.5 text-center">
